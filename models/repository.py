@@ -450,3 +450,61 @@ class Repository:
                 
         except Exception:
             return []
+
+    def get_line_origin(self, commit_id, file_path, line_content, line_type):
+        """
+        Get origin information for a specific line
+        
+        Args:
+            commit_id (str): ID of the commit
+            file_path (str): Path to the file
+            line_content (str): Content of the line to find origin for
+            line_type (str): Type of line ('add', 'del', 'context')
+            
+        Returns:
+            tuple: (origin_commit_id, author, date, commit_message) or None if not found
+        """
+        try:
+            # Extract the line content without prefix (+ or -)
+            clean_line_content = line_content
+            if line_content.startswith('+') or line_content.startswith('-'):
+                clean_line_content = line_content[1:]
+                
+            # For deleted lines, we need to search in the parent commit
+            if line_type == 'del':
+                # Get the parent commit
+                commit = self.repo.get(commit_id)
+                if not commit or not commit.parents:
+                    return None
+                    
+                parent_commit = commit.parents[0]
+                parent_commit_id = str(parent_commit.id)
+                
+                # Try to blame the line in the parent commit where it existed
+                blame_data = self.get_blame(parent_commit_id, file_path)
+                
+                # Find matching line in blame data
+                for origin_commit_id, author, date, line_num, content in blame_data:
+                    if clean_line_content.strip() == content.strip():
+                        # Get the commit message
+                        origin_commit = self.repo.get(self.repo.revparse_single(origin_commit_id).id)
+                        message = origin_commit.message.split('\n')[0] if origin_commit else "Unknown commit"
+                        return (origin_commit_id, author, date, message)
+                        
+                return None
+            else:
+                # For added or context lines, search in the current commit
+                blame_data = self.get_blame(commit_id, file_path)
+                
+                # Find matching line in blame data
+                for origin_commit_id, author, date, line_num, content in blame_data:
+                    if clean_line_content.strip() == content.strip():
+                        # Get the commit message
+                        origin_commit = self.repo.get(self.repo.revparse_single(origin_commit_id).id)
+                        message = origin_commit.message.split('\n')[0] if origin_commit else "Unknown commit"
+                        return (origin_commit_id, author, date, message)
+                        
+                return None
+        except Exception as e:
+            print(f"Error in get_line_origin: {e}")
+            return None

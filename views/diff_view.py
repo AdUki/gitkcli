@@ -127,10 +127,8 @@ class DiffView(BaseView):
             self._scroll_diff(-page_size)
             self.diff_cursor = 0  # Reset cursor position when page up
         elif key == ord('b'):
-            # Get file path at cursor
-            file_path = self.get_current_file_path()
-            if file_path:
-                return True, True, f"blame:{self.commit_id}:{file_path}"
+            # Show origin of current line
+            self._show_line_origin()
         
         return True, False, None  # Continue program, no view change
         
@@ -173,3 +171,126 @@ class DiffView(BaseView):
                     return parts[3][2:]  # Remove the 'b/' prefix
                     
         return None
+
+    def _show_line_origin(self):
+        """Show the origin of the current line at cursor position"""
+        if not self.commit or not self.commit.diff:
+            return
+            
+        current_line_idx = self.diff_top + self.diff_cursor
+        if current_line_idx < 0 or current_line_idx >= len(self.commit.diff):
+            return
+            
+        diff_type, line_content = self.commit.diff[current_line_idx]
+        
+        # Only show origin for content lines (added, deleted or context)
+        if diff_type not in ('add', 'del', 'context'):
+            self._show_message("Not a content line")
+            return
+            
+        # Find the file path for the current position
+        file_path = self.get_current_file_path()
+        if not file_path:
+            self._show_message("Could not determine file path")
+            return
+            
+        # Get origin information
+        origin_info = self.repository.get_line_origin(self.commit_id, file_path, line_content, diff_type)
+        if not origin_info:
+            self._show_message("Origin not found for this line")
+            return
+            
+        # Display origin information in a popup
+        self._show_origin_popup(origin_info, line_content)
+    
+    def _show_origin_popup(self, origin_info, line_content):
+        """
+        Show a popup with origin information
+        
+        Args:
+            origin_info: Tuple of (commit_id, author, date, message)
+            line_content: Content of the line
+        """
+        commit_id, author, date, message = origin_info
+        
+        # Create popup content
+        popup_content = [
+            f"Origin of: {line_content[:60] + '...' if len(line_content) > 60 else line_content}",
+            "",
+            f"Commit: {commit_id}",
+            f"Author: {author}",
+            f"Date:   {date}",
+            f"",
+            f"Message: {message[:60] + '...' if len(message) > 60 else message}",
+            "",
+            "Press any key to close"
+        ]
+        
+        # Calculate popup dimensions
+        popup_height = len(popup_content) + 2  # Add 2 for border
+        popup_width = max(min(self.max_cols - 10, 80), 60)  # Width between 60 and 80, or smaller if screen is small
+        
+        # Calculate popup position
+        popup_y = max(0, (self.max_lines // 2) - (popup_height // 2))
+        popup_x = max(0, (self.max_cols // 2) - (popup_width // 2))
+        
+        # Create popup window
+        popup = curses.newwin(popup_height, popup_width, popup_y, popup_x)
+        popup.box()
+        
+        # Draw content
+        for i, line in enumerate(popup_content):
+            # Ensure line fits in popup width
+            if len(line) > popup_width - 4:
+                line = line[:popup_width - 7] + "..."
+                
+            # Draw line
+            try:
+                attr = curses.A_BOLD if i == 0 or i == 2 else curses.A_NORMAL
+                popup.addstr(i + 1, 2, line, attr)
+            except curses.error:
+                pass
+        
+        # Refresh popup and get input
+        popup.refresh()
+        popup.getch()  # Wait for any key
+    
+    def _show_message(self, message):
+        """Show a temporary message"""
+        max_y, max_x = self.stdscr.getmaxyx()
+        y_pos = max_y // 2
+        x_pos = max(0, (max_x - len(message)) // 2)
+        
+        # Save area under the message
+        backup = []
+        try:
+            for dy in range(3):
+                line = []
+                for dx in range(len(message) + 4):
+                    if y_pos - 1 + dy < max_y and x_pos - 2 + dx < max_x:
+                        ch = self.stdscr.inch(y_pos - 1 + dy, x_pos - 2 + dx)
+                        line.append(ch)
+                backup.append(line)
+        except curses.error:
+            pass
+            
+        # Create a small popup window
+        try:
+            popup = curses.newwin(3, len(message) + 4, y_pos - 1, x_pos - 2)
+            popup.box()
+            popup.addstr(1, 2, message)
+            popup.refresh()
+            curses.napms(1500)  # Show for 1.5 seconds
+        except curses.error:
+            pass
+            
+        # Restore the screen
+        try:
+            for dy in range(3):
+                for dx in range(len(message) + 4):
+                    if y_pos - 1 + dy < max_y and x_pos - 2 + dx < max_x and dy < len(backup) and dx < len(backup[dy]):
+                        self.stdscr.addch(y_pos - 1 + dy, x_pos - 2 + dx, backup[dy][dx])
+        except curses.error:
+            pass
+            
+        self.stdscr.refresh()
