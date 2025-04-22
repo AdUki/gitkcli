@@ -22,6 +22,10 @@ class DiffView(BaseView):
         self.commit = repository.commit_map.get(commit_id)
         self.diff_top = 0
         self.diff_cursor = 0
+        self.search_string = ""
+        self.search_active = False
+        self.search_results = []
+        self.search_index = -1
         
         # Load diff if not already loaded
         if self.commit and not hasattr(self.commit, 'diff') or self.commit.diff is None:
@@ -41,9 +45,13 @@ class DiffView(BaseView):
         self._draw_diff_content()
         
         # Draw status line
-        diff_length = len(self.commit.diff) if self.commit.diff else 0
-        status = f" Lines {self.diff_top + 1}-{min(self.diff_top + self.max_lines - 2, diff_length)}/{diff_length} | Press ENTER to return "
-        self.draw_status(status)
+        if self.search_active:
+            status = f" Search: {self.search_string}"
+            self.draw_status(status)
+        else:
+            diff_length = len(self.commit.diff) if self.commit.diff else 0
+            status = f" Lines {self.diff_top + 1}-{min(self.diff_top + self.max_lines - 2, diff_length)}/{diff_length} | Press ENTER to return "
+            self.draw_status(status)
         
     def _draw_diff_content(self):
         """Draw the diff content"""
@@ -77,6 +85,14 @@ class DiffView(BaseView):
             if idx == self.diff_top + self.diff_cursor:
                 attr |= curses.A_REVERSE
                 
+            # Highlight search matches
+            if self.search_string and idx in self.search_results:
+                # Preserve original color but add bold
+                attr |= curses.A_BOLD
+                # If this is also cursor position, maintain reverse video
+                if idx == self.diff_top + self.diff_cursor:
+                    attr |= curses.A_REVERSE
+                
             # Truncate if too long
             if len(line) > self.max_cols:
                 line = line[:self.max_cols - 3] + "..."
@@ -101,6 +117,16 @@ class DiffView(BaseView):
         if not self.commit or not self.commit.diff:
             if key == 10:  # Enter key
                 return True, True, "commit"  # Back to commit view
+            return True, False, None
+            
+        # Handle search mode
+        if self.search_active:
+            return self._handle_search_input(key)
+            
+        # Check for search key
+        if key == ord('/'):
+            self.search_active = True
+            self.search_string = ""
             return True, False, None
             
         # Custom navigation for diff view with cursor
@@ -131,8 +157,112 @@ class DiffView(BaseView):
             result = self._show_line_origin()
             if result:
                 return result  # Return the result if jumping to a commit
+        elif key == ord('n'):
+            # Jump to next search result
+            self._next_search_result()
+        elif key == ord('N'):
+            # Jump to previous search result
+            self._prev_search_result()
         
         return True, False, None  # Continue program, no view change
+        
+    def _handle_search_input(self, key):
+        """
+        Handle key input while in search mode
+        
+        Args:
+            key: Key code
+            
+        Returns:
+            tuple: (continue_program, switch_view, view_name)
+        """
+        if key == 27:  # Escape key
+            # Cancel search
+            self.search_active = False
+        elif key == 10:  # Enter key
+            # Complete search
+            self.search_active = False
+            self._perform_search()
+            if self.search_results:
+                self._next_search_result()
+        elif key == 127 or key == curses.KEY_BACKSPACE:  # Backspace
+            if self.search_string:
+                self.search_string = self.search_string[:-1]
+        elif key == curses.KEY_DC:  # Delete key
+            if self.search_string:
+                self.search_string = self.search_string[:-1]
+        elif 32 <= key <= 126:  # Printable ASCII
+            self.search_string += chr(key)
+            
+        return True, False, None
+            
+    def _perform_search(self):
+        """Perform search with current search string"""
+        self.search_results = []
+        self.search_index = -1
+        
+        search_term = self.search_string.lower()
+        if not search_term:
+            return
+            
+        # Search in diff lines
+        for i, (diff_type, line) in enumerate(self.commit.diff):
+            if search_term in line.lower():
+                self.search_results.append(i)
+                
+    def _next_search_result(self):
+        """Move to next search result"""
+        if not self.search_results:
+            return
+            
+        current_pos = self.diff_top + self.diff_cursor
+            
+        # Find next result after current position
+        next_idx = None
+        for idx in self.search_results:
+            if idx > current_pos:
+                next_idx = idx
+                break
+                
+        # Wrap around if no next result
+        if next_idx is None and self.search_results:
+            next_idx = self.search_results[0]
+            
+        if next_idx is not None:
+            # Move cursor to the search result
+            self.diff_cursor = min(self.max_lines - 3, next_idx - self.diff_top)
+            
+            # If result is outside visible area, scroll to it
+            if next_idx < self.diff_top or next_idx >= self.diff_top + self.max_lines - 2:
+                self.diff_top = max(0, next_idx - (self.max_lines // 4))
+                self.diff_cursor = next_idx - self.diff_top
+                
+    def _prev_search_result(self):
+        """Move to previous search result"""
+        if not self.search_results:
+            return
+            
+        current_pos = self.diff_top + self.diff_cursor
+            
+        # Find previous result before current position
+        prev_idx = None
+        for idx in reversed(self.search_results):
+            if idx < current_pos:
+                prev_idx = idx
+                break
+                
+        # Wrap around if no previous result
+        if prev_idx is None and self.search_results:
+            prev_idx = self.search_results[-1]
+            
+        if prev_idx is not None:
+            # Move cursor to the search result
+            self.diff_cursor = min(self.max_lines - 3, prev_idx - self.diff_top)
+            
+            # If result is outside visible area, scroll to it
+            if prev_idx < self.diff_top or prev_idx >= self.diff_top + self.max_lines - 2:
+                self.diff_top = max(0, prev_idx - (self.max_lines // 4))
+                self.diff_cursor = prev_idx - self.diff_top
         
     def _scroll_diff(self, delta):
         """
@@ -216,6 +346,14 @@ class DiffView(BaseView):
         """
         commit_id, author, date, message = origin_info
         
+        # Get the complete commit message
+        try:
+            commit_obj = self.repository.repo.get(commit_id)
+            full_message = commit_obj.message if commit_obj else message
+            message_lines = full_message.strip().split('\n')
+        except Exception:
+            message_lines = [message]
+        
         # Create popup content
         popup_content = [
             f"Origin of: {line_content[:60] + '...' if len(line_content) > 60 else line_content}",
@@ -223,15 +361,28 @@ class DiffView(BaseView):
             f"Commit: {commit_id}",
             f"Author: {author}",
             f"Date:   {date}",
-            f"",
-            f"Message: {message[:60] + '...' if len(message) > 60 else message}",
             "",
-            "Press 'j' to jump to this commit, any other key to close"
+            "Message:",
         ]
         
+        # Add the full commit message, respecting line breaks
+        for line in message_lines:
+            popup_content.append(f"  {line}")
+            
+        popup_content.append("")
+        popup_content.append("Press 'j' to jump to this commit, any other key to close")
+        
         # Calculate popup dimensions
-        popup_height = len(popup_content) + 2  # Add 2 for border
         popup_width = max(min(self.max_cols - 10, 80), 60)  # Width between 60 and 80, or smaller if screen is small
+        
+        # Format content to fit in popup width
+        formatted_content = []
+        for line in popup_content:
+            if len(line) > popup_width - 4:
+                line = line[:popup_width - 7] + "..."
+            formatted_content.append(line)
+            
+        popup_height = min(len(formatted_content) + 2, self.max_lines - 4)  # Add 2 for border, limit height
         
         # Calculate popup position
         popup_y = max(0, (self.max_lines // 2) - (popup_height // 2))
@@ -241,15 +392,19 @@ class DiffView(BaseView):
         popup = curses.newwin(popup_height, popup_width, popup_y, popup_x)
         popup.box()
         
+        # Calculate which lines to show if content doesn't fit
+        start_line = 0
+        display_lines = popup_height - 2  # Account for borders
+        
         # Draw content
-        for i, line in enumerate(popup_content):
-            # Ensure line fits in popup width
-            if len(line) > popup_width - 4:
-                line = line[:popup_width - 7] + "..."
+        for i in range(display_lines):
+            line_idx = start_line + i
+            if line_idx >= len(formatted_content):
+                break
                 
-            # Draw line
+            line = formatted_content[line_idx]
             try:
-                attr = curses.A_BOLD if i == 0 or i == 2 else curses.A_NORMAL
+                attr = curses.A_BOLD if (line_idx == 0 or line_idx == 2 or line_idx == 6) else curses.A_NORMAL
                 popup.addstr(i + 1, 2, line, attr)
             except curses.error:
                 pass

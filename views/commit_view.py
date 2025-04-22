@@ -21,6 +21,10 @@ class CommitView(BaseView):
         self.current_index = 0
         self.top_index = 0
         self.graph_width = 15  # Width allocated for the commit graph (future use)
+        self.search_string = ""
+        self.search_active = False
+        self.search_results = []
+        self.search_index = -1
         
     def draw(self):
         """Draw the commit list view"""
@@ -35,9 +39,13 @@ class CommitView(BaseView):
         self._draw_commits()
         
         # Draw status line
-        status = f" Commit {self.current_index + 1}/{len(self.commits)} | Press 'h' for help "
-        self.draw_status(status)
-        
+        if self.search_active:
+            status = f" Search: {self.search_string}"
+            self.draw_status(status)
+        else:
+            status = f" Commit {self.current_index + 1}/{len(self.commits)} | Press 'h' for help "
+            self.draw_status(status)
+            
     def _draw_commits(self):
         """Draw the list of commits"""
         # Calculate visible lines
@@ -64,6 +72,15 @@ class CommitView(BaseView):
                 
             # Draw the line
             attr = curses.color_pair(9) if is_selected else curses.color_pair(1)
+            
+            # Highlight search matches if we're searching
+            if self.search_string and idx in self.search_results:
+                # Use a different color for search matches
+                attr = curses.color_pair(5) | curses.A_BOLD
+                # But keep selection indicator if this is the selected commit
+                if is_selected:
+                    attr = curses.color_pair(9) | curses.A_BOLD
+            
             try:
                 self.stdscr.addstr(i + 1, 0, line.ljust(self.max_cols - 1), attr)
             except curses.error:
@@ -81,6 +98,16 @@ class CommitView(BaseView):
             tuple: (continue_program, switch_view, view_name)
         """
         if not self.commits:
+            return True, False, None
+            
+        # Handle search mode
+        if self.search_active:
+            return self._handle_search_input(key)
+            
+        # Check for search key
+        if key == ord('/'):
+            self.search_active = True
+            self.search_string = ""
             return True, False, None
             
         # Handle navigation keys
@@ -103,8 +130,107 @@ class CommitView(BaseView):
         elif key == ord('r'):
             # Refresh commits - sends refresh command to controller
             return True, True, "refresh"
+        elif key == ord('n'):
+            # Jump to next search result
+            self._next_search_result()
+        elif key == ord('N'):
+            # Jump to previous search result
+            self._prev_search_result()
         
         return True, False, None  # Continue program, no view change
+        
+    def _handle_search_input(self, key):
+        """
+        Handle key input while in search mode
+        
+        Args:
+            key: Key code
+            
+        Returns:
+            tuple: (continue_program, switch_view, view_name)
+        """
+        if key == 27:  # Escape key
+            # Cancel search
+            self.search_active = False
+        elif key == 10:  # Enter key
+            # Complete search
+            self.search_active = False
+            self._perform_search()
+            if self.search_results:
+                self._next_search_result()
+        elif key == 127 or key == curses.KEY_BACKSPACE:  # Backspace
+            if self.search_string:
+                self.search_string = self.search_string[:-1]
+        elif key == curses.KEY_DC:  # Delete key
+            if self.search_string:
+                self.search_string = self.search_string[:-1]
+        elif 32 <= key <= 126:  # Printable ASCII
+            self.search_string += chr(key)
+            
+        return True, False, None
+            
+    def _perform_search(self):
+        """Perform search with current search string"""
+        self.search_results = []
+        self.search_index = -1
+        
+        search_term = self.search_string.lower()
+        if not search_term:
+            return
+            
+        # Search in commit IDs, authors, and messages
+        for i, commit in enumerate(self.commits):
+            searchable_text = f"{commit.id} {commit.author} {commit.message}".lower()
+            if search_term in searchable_text:
+                self.search_results.append(i)
+                
+    def _next_search_result(self):
+        """Move to next search result"""
+        if not self.search_results:
+            return
+            
+        # Find next result after current index
+        next_idx = None
+        for idx in self.search_results:
+            if idx > self.current_index:
+                next_idx = idx
+                break
+                
+        # Wrap around if no next result
+        if next_idx is None and self.search_results:
+            next_idx = self.search_results[0]
+            
+        if next_idx is not None:
+            self.current_index = next_idx
+            self.search_index = self.search_results.index(next_idx)
+            
+            # Adjust view to show the result
+            if next_idx < self.top_index or next_idx >= self.top_index + self.max_lines - 2:
+                self.top_index = max(0, next_idx - (self.max_lines // 4))
+                
+    def _prev_search_result(self):
+        """Move to previous search result"""
+        if not self.search_results:
+            return
+            
+        # Find previous result before current index
+        prev_idx = None
+        for idx in reversed(self.search_results):
+            if idx < self.current_index:
+                prev_idx = idx
+                break
+                
+        # Wrap around if no previous result
+        if prev_idx is None and self.search_results:
+            prev_idx = self.search_results[-1]
+            
+        if prev_idx is not None:
+            self.current_index = prev_idx
+            self.search_index = self.search_results.index(prev_idx)
+            
+            # Adjust view to show the result
+            if prev_idx < self.top_index or prev_idx >= self.top_index + self.max_lines - 2:
+                self.top_index = max(0, prev_idx - (self.max_lines // 4))
         
     def move_selection(self, delta):
         """
