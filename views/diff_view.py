@@ -144,6 +144,18 @@ class DiffView(BaseView):
                 self.diff_cursor -= 1
             else:
                 self._scroll_diff(-1)
+        elif key == ord('g'):
+            # Go to top
+            self.diff_top = 0
+            self.diff_cursor = 0
+        elif key == ord('G'):
+            # Go to bottom
+            if len(self.commit.diff) > self.max_lines - 2:
+                self.diff_top = len(self.commit.diff) - (self.max_lines - 2)
+                self.diff_cursor = self.max_lines - 3
+            else:
+                self.diff_top = 0
+                self.diff_cursor = len(self.commit.diff) - 1
         elif key == ord('d') or key == curses.KEY_NPAGE:  # Page Down
             page_size = self.max_lines - 3
             self._scroll_diff(page_size)
