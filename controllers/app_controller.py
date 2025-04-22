@@ -127,6 +127,23 @@ class AppController:
             message = "Copied to clipboard" if success else "Failed to copy to clipboard"
             show_message(self.stdscr, message)
             return
+            
+        elif view_name and view_name.startswith("jump:"):
+            # Jump to a specific commit in the commit view
+            commit_id = view_name[5:]
+            
+            # Create a commit view and find the commit index
+            commit_view = CommitView(self.stdscr, self.repository)
+            
+            # Find the commit in the list
+            for i, commit in enumerate(self.repository.commits):
+                if commit.id == commit_id or commit.id.startswith(commit_id):
+                    commit_view.current_index = i
+                    commit_view.top_index = max(0, i - (self.stdscr.getmaxyx()[0] // 2))
+                    break
+                    
+            self.current_view = commit_view
+            return
         
         # Switch to named view
         if view_name == "help":

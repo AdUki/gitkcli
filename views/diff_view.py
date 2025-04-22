@@ -128,7 +128,9 @@ class DiffView(BaseView):
             self.diff_cursor = 0  # Reset cursor position when page up
         elif key == ord('b'):
             # Show origin of current line
-            self._show_line_origin()
+            result = self._show_line_origin()
+            if result:
+                return result  # Return the result if jumping to a commit
         
         return True, False, None  # Continue program, no view change
         
@@ -201,7 +203,8 @@ class DiffView(BaseView):
             return
             
         # Display origin information in a popup
-        self._show_origin_popup(origin_info, line_content)
+        result = self._show_origin_popup(origin_info, line_content)
+        return result
     
     def _show_origin_popup(self, origin_info, line_content):
         """
@@ -223,7 +226,7 @@ class DiffView(BaseView):
             f"",
             f"Message: {message[:60] + '...' if len(message) > 60 else message}",
             "",
-            "Press any key to close"
+            "Press 'j' to jump to this commit, any other key to close"
         ]
         
         # Calculate popup dimensions
@@ -253,7 +256,13 @@ class DiffView(BaseView):
         
         # Refresh popup and get input
         popup.refresh()
-        popup.getch()  # Wait for any key
+        key = popup.getch()  # Wait for any key
+        
+        # If 'j' was pressed, jump to the commit
+        if key == ord('j'):
+            return True, True, f"jump:{commit_id}"
+        
+        return True, False, None
     
     def _show_message(self, message):
         """Show a temporary message"""
