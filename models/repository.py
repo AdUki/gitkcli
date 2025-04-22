@@ -275,21 +275,59 @@ class Repository:
                     
     def _load_refs(self, commit_map):
         """Load references (branches, tags) for commits"""
+        # First get all references
+        branches = {}
+        tags = {}
+        remote_branches = {}
+        
         for ref_name in self.repo.references:
             ref = self.repo.references.get(ref_name)
-            if hasattr(ref, 'target'):
-                target_hex = ref.target.hex if hasattr(ref.target, 'hex') else ref.target
-                if target_hex in commit_map:
-                    # Clean up ref name
-                    clean_name = ref_name
-                    if clean_name.startswith('refs/heads/'):
-                        clean_name = clean_name[11:]  # Branch
-                    elif clean_name.startswith('refs/tags/'):
-                        clean_name = clean_name[10:]  # Tag
-                    elif clean_name.startswith('refs/remotes/'):
-                        clean_name = clean_name[13:]  # Remote
+            if not hasattr(ref, 'target'):
+                continue
+                
+            target_hex = ref.target.hex if hasattr(ref.target, 'hex') else ref.target
+            
+            # Skip if target isn't in our commit map
+            if target_hex not in commit_map:
+                continue
+                
+            # Categorize the reference
+            if ref_name.startswith('refs/heads/'):
+                name = ref_name[11:]  # Local branch
+                branches[target_hex] = name
+            elif ref_name.startswith('refs/tags/'):
+                name = ref_name[10:]  # Tag
+                tags[target_hex] = name
+            elif ref_name.startswith('refs/remotes/'):
+                name = ref_name[13:]  # Remote branch
+                remote_branches[target_hex] = name
+            else:
+                # Other references
+                clean_name = ref_name
+                if clean_name.startswith('refs/'):
+                    clean_name = clean_name.split('/', 2)[-1]
+                commit_map[target_hex].add_ref(clean_name)
+        
+        # Now add the references to the commits
+        # Add local branches first, then tags, then remote branches
+        for target_hex, name in branches.items():
+            commit_map[target_hex].add_ref(name)
+            
+        for target_hex, name in tags.items():
+            # Add tags with a tag indicator
+            commit_map[target_hex].add_ref(f"tag: {name}")
+            
+        for target_hex, name in remote_branches.items():
+            # Check if this is tracking a local branch we've already added
+            # Skip adding remote branches that match local ones to avoid duplication
+            skip = False
+            for local_hex, local_name in branches.items():
+                if name.endswith('/' + local_name) and target_hex == local_hex:
+                    skip = True
+                    break
                     
-                    commit_map[target_hex].add_ref(clean_name)
+            if not skip:
+                commit_map[target_hex].add_ref(name)
         
     def get_commit_diff(self, commit_id):
         """

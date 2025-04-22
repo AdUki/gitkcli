@@ -62,13 +62,15 @@ class CommitView(BaseView):
             # Format the line
             line = f"{commit.short_id} {commit.date} {commit.author}: {commit.message}"
             
-            # Add ref indicators
+            # Truncate if too long to leave space for refs
+            max_line_length = self.max_cols - 1
             if commit.refs:
-                line += commit.formatted_refs
+                # Reserve space for refs based on their length plus some padding
+                refs_str = f" [{', '.join(commit.refs)}]"
+                max_line_length = self.max_cols - len(refs_str) - 1
                 
-            # Truncate if too long
-            if len(line) > self.max_cols:
-                line = line[:self.max_cols - 3] + "..."
+            if len(line) > max_line_length:
+                line = line[:max_line_length - 3] + "..."
                 
             # Draw the line
             attr = curses.color_pair(9) if is_selected else curses.color_pair(1)
@@ -82,7 +84,27 @@ class CommitView(BaseView):
                     attr = curses.color_pair(9) | curses.A_BOLD
             
             try:
-                self.stdscr.addstr(i + 1, 0, line.ljust(self.max_cols - 1), attr)
+                self.stdscr.addstr(i + 1, 0, line, attr)
+                
+                # Add refs with a different color if they exist
+                if commit.refs:
+                    refs_attr = curses.color_pair(5)  # Magenta for refs
+                    if is_selected:
+                        refs_attr = curses.color_pair(9) | curses.A_BOLD
+                    
+                    refs_str = f" [{', '.join(commit.refs)}]"
+                    self.stdscr.addstr(i + 1, len(line), refs_str, refs_attr)
+                    
+                    # Fill the rest of the line
+                    remaining_space = self.max_cols - 1 - len(line) - len(refs_str)
+                    if remaining_space > 0:
+                        self.stdscr.addstr(i + 1, len(line) + len(refs_str), " " * remaining_space, attr)
+                else:
+                    # Fill the rest of the line if no refs
+                    remaining_space = self.max_cols - 1 - len(line)
+                    if remaining_space > 0:
+                        self.stdscr.addstr(i + 1, len(line), " " * remaining_space, attr)
+                        
             except curses.error:
                 # Ignore potential curses errors
                 pass
