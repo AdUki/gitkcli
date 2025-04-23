@@ -25,6 +25,9 @@ class GitCommit:
         self.parents = []
         self.children = []
         self.diff = None
+        # Track branch info for tree view
+        self.branch_pos = -1  # Position in branch tree
+        self.branch_lines = []  # Drawing lines for this commit
     
     def __str__(self):
         """String representation of commit"""
@@ -56,8 +59,32 @@ class GitCommit:
         return len(self.parents) > 1
     
     @property
+    def branch_count(self):
+        """Get number of branches involved with this commit"""
+        return len(self.parents) + len(self.children)
+    
+    @property
     def formatted_refs(self):
         """Get formatted references string"""
         if not self.refs:
             return ""
-        return f" ({', '.join(self.refs)})"
+        
+        head_refs = []
+        branch_refs = []
+        remote_refs = []
+        tag_refs = []
+        
+        # Sort refs by type
+        for ref in self.refs:
+            if ref.startswith("HEAD"):
+                head_refs.append(ref)
+            elif ref.startswith("tag:"):
+                tag_refs.append(ref)
+            elif "/" in ref:  # Remote branches typically have a slash
+                remote_refs.append(ref)
+            else:
+                branch_refs.append(ref)
+        
+        # Combine refs in order: HEAD, branches, remotes, tags
+        all_sorted_refs = head_refs + branch_refs + remote_refs + tag_refs
+        return f" ({', '.join(all_sorted_refs)})"

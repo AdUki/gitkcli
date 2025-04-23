@@ -59,81 +59,59 @@ class DiffView(BaseView):
             self.draw_status(status)
     
     def _draw_refs_line(self):
-        """Draw a line showing the refs for this commit - fixed version"""
-        if not self.commit.refs:
+        """Draw a line showing the refs for this commit"""
+        if not self.commit.refs and len(self.commit.parents) <= 1:
             return
         
         # Format refs text
-        refs_text = "Refs: "
-        tags = []
-        branches = []
+        display_text = ""
         
-        for ref in self.commit.refs:
-            if ref.startswith("tag: "):
-                ref_name = ref[5:]  # Remove "tag: " prefix
-                tags.append(f"<{ref_name}>")
-            else:
-                branches.append(f"[{ref}]")
+        # Add info about parents if this is a merge commit
+        if len(self.commit.parents) > 1:
+            parent_ids = [parent_id[:7] for parent_id in self.commit.parents]
+            display_text += f"Merge: {' '.join(parent_ids)}"
         
-        # Combine all refs
-        all_refs = []
-        if tags:
-            all_refs.extend(tags)
-        if branches:
-            all_refs.extend(branches)
+        # Format refs more like git log --decorate
+        if self.commit.refs:
+            if display_text:
+                display_text += " | "
                 
-        refs_text += ", ".join(all_refs)
+            # Sort refs by type
+            head_refs = []
+            branch_refs = []
+            remote_refs = []
+            tag_refs = []
+            
+            for ref in self.commit.refs:
+                if ref.startswith("HEAD"):
+                    head_refs.append(ref)
+                elif ref.startswith("tag:"):
+                    tag_name = ref[5:]  # Remove "tag: " prefix
+                    tag_refs.append(f"tag: {tag_name}")
+                elif "/" in ref:  # Remote branches typically have a slash
+                    remote_refs.append(ref)
+                else:
+                    branch_refs.append(ref)
+            
+            # Combine refs in order: HEAD, branches, remotes, tags
+            all_sorted_refs = head_refs + branch_refs + remote_refs + tag_refs
+            display_text += f"Refs: ({', '.join(all_sorted_refs)})"
         
         # Apply horizontal scrolling
-        if self.h_scroll < len(refs_text):
-            visible_text = refs_text[self.h_scroll:]
+        if self.h_scroll < len(display_text):
+            visible_text = display_text[self.h_scroll:]
+        else:
+            visible_text = ""
+        
+        # Draw the refs line
+        try:
+            self.stdscr.addstr(1, 0, visible_text, curses.color_pair(1))
             
-            # Draw the refs line without extra space filling
-            try:
-                self.stdscr.addstr(1, 0, visible_text, curses.color_pair(1))
-                
-                # Colorize the tags and branches in the visible text
-                pos = 0
-                start_pos = 0
-                
-                # Find "Refs: " in the visible text
-                if "Refs: " in visible_text:
-                    start_pos = visible_text.find("Refs: ") + 6
-                    pos = start_pos
-                else:
-                    # If "Refs: " is scrolled off, start from beginning
-                    pos = 0
-                
-                # Parse the visible text to find and colorize refs
-                while pos < len(visible_text):
-                    # Check for tags (inside angle brackets)
-                    tag_start = visible_text.find('<', pos)
-                    if tag_start != -1 and tag_start < len(visible_text):
-                        tag_end = visible_text.find('>', tag_start)
-                        if tag_end != -1 and tag_end < len(visible_text):
-                            # Color the tag
-                            tag_text = visible_text[tag_start:tag_end+1]
-                            self.stdscr.addstr(1, tag_start, tag_text, curses.color_pair(11))
-                            pos = tag_end + 1
-                            continue
-                    
-                    # Check for branches (inside square brackets)
-                    branch_start = visible_text.find('[', pos)
-                    if branch_start != -1 and branch_start < len(visible_text):
-                        branch_end = visible_text.find(']', branch_start)
-                        if branch_end != -1 and branch_end < len(visible_text):
-                            # Color the branch
-                            branch_text = visible_text[branch_start:branch_end+1]
-                            self.stdscr.addstr(1, branch_start, branch_text, curses.color_pair(12))
-                            pos = branch_end + 1
-                            continue
-                    
-                    # Move to next position if no tag or branch found
-                    pos += 1
-                
-            except curses.error:
-                # Ignore potential curses errors
-                pass
+            # No need to colorize individual parts, we'll keep it simple
+            
+        except curses.error:
+            # Ignore potential curses errors
+            pass
         
     def _draw_diff_content(self):
         """Draw the diff content"""

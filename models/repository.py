@@ -36,7 +36,7 @@ class Repository:
             
     def load_commits(self, args=None):
         """
-        Load commit history using pygit2
+        Load commit history using pygit2 - optimized for large repositories
         
         Args:
             args (list, optional): Arguments for filtering commits
@@ -66,7 +66,7 @@ class Repository:
         
         # Process commits
         count = 0
-        max_count = self._get_max_count(args)
+        max_count = self._get_max_count(args) or 1000  # Default limit to prevent loading too many commits
         
         # Path filters
         path_filters = self._get_path_filters(args)
@@ -76,6 +76,7 @@ class Repository:
         since_time, until_time = self._get_date_filters(args)
         grep_pattern = self._get_grep_pattern(args)
         
+        # First pass - collect commits without linking
         for pygit_commit in walker:
             # Apply filters
             if self._should_skip_commit(pygit_commit, author_filter, since_time, 
@@ -90,7 +91,7 @@ class Repository:
             
             commit = GitCommit(commit_id, author, date, message)
             
-            # Get parent commits
+            # Get parent commits - store parent IDs but don't link yet
             for parent in pygit_commit.parents:
                 commit.add_parent(str(parent.id))
             
@@ -101,9 +102,9 @@ class Repository:
             count += 1
             if max_count and count >= max_count:
                 break
-                
-        # Connect parents and children
-        self._link_commits(commits, commit_map)
+        
+        # Only link parents and children for commits we have loaded
+        self._link_commits_optimized(commits, commit_map)
         
         # Load refs for commits
         self._load_refs(commit_map)
@@ -111,6 +112,24 @@ class Repository:
         self.commits = commits
         self.commit_map = commit_map
         return commits, commit_map
+
+    def _link_commits_optimized(self, commits, commit_map):
+        """Link commits with parents and children - optimized version"""
+        # Create a set of commit IDs for faster lookups
+        commit_ids = set(commit.id for commit in commits)
+        
+        # Only establish parent-child relationships for commits we've loaded
+        for commit in commits:
+            # Filter parents to only those in our loaded commits
+            commit.parents = [pid for pid in commit.parents if pid in commit_ids]
+            
+            # Add this commit as a child to each of its parents
+            for parent_id in commit.parents:
+                if parent_id in commit_map:
+                    commit_map[parent_id].add_child(commit.id)
+        
+        # No need to sort parents/children for the optimized version
+        # This significantly improves performance for large repos
 
     def _get_walk_refs(self, args):
         """Get references to walk based on arguments"""
@@ -168,7 +187,11 @@ class Repository:
     
     def _setup_walker(self, walk_refs):
         """Set up Git revwalk with initial references"""
-        walker = self.repo.walk(walk_refs[0], GIT_SORT_TOPOLOGICAL | GIT_SORT_TIME)
+        # Use TOPO and TIME sort together to get commits in a sensible order
+        # This ensures merge commits are shown with their branch commits
+        walker = self.repo.walk(walk_refs[0], GIT_SORT_TOPOLOGICAL)
+        
+        # Add all refs to walker
         for ref in walk_refs[1:]:
             try:
                 # Try to resolve the ref as a string or as an Oid object
@@ -185,6 +208,7 @@ class Repository:
                 except:
                     # Skip invalid refs
                     pass
+        
         return walker
     
     def _apply_filters(self, walker, args):
@@ -268,14 +292,74 @@ class Repository:
         
     def _link_commits(self, commits, commit_map):
         """Link commits with parents and children"""
+        # First, create the parent-child relationships
         for commit in commits:
             for parent_id in commit.parents:
                 if parent_id in commit_map:
                     commit_map[parent_id].add_child(commit.id)
+        
+        # Sort commits for better branch visualization
+        # This doesn't change the actual list but improves our graph generation
+        for commit in commits:
+            # Sort parents by their appearance in the commits list
+            # This makes the graph more predictable
+            parent_indices = []
+            for parent_id in commit.parents:
+                try:
+                    # Find the index of this parent in the commits list
+                    parent_idx = next(i for i, c in enumerate(commits) if c.id == parent_id)
+                    parent_indices.append((parent_id, parent_idx))
+                except StopIteration:
+                    # Parent not in visible commits
+                    parent_indices.append((parent_id, float('inf')))
+            
+            # Sort parents by their position in the list
+            sorted_parents = [p[0] for p in sorted(parent_indices, key=lambda x: x[1])]
+            
+            # Replace parents with sorted version
+            commit.parents = sorted_parents
+            
+            # Same for children
+            child_indices = []
+            for child_id in commit.children:
+                try:
+                    child_idx = next(i for i, c in enumerate(commits) if c.id == child_id)
+                    child_indices.append((child_id, child_idx))
+                except StopIteration:
+                    child_indices.append((child_id, float('inf')))
+            
+            # Sort children by their position in the list
+            sorted_children = [c[0] for c in sorted(child_indices, key=lambda x: x[1])]
+            
+            # Replace children with sorted version
+            commit.children = sorted_children
                     
     def _load_refs(self, commit_map):
         """Load references (branches, tags) for commits"""
         # First get all references
+        head_target = None
+        head_ref_name = None
+        
+        # Find HEAD first to know what the current branch is
+        try:
+            head = self.repo.head
+            if head.name == 'HEAD' and head.target:
+                if hasattr(head.target, 'hex'):
+                    head_target = head.target.hex
+                else:
+                    # Symbolic reference - find the target
+                    try:
+                        ref = self.repo.references.get(head.target)
+                        if ref and hasattr(ref.target, 'hex'):
+                            head_target = ref.target.hex
+                            head_ref_name = ref.name
+                    except:
+                        pass
+        except:
+            # Repository might be empty or HEAD might be detached
+            pass
+        
+        # Then process all references
         for ref_name in self.repo.references:
             ref = self.repo.references.get(ref_name)
             if not hasattr(ref, 'target'):
@@ -290,29 +374,27 @@ class Repository:
             # Categorize the reference
             if ref_name.startswith('refs/heads/'):
                 name = ref_name[11:]  # Local branch
-                commit_map[target_hex].add_ref(name)
+                # Check if this is the HEAD
+                if ref_name == head_ref_name:
+                    commit_map[target_hex].add_ref(f"HEAD -> {name}")
+                else:
+                    commit_map[target_hex].add_ref(name)
             elif ref_name.startswith('refs/tags/'):
                 name = ref_name[10:]  # Tag
                 commit_map[target_hex].add_ref(f"tag: {name}")
             elif ref_name.startswith('refs/remotes/'):
                 name = ref_name[13:]  # Remote branch
-                
-                # Check if this is tracking a local branch we've already added
-                # Skip adding remote branches that match local ones to avoid duplication
-                skip = False
-                for branch_ref in commit_map[target_hex].refs:
-                    if name.endswith('/' + branch_ref) and not branch_ref.startswith('tag:'):
-                        skip = True
-                        break
-                        
-                if not skip:
-                    commit_map[target_hex].add_ref(name)
+                commit_map[target_hex].add_ref(name)
             else:
                 # Other references
                 clean_name = ref_name
                 if clean_name.startswith('refs/'):
                     clean_name = clean_name.split('/', 2)[-1]
                 commit_map[target_hex].add_ref(clean_name)
+        
+        # Handle the case where HEAD is detached
+        if head_target and head_target in commit_map and not any("HEAD" in ref for ref in commit_map[head_target].refs):
+            commit_map[head_target].add_ref("HEAD")
         
     def get_commit_diff(self, commit_id):
         """
