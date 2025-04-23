@@ -72,43 +72,74 @@ class CommitView(BaseView):
             # Format the line
             line = f"{commit.short_id} {commit.date} {commit.author}: {commit.message}"
             
+            tagPrefix = "tag: "
+
             # Truncate if too long to leave space for refs
             max_line_length = self.max_cols - 1
             if commit.refs:
-                # Reserve space for refs based on their length plus some padding
-                refs_str = f" [{', '.join(commit.refs)}]"
-                max_line_length = self.max_cols - len(refs_str) - 1
+                # Calculate the length of all formatted refs
+                formatted_refs = []
+                total_refs_length = 0
+                
+                for ref in commit.refs:
+                    # Format tags differently
+                    if ref.startswith(tagPrefix):
+                        formatted_ref = ref[len(tagPrefix):]
+                    else:
+                        formatted_ref = ref
+                    
+                    formatted_refs.append(formatted_ref)
+                    total_refs_length += len(formatted_ref) + 3  # +3 for brackets and space
+                
+                max_line_length = self.max_cols - total_refs_length - 1
                 
             if len(line) > max_line_length:
                 line = line[:max_line_length - 3] + "..."
-                
+
+            selected_color = 100 if is_selected else 0
+
             # Draw the line
-            attr = curses.color_pair(9) if is_selected else curses.color_pair(1)
+            attr = curses.color_pair(1 + selected_color)
             
             # Highlight search matches if we're searching
             if self.search_string and idx in self.search_results:
                 # Use a different color for search matches
-                attr = curses.color_pair(5) | curses.A_BOLD
-                # But keep selection indicator if this is the selected commit
-                if is_selected:
-                    attr = curses.color_pair(9) | curses.A_BOLD
+                attr = curses.color_pair(5 + selected_color) | curses.A_BOLD
             
             try:
                 self.stdscr.addstr(i + 1, 0, line, attr)
                 
-                # Add refs with a different color if they exist
+                # Add refs with different colors if they exist
                 if commit.refs:
-                    refs_attr = curses.color_pair(5)  # Magenta for refs
-                    if is_selected:
-                        refs_attr = curses.color_pair(9) | curses.A_BOLD
-                    
-                    refs_str = f" [{', '.join(commit.refs)}]"
-                    self.stdscr.addstr(i + 1, len(line), refs_str, refs_attr)
+                    pos = len(line)
+                    self.stdscr.addstr(i + 1, pos, " ", attr)
+                    pos += 1
+                    for j, ref in enumerate(commit.refs):
+                        # Determine color for different ref types
+                        if ref.startswith(tagPrefix):
+                            ref = ref[len(tagPrefix):]
+                            ref = '<' + ref + '>'
+                            ref_attr = curses.color_pair(11 + selected_color)  # Yellow for tags
+                        else:
+                            ref = '[' + ref + ']'
+                            ref_attr = curses.color_pair(12 + selected_color)  # Green for branches
+                            
+                        if is_selected:
+                            ref_attr |= curses.A_BOLD
+                            
+                        # Add the ref
+                        self.stdscr.addstr(i + 1, pos, ref, ref_attr)
+                        pos += len(ref)
+                        
+                        # Add separator if not the last ref
+                        if j < len(commit.refs) - 1:
+                            self.stdscr.addstr(i + 1, pos, " ", attr)
+                            pos += 1
                     
                     # Fill the rest of the line
-                    remaining_space = self.max_cols - 1 - len(line) - len(refs_str)
+                    remaining_space = self.max_cols - 1 - pos
                     if remaining_space > 0:
-                        self.stdscr.addstr(i + 1, len(line) + len(refs_str), " " * remaining_space, attr)
+                        self.stdscr.addstr(i + 1, pos, " " * remaining_space, attr)
                 else:
                     # Fill the rest of the line if no refs
                     remaining_space = self.max_cols - 1 - len(line)
