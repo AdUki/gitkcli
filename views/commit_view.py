@@ -21,10 +21,14 @@ class CommitView(BaseView):
         self.current_index = 0
         self.top_index = 0
         self.graph_width = 15  # Width allocated for the commit graph (future use)
+        
+        # Search properties
         self.search_string = ""
         self.search_active = False
         self.search_results = []
         self.search_index = -1
+        self.search_types = ["message", "path", "content"]
+        self.search_type_index = 0  # Default to search by message
         
     def draw(self):
         """Draw the commit list view"""
@@ -40,7 +44,13 @@ class CommitView(BaseView):
         
         # Draw status line
         if self.search_active:
-            status = f" Search: {self.search_string}"
+            search_type_display = {
+                "message": "Message",
+                "path": "Path",
+                "content": "Content"
+            }
+            current_type = search_type_display[self.search_types[self.search_type_index]]
+            status = f" Search [{current_type}]: {self.search_string} (Tab to change search type)"
             self.draw_status(status)
         else:
             status = f" Commit {self.current_index + 1}/{len(self.commits)} | Press 'h' for help "
@@ -158,6 +168,8 @@ class CommitView(BaseView):
         elif key == ord('N'):
             # Jump to previous search result
             self._prev_search_result()
+        elif key == ord('h'):
+            return True, True, "help"  # Show help view
         
         return True, False, None  # Continue program, no view change
         
@@ -171,15 +183,41 @@ class CommitView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        if key == 27:  # Escape key
+        if key == ord('q'):  # Allow quitting from search mode
+            return False, False, None
+        elif key == 27:  # Escape key
             # Cancel search
             self.search_active = False
-        elif key == 10:  # Enter key
-            # Complete search
+        elif key == 9:  # Tab key - cycle through search types
+            self.search_type_index = (self.search_type_index + 1) % len(self.search_types)
+        elif key == 10 or key == curses.KEY_ENTER:  # Enter key
+            # Complete search and execute
             self.search_active = False
-            self._perform_search()
-            if self.search_results:
-                self._next_search_result()
+            
+            # Store current search type for debugging
+            search_type = self.search_types[self.search_type_index]
+            
+            # Run search with a reasonable timeout
+            try:
+                # Set cursor to indicate we're working
+                curses.curs_set(1)
+                self.stdscr.addstr(self.max_lines - 1, 0, f" Searching... (type: {search_type})")
+                self.stdscr.refresh()
+                
+                # Perform the search
+                self._perform_search()
+                
+                # Reset cursor
+                curses.curs_set(0)
+                
+                if self.search_results:
+                    self._next_search_result()
+            except Exception as e:
+                # If search fails, show error and reset search state
+                self.stdscr.addstr(self.max_lines - 1, 0, f" Search error: {str(e)[:40]}")
+                self.stdscr.refresh()
+                curses.napms(1500)  # Show error for 1.5 seconds
+                
         elif key == 127 or key == curses.KEY_BACKSPACE:  # Backspace
             if self.search_string:
                 self.search_string = self.search_string[:-1]
@@ -196,15 +234,15 @@ class CommitView(BaseView):
         self.search_results = []
         self.search_index = -1
         
-        search_term = self.search_string.lower()
+        search_term = self.search_string
         if not search_term:
             return
             
-        # Search in commit IDs, authors, and messages
-        for i, commit in enumerate(self.commits):
-            searchable_text = f"{commit.id} {commit.author} {commit.message}".lower()
-            if search_term in searchable_text:
-                self.search_results.append(i)
+        # Get current search type
+        search_type = self.search_types[self.search_type_index]
+        
+        # Use repository's search function
+        self.search_results = self.repository.search_commits(search_term, search_type, use_regex=True)
                 
     def _next_search_result(self):
         """Move to next search result"""
@@ -273,3 +311,20 @@ class CommitView(BaseView):
             self.top_index = self.current_index
         elif self.current_index >= self.top_index + visible_lines:
             self.top_index = self.current_index - visible_lines + 1
+
+    def handle_key(self, key):
+        """
+        Override the base handle_key to properly handle search mode
+        
+        Args:
+            key: Key code
+            
+        Returns:
+            tuple: (continue_program, switch_view, view_name)
+        """
+        # Direct handling for search mode
+        if self.search_active:
+            return self._handle_search_input(key)
+            
+        # Use the default handler for non-search mode
+        return super().handle_key(key)

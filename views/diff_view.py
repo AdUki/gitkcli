@@ -188,10 +188,12 @@ class DiffView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        if key == 27:  # Escape key
+        if key == ord('q'):  # Allow quitting from search mode
+            return False, False, None
+        elif key == 27:  # Escape key
             # Cancel search
             self.search_active = False
-        elif key == 10:  # Enter key
+        elif key == 10 or key == curses.KEY_ENTER:  # Enter key
             # Complete search
             self.search_active = False
             self._perform_search()
@@ -315,6 +317,23 @@ class DiffView(BaseView):
                     return parts[3][2:]  # Remove the 'b/' prefix
                     
         return None
+
+    def handle_key(self, key):
+        """
+        Override the base handle_key to properly handle search mode
+        
+        Args:
+            key: Key code
+            
+        Returns:
+            tuple: (continue_program, switch_view, view_name)
+        """
+        # Direct handling for search mode
+        if self.search_active:
+            return self._handle_search_input(key)
+            
+        # Use the default handler for non-search mode
+        return super().handle_key(key)
 
     def _show_line_origin(self):
         """Show the origin of the current line at cursor position"""

@@ -489,6 +489,216 @@ class Repository:
         except Exception:
             return []
 
+    def search_commits(self, search_term, search_type="message", use_regex=True):
+        """
+        Search commits based on different criteria
+        
+        Args:
+            search_term (str): Term to search for
+            search_type (str): Type of search ('message', 'path', 'content')
+            use_regex (bool): Whether to use regex for searching
+            
+        Returns:
+            list: Indices of commits that match the search
+        """
+        if not search_term:
+            return []
+            
+        results = []
+        
+        try:
+            # Prepare regex if needed
+            pattern = None
+            if use_regex:
+                try:
+                    pattern = re.compile(search_term, re.IGNORECASE)
+                except re.error:
+                    # If invalid regex, fall back to normal search
+                    pattern = None
+                    use_regex = False
+            
+            # Message search is fast, path and content searches need to be optimized
+            if search_type == "message":
+                # Search in commit messages, authors, and IDs
+                for i, commit in enumerate(self.commits):
+                    searchable_text = f"{commit.id} {commit.author} {commit.message}".lower()
+                    
+                    if use_regex and pattern:
+                        if pattern.search(searchable_text):
+                            results.append(i)
+                    elif search_term.lower() in searchable_text:
+                        results.append(i)
+            
+            # For path and content searches, limit to a reasonable number of commits
+            # to prevent hanging on large repositories
+            elif search_type == "path" or search_type == "content":
+                # Limit to the most recent 500 commits for performance
+                max_commits = min(500, len(self.commits))
+                
+                for i in range(max_commits):
+                    commit = self.commits[i]
+                    
+                    # Check if commit matches the search criteria
+                    if search_type == "path":
+                        if self._commit_touches_path(commit.id, search_term, use_regex, pattern):
+                            results.append(i)
+                    elif search_type == "content":
+                        if self._commit_changes_content(commit.id, search_term, use_regex, pattern):
+                            results.append(i)
+                
+                # If searching a very large repo, add a note about limited results
+                if len(self.commits) > max_commits:
+                    print(f"Note: Search limited to most recent {max_commits} commits")
+                        
+        except Exception as e:
+            # Log error and return empty results on failure
+            print(f"Search error: {e}")
+        
+        return results
+        
+    def _commit_touches_path(self, commit_id, path_pattern, use_regex=True, compiled_pattern=None):
+        """
+        Check if a commit touches a path matching the pattern
+        
+        Args:
+            commit_id (str): Commit ID to check
+            path_pattern (str): Path pattern to search for
+            use_regex (bool): Whether to use regex matching
+            compiled_pattern: Pre-compiled regex pattern
+            
+        Returns:
+            bool: True if commit touches matching path
+        """
+        try:
+            # Get the commit
+            commit = self.repo.get(commit_id)
+            if not commit:
+                return False
+                
+            # For initial commit with no parents
+            if not commit.parents:
+                # Get all files in the initial commit
+                tree = commit.tree
+                for entry in tree:
+                    path = entry.name
+                    
+                    if use_regex and compiled_pattern:
+                        if compiled_pattern.search(path):
+                            return True
+                    elif path_pattern.lower() in path.lower():
+                        return True
+                return False
+                
+            # For normal commits, get the diff with parent
+            try:
+                parent = commit.parents[0]
+                # Use a simpler approach to avoid hanging
+                diff_options = pygit2.GIT_DIFF_IGNORE_WHITESPACE | pygit2.GIT_DIFF_SKIP_BINARY_CHECK
+                diff = parent.tree.diff_to_tree(commit.tree, flags=diff_options)
+            
+                # Check each file in the diff
+                for patch in diff:
+                    old_path = patch.delta.old_file.path if hasattr(patch.delta.old_file, 'path') else ''
+                    new_path = patch.delta.new_file.path if hasattr(patch.delta.new_file, 'path') else ''
+                    
+                    paths_to_check = [p for p in [old_path, new_path] if p]
+                    
+                    for path in paths_to_check:
+                        if use_regex and compiled_pattern:
+                            if compiled_pattern.search(path):
+                                return True
+                        elif path_pattern.lower() in path.lower():
+                            return True
+            except Exception as e:
+                print(f"Error in diff: {e}")
+                return False
+                        
+            return False
+            
+        except Exception as e:
+            print(f"Error checking paths: {e}")
+            return False
+            
+    def _commit_changes_content(self, commit_id, content_pattern, use_regex=True, compiled_pattern=None):
+        """
+        Check if a commit adds or removes content matching the pattern
+        
+        Args:
+            commit_id (str): Commit ID to check
+            content_pattern (str): Content pattern to search for
+            use_regex (bool): Whether to use regex matching
+            compiled_pattern: Pre-compiled regex pattern
+            
+        Returns:
+            bool: True if commit changes matching content
+        """
+        try:
+            # Set a reasonable timeout for content searches to prevent hanging
+            MAX_LINES_TO_CHECK = 5000  # Limit number of lines to check
+            
+            # Get the commit object
+            commit = self.repo.get(commit_id)
+            if not commit:
+                return False
+                
+            # For initial commits with no parents
+            if not commit.parents:
+                # Check all files in the initial commit
+                tree = commit.tree
+                for entry in tree:
+                    if entry.type == pygit2.GIT_OBJECT_BLOB:
+                        try:
+                            blob = self.repo.get(entry.id)
+                            content = blob.data.decode('utf-8', errors='replace')
+                            
+                            # Check content
+                            if use_regex and compiled_pattern:
+                                if compiled_pattern.search(content):
+                                    return True
+                            elif content_pattern.lower() in content.lower():
+                                return True
+                        except Exception:
+                            # Skip files that can't be decoded
+                            pass
+                return False
+            
+            # For normal commits, check the diff
+            try:
+                parent = commit.parents[0]
+                diff_options = pygit2.GIT_DIFF_IGNORE_WHITESPACE | pygit2.GIT_DIFF_SKIP_BINARY_CHECK
+                diff = parent.tree.diff_to_tree(commit.tree, flags=diff_options)
+                
+                # Process each patch, but limit the number of lines checked
+                lines_checked = 0
+                for patch in diff:
+                    for hunk in patch.hunks:
+                        for line in hunk.lines:
+                            # Only check added or removed lines
+                            if line.origin in ('+', '-'):
+                                # Check if we've hit our limit
+                                lines_checked += 1
+                                if lines_checked > MAX_LINES_TO_CHECK:
+                                    return False
+                                
+                                # Remove the +/- prefix
+                                content = line.content.rstrip('\n')
+                                
+                                # Check content
+                                if use_regex and compiled_pattern:
+                                    if compiled_pattern.search(content):
+                                        return True
+                                elif content_pattern.lower() in content.lower():
+                                    return True
+            except Exception as e:
+                print(f"Error in content diff: {e}")
+                return False
+                
+            return False
+            
+        except Exception as e:
+            print(f"Error checking content: {e}")
+            return False
+
     def get_line_origin(self, commit_id, file_path, line_content, line_type):
         """
         Get origin information for a specific line
