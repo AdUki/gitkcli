@@ -217,7 +217,7 @@ class CommitView(BaseView):
     
     def handle_key(self, key):
         """
-        Handle key press with common navigation functionality
+        Handle key press for commit view
         
         Args:
             key: Key code
@@ -225,87 +225,68 @@ class CommitView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        # Direct handling for search mode
+        # Handle search mode separately
         if self.search_active:
             return self._handle_search_input(key)
         
-        # Handle horizontal scrolling keys directly
-        if key == ord('h') or key == curses.KEY_LEFT:
-            self.h_scroll = max(0, self.h_scroll - 5)
+        # Exit application
+        if key == ord('q'):
+            return False, False, None
+        
+        # Help view
+        elif key == ord('H'):
+            return True, True, "help"
+        
+        # Handle resize event
+        elif key == curses.KEY_RESIZE:
             return True, False, None
+        
+        # Handle horizontal scrolling
+        elif key == ord('h') or key == curses.KEY_LEFT:
+            self.h_scroll = max(0, self.h_scroll - 5)
         elif key == ord('l') or key == curses.KEY_RIGHT:
             self.h_scroll += 5
-            return True, False, None
-            
-        # Common exit and help keys
-        if key == ord('q'):
-            return False, False, None  # Exit program
-        elif key == ord('H'):
-            return True, True, "help"  # Switch to help view
-            
-        # Let subclass handle specific navigation
-        return self._handle_specific_key(key)
-    
-    def _handle_specific_key(self, key):
-        """
-        Handle commit view specific keys
         
-        Args:
-            key: Key code
-            
-        Returns:
-            tuple: (continue_program, switch_view, view_name)
-        """
-        if not self.commits:
-            return True, False, None
-            
-        # Check for search key
-        if key == ord('/'):
-            self.search_active = True
-            self.search_string = ""
-            return True, False, None
-            
-        # Handle vertical navigation keys
-        if key == ord('j') or key == curses.KEY_DOWN:
+        # Handle vertical navigation
+        elif key == ord('j') or key == curses.KEY_DOWN:
             self.move_selection(1)
-            return True, False, None
         elif key == ord('k') or key == curses.KEY_UP:
             self.move_selection(-1)
-            return True, False, None
         elif key == ord('d') or key == curses.KEY_NPAGE:  # Page Down
             page_size = self.max_lines - 3
             self.move_selection(page_size)
-            return True, False, None
         elif key == ord('u') or key == curses.KEY_PPAGE:  # Page Up
             page_size = self.max_lines - 3
             self.move_selection(-page_size)
-            return True, False, None
-            
-        # Handle other commit-specific keys
-        if key == ord('g'):
+        elif key == ord('g'):  # Go to top
             self.current_index = 0
             self.top_index = 0
-        elif key == ord('G'):
+        elif key == ord('G'):  # Go to bottom
             self.current_index = len(self.commits) - 1
             self.top_index = max(0, self.current_index - (self.max_lines - 3))
-        elif key == 10:  # Enter key
-            return True, True, f"diff:{self.commits[self.current_index].id}"
-        elif key == ord('c'):
-            # Copy commit ID to clipboard
-            commit_id = self.commits[self.current_index].id
-            return True, True, f"copy:{commit_id}"
-        elif key == ord('r'):
-            # Refresh commits - sends refresh command to controller
-            return True, True, "refresh"
-        elif key == ord('n'):
-            # Jump to next search result
+        
+        # Search functions
+        elif key == ord('/'):  # Start search
+            self.search_active = True
+            self.search_string = ""
+        elif key == ord('n'):  # Next search result
             self._next_search_result()
-        elif key == ord('N'):
-            # Jump to previous search result
+        elif key == ord('N'):  # Previous search result
             self._prev_search_result()
         
-        return True, False, None  # Continue program, no view change
+        # Action commands
+        elif key == 10:  # Enter key - show diff
+            if self.commits:
+                return True, True, f"diff:{self.commits[self.current_index].id}"
+        elif key == ord('c'):  # Copy commit ID
+            if self.commits:
+                commit_id = self.commits[self.current_index].id
+                return True, True, f"copy:{commit_id}"
+        elif key == ord('r'):  # Refresh
+            return True, True, "refresh"
         
+        return True, False, None  # Continue program, no view change
+
     def _handle_search_input(self, key):
         """
         Handle key input while in search mode
@@ -316,23 +297,25 @@ class CommitView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        if key == ord('q'):  # Allow quitting from search mode
+        # Exit application
+        if key == ord('q'):
             return False, False, None
+        
+        # Cancel search
         elif key == 27:  # Escape key
-            # Cancel search
             self.search_active = False
-        elif key == 9:  # Tab key - cycle through search types
+        
+        # Cycle through search types
+        elif key == 9:  # Tab key
             self.search_type_index = (self.search_type_index + 1) % len(self.search_types)
-        elif key == 10 or key == curses.KEY_ENTER:  # Enter key
-            # Complete search and execute
+        
+        # Complete search
+        elif key == 10 or key == curses.KEY_ENTER:
             self.search_active = False
-            
-            # Store current search type for debugging
             search_type = self.search_types[self.search_type_index]
             
-            # Run search with a reasonable timeout
             try:
-                # Set cursor to indicate we're working
+                # Show cursor while searching
                 curses.curs_set(1)
                 self.stdscr.addstr(self.max_lines - 1, 0, f" Searching... (type: {search_type})")
                 self.stdscr.refresh()
@@ -340,26 +323,26 @@ class CommitView(BaseView):
                 # Perform the search
                 self._perform_search()
                 
-                # Reset cursor
+                # Hide cursor when done
                 curses.curs_set(0)
                 
                 if self.search_results:
                     self._next_search_result()
             except Exception as e:
-                # If search fails, show error and reset search state
+                # Show error on failure
                 self.stdscr.addstr(self.max_lines - 1, 0, f" Search error: {str(e)[:40]}")
                 self.stdscr.refresh()
-                curses.napms(1500)  # Show error for 1.5 seconds
-                
-        elif key == 127 or key == curses.KEY_BACKSPACE:  # Backspace
+                curses.napms(1500)
+        
+        # Handle text editing
+        elif key == 127 or key == curses.KEY_BACKSPACE or key == curses.KEY_DC:
             if self.search_string:
                 self.search_string = self.search_string[:-1]
-        elif key == curses.KEY_DC:  # Delete key
-            if self.search_string:
-                self.search_string = self.search_string[:-1]
+        
+        # Handle printable characters
         elif 32 <= key <= 126:  # Printable ASCII
             self.search_string += chr(key)
-            
+        
         return True, False, None
             
     def _perform_search(self):

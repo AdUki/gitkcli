@@ -91,9 +91,9 @@ class HelpView(BaseView):
                 # Ignore potential curses errors
                 pass
                 
-    def _handle_specific_key(self, key):
+    def handle_key(self, key):
         """
-        Handle help view specific keys - any key returns to previous view
+        Handle key press for help view - any key returns to previous view
         
         Args:
             key: Key code
@@ -101,5 +101,9 @@ class HelpView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        # Any key closes help and returns to previous view
+        # Handle window resize to redraw help
+        if key == curses.KEY_RESIZE:
+            return True, False, None
+        
+        # Any other key returns to the previous view
         return True, True, "previous"

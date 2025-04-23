@@ -31,7 +31,7 @@ class BaseView(ABC):
         
     def handle_key(self, key):
         """
-        Handle key press with common navigation functionality
+        Handle key press
         
         Args:
             key: Key code
@@ -39,57 +39,15 @@ class BaseView(ABC):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        # Common exit and help keys
+        # Default implementation - subclasses should override this
         if key == ord('q'):
             return False, False, None  # Exit program
         elif key == ord('H'):
             return True, True, "help"  # Switch to help view
+        elif key == curses.KEY_RESIZE:
+            return True, False, None  # Handle resize event
             
-        # Let subclass handle specific navigation
-        return self._handle_specific_key(key)
-    
-    @abstractmethod
-    def _handle_specific_key(self, key):
-        """
-        Handle view-specific keys - must be implemented by subclasses
-        
-        Args:
-            key: Key code
-            
-        Returns:
-            tuple: (continue_program, switch_view, view_name)
-        """
-        pass
-    
-    def handle_navigation_keys(self, key, move_function, page_size=None):
-        """
-        Handle common navigation keys
-        
-        Args:
-            key: Key code
-            move_function: Function to call for movement (takes delta as argument)
-            page_size: Size of a page for page up/down (default: calculated from screen)
-            
-        Returns:
-            bool: True if key was handled, False otherwise
-        """
-        if page_size is None:
-            page_size = self.max_lines - 3
-            
-        if key == ord('j') or key == curses.KEY_DOWN:
-            move_function(1)
-            return True
-        elif key == ord('k') or key == curses.KEY_UP:
-            move_function(-1)
-            return True
-        elif key == ord('d') or key == curses.KEY_NPAGE:  # Page Down
-            move_function(page_size)
-            return True
-        elif key == ord('u') or key == curses.KEY_PPAGE:  # Page Up
-            move_function(-page_size)
-            return True
-            
-        return False
+        return True, False, None  # Continue program, no view change
     
     def get_safe_dimensions(self):
         """Get safe dimensions for writing to screen"""

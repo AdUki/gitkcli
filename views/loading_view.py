@@ -30,9 +30,9 @@ class LoadingView(BaseView):
             # Ignore potential curses errors
             pass
             
-    def _handle_specific_key(self, key):
+    def handle_key(self, key):
         """
-        Handle loading view specific keys (none)
+        Handle key press for loading view
         
         Args:
             key: Key code
@@ -40,5 +40,9 @@ class LoadingView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        # Loading view doesn't respond to keys except quit (handled by parent)
+        # Exit application
+        if key == ord('q'):
+            return False, False, None
+        
+        # Ignore all other keys while loading
         return True, False, None

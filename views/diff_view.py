@@ -200,7 +200,7 @@ class DiffView(BaseView):
                 
     def handle_key(self, key):
         """
-        Override the base handle_key to properly handle search mode
+        Handle key press for diff view
         
         Args:
             key: Key code
@@ -208,46 +208,33 @@ class DiffView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        # Direct handling for search mode
+        # Handle search mode separately
         if self.search_active:
             return self._handle_search_input(key)
-            
-        # Handle horizontal scrolling directly
-        if key == ord('h') or key == curses.KEY_LEFT:
-            self.h_scroll = max(0, self.h_scroll - 5)
+        
+        # Exit application or return to commit view
+        if key == ord('q') or key == 10 or key == curses.KEY_ENTER:
+            return True, True, "commit"  # Back to commit view
+        
+        # Help view
+        elif key == ord('H'):
+            return True, True, "help"
+        
+        # Handle resize event
+        elif key == curses.KEY_RESIZE:
             return True, False, None
+        
+        # Handle horizontal scrolling
+        elif key == ord('h') or key == curses.KEY_LEFT:
+            self.h_scroll = max(0, self.h_scroll - 5)
         elif key == ord('l') or key == curses.KEY_RIGHT:
             self.h_scroll += 5
-            return True, False, None
-        elif key == ord('q') or key == 10 or key == curses.KEY_ENTER:
-            return True, True, "commit"  # Back to commit view
         
-        # Use the default handler for other keys
-        return super().handle_key(key)
-                
-    def _handle_specific_key(self, key):
-        """
-        Handle diff view specific keys
+        # Calculate max cursor position for navigation
+        max_cursor = min(self.max_lines - 3, len(self.commit.diff) - self.diff_top - 1) if self.commit and self.commit.diff else 0
         
-        Args:
-            key: Key code
-            
-        Returns:
-            tuple: (continue_program, switch_view, view_name)
-        """
-            
-        # Check for search key
-        if key == ord('/'):
-            self.search_active = True
-            self.search_string = ""
-            return True, False, None
-            
-        # Custom navigation for diff view with cursor
-        max_cursor = min(self.max_lines - 3, len(self.commit.diff) - self.diff_top - 1)
-        
-        if key == 10:  # Enter key
-            return True, True, "commit"  # Back to commit view
-        elif key == ord('j') or key == curses.KEY_DOWN:
+        # Handle vertical navigation with cursor
+        if key == ord('j') or key == curses.KEY_DOWN:
             if self.diff_cursor < max_cursor and self.diff_top + self.diff_cursor < len(self.commit.diff) - 1:
                 self.diff_cursor += 1
             else:
@@ -257,18 +244,17 @@ class DiffView(BaseView):
                 self.diff_cursor -= 1
             else:
                 self._scroll_diff(-1)
-        elif key == ord('g'):
-            # Go to top
+        elif key == ord('g'):  # Go to top
             self.diff_top = 0
             self.diff_cursor = 0
-        elif key == ord('G'):
-            # Go to bottom
-            if len(self.commit.diff) > self.max_lines - 2:
-                self.diff_top = len(self.commit.diff) - (self.max_lines - 2)
-                self.diff_cursor = self.max_lines - 3
-            else:
-                self.diff_top = 0
-                self.diff_cursor = len(self.commit.diff) - 1
+        elif key == ord('G'):  # Go to bottom
+            if self.commit and self.commit.diff:
+                if len(self.commit.diff) > self.max_lines - 2:
+                    self.diff_top = len(self.commit.diff) - (self.max_lines - 2)
+                    self.diff_cursor = self.max_lines - 3
+                else:
+                    self.diff_top = 0
+                    self.diff_cursor = len(self.commit.diff) - 1
         elif key == ord('d') or key == curses.KEY_NPAGE:  # Page Down
             page_size = self.max_lines - 3
             self._scroll_diff(page_size)
@@ -277,20 +263,24 @@ class DiffView(BaseView):
             page_size = self.max_lines - 3
             self._scroll_diff(-page_size)
             self.diff_cursor = 0  # Reset cursor position when page up
-        elif key == ord('b'):
-            # Show origin of current line
-            result = self._show_line_origin()
-            if result:
-                return result  # Return the result if jumping to a commit
-        elif key == ord('n'):
-            # Jump to next search result
+        
+        # Search functions
+        elif key == ord('/'):  # Start search
+            self.search_active = True
+            self.search_string = ""
+        elif key == ord('n'):  # Next search result
             self._next_search_result()
-        elif key == ord('N'):
-            # Jump to previous search result
+        elif key == ord('N'):  # Previous search result
             self._prev_search_result()
         
-        return True, False, None  # Continue program, no view change
+        # Show line origin
+        elif key == ord('b'):
+            result = self._show_line_origin()
+            if result:
+                return result
         
+        return True, False, None  # Continue program, no view change
+
     def _handle_search_input(self, key):
         """
         Handle key input while in search mode
@@ -301,24 +291,29 @@ class DiffView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
+        # Cancel search
         if key == 27:  # Escape key
-            # Cancel search
             self.search_active = False
+        
+        # Complete search
         elif key == 10 or key == curses.KEY_ENTER:
-            # Complete search
             self.search_active = False
             self._perform_search()
             if self.search_results:
                 self._next_search_result()
+        
+        # Handle text editing
         elif key == 127 or key == curses.KEY_BACKSPACE:  # Backspace
             if self.search_string:
                 self.search_string = self.search_string[:-1]
         elif key == curses.KEY_DC:  # Delete key
             if self.search_string:
                 self.search_string = self.search_string[:-1]
+        
+        # Handle printable characters
         elif 32 <= key <= 126:  # Printable ASCII
             self.search_string += chr(key)
-            
+        
         return True, False, None
             
     def _perform_search(self):
