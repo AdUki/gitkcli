@@ -6,7 +6,7 @@ import time
 import sys
 
 from models import Repository
-from views import CommitView, DiffView, BlameView, HelpView, LoadingView
+from views import CommitView, DiffView, HelpView, LoadingView
 from utils import copy_to_clipboard, setup_colors, show_message
 
 class AppController:
@@ -199,13 +199,6 @@ class AppController:
             # Extract commit ID from command
             commit_id = view_name[5:]
             self.current_view = DiffView(self.stdscr, self.repository, commit_id)
-            
-        elif view_name and view_name.startswith("blame:"):
-            # Extract commit ID and file path from command
-            parts = view_name[6:].split(":", 1)
-            if len(parts) == 2:
-                commit_id, file_path = parts
-                self.current_view = BlameView(self.stdscr, self.repository, commit_id, file_path)
                 
     def _exit_with_message(self, message):
         """

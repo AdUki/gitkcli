@@ -78,21 +78,6 @@ class KeyHandler:
         return bindings
         
     @staticmethod
-    def get_blame_view_bindings():
-        """
-        Get key bindings specific to blame view
-        
-        Returns:
-            dict: Mapping of key codes to command names
-        """
-        bindings = KeyHandler.get_common_bindings()
-        bindings.update(KeyHandler.get_navigation_bindings())
-        bindings.update({
-            10: 'back'           # Enter key
-        })
-        return bindings
-        
-    @staticmethod
     def get_help_view_bindings():
         """
         Get key bindings specific to help view
