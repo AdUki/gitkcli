@@ -55,11 +55,11 @@ class DiffView(BaseView):
             self.draw_status(status)
         else:
             diff_length = len(self.commit.diff) if self.commit.diff else 0
-            status = f" Lines {self.diff_top + 1}-{min(self.diff_top + self.max_lines - 2, diff_length)}/{diff_length} | Scroll: {self.h_scroll} | Press ENTER to return "
+            status = f" Lines {self.diff_top + 1}-{min(self.diff_top + self.max_lines - 2, diff_length)}/{diff_length} | Scroll: {self.h_scroll} | Press ENTER to return"
             self.draw_status(status)
     
     def _draw_refs_line(self):
-        """Draw a line showing the refs for this commit"""
+        """Draw a line showing the refs for this commit - fixed version"""
         if not self.commit.refs:
             return
         
@@ -67,7 +67,6 @@ class DiffView(BaseView):
         refs_text = "Refs: "
         tags = []
         branches = []
-        other_refs = []
         
         for ref in self.commit.refs:
             if ref.startswith("tag: "):
@@ -82,64 +81,59 @@ class DiffView(BaseView):
             all_refs.extend(tags)
         if branches:
             all_refs.extend(branches)
-        if other_refs:
-            all_refs.extend(other_refs)
-            
+                
         refs_text += ", ".join(all_refs)
         
-        # Apply horizontal scrolling to the visible portion
-        visible_text = refs_text[self.h_scroll:self.h_scroll + self.max_cols - 1]
-        
-        # Draw the refs line
-        try:
-            self.stdscr.addstr(1, 0, visible_text, curses.color_pair(1))
+        # Apply horizontal scrolling
+        if self.h_scroll < len(refs_text):
+            visible_text = refs_text[self.h_scroll:]
             
-            # Fill the rest of the line with spaces
-            if len(visible_text) < self.max_cols - 1:
-                self.stdscr.addstr(1, len(visible_text), " " * (self.max_cols - 1 - len(visible_text)), curses.color_pair(1))
+            # Draw the refs line without extra space filling
+            try:
+                self.stdscr.addstr(1, 0, visible_text, curses.color_pair(1))
                 
-            # Colorize the tags and branches in the visible text
-            pos = 0
-            start_pos = 0
-            
-            # Find "Refs: " in the visible text
-            if "Refs: " in visible_text:
-                start_pos = visible_text.find("Refs: ") + 6
-                pos = start_pos
-            else:
-                # If "Refs: " is scrolled off, start from beginning
+                # Colorize the tags and branches in the visible text
                 pos = 0
-            
-            # Parse the visible text to find and colorize refs
-            while pos < len(visible_text):
-                # Check for tags (inside angle brackets)
-                tag_start = visible_text.find('<', pos)
-                if tag_start != -1 and tag_start < len(visible_text):
-                    tag_end = visible_text.find('>', tag_start)
-                    if tag_end != -1 and tag_end < len(visible_text):
-                        # Color the tag
-                        tag_text = visible_text[tag_start:tag_end+1]
-                        self.stdscr.addstr(1, tag_start, tag_text, curses.color_pair(11))
-                        pos = tag_end + 1
-                        continue
+                start_pos = 0
                 
-                # Check for branches (inside square brackets)
-                branch_start = visible_text.find('[', pos)
-                if branch_start != -1 and branch_start < len(visible_text):
-                    branch_end = visible_text.find(']', branch_start)
-                    if branch_end != -1 and branch_end < len(visible_text):
-                        # Color the branch
-                        branch_text = visible_text[branch_start:branch_end+1]
-                        self.stdscr.addstr(1, branch_start, branch_text, curses.color_pair(12))
-                        pos = branch_end + 1
-                        continue
+                # Find "Refs: " in the visible text
+                if "Refs: " in visible_text:
+                    start_pos = visible_text.find("Refs: ") + 6
+                    pos = start_pos
+                else:
+                    # If "Refs: " is scrolled off, start from beginning
+                    pos = 0
                 
-                # Move to next position if no tag or branch found
-                pos += 1
-            
-        except curses.error:
-            # Ignore potential curses errors
-            pass
+                # Parse the visible text to find and colorize refs
+                while pos < len(visible_text):
+                    # Check for tags (inside angle brackets)
+                    tag_start = visible_text.find('<', pos)
+                    if tag_start != -1 and tag_start < len(visible_text):
+                        tag_end = visible_text.find('>', tag_start)
+                        if tag_end != -1 and tag_end < len(visible_text):
+                            # Color the tag
+                            tag_text = visible_text[tag_start:tag_end+1]
+                            self.stdscr.addstr(1, tag_start, tag_text, curses.color_pair(11))
+                            pos = tag_end + 1
+                            continue
+                    
+                    # Check for branches (inside square brackets)
+                    branch_start = visible_text.find('[', pos)
+                    if branch_start != -1 and branch_start < len(visible_text):
+                        branch_end = visible_text.find(']', branch_start)
+                        if branch_end != -1 and branch_end < len(visible_text):
+                            # Color the branch
+                            branch_text = visible_text[branch_start:branch_end+1]
+                            self.stdscr.addstr(1, branch_start, branch_text, curses.color_pair(12))
+                            pos = branch_end + 1
+                            continue
+                    
+                    # Move to next position if no tag or branch found
+                    pos += 1
+                
+            except curses.error:
+                # Ignore potential curses errors
+                pass
         
     def _draw_diff_content(self):
         """Draw the diff content"""
@@ -147,21 +141,17 @@ class DiffView(BaseView):
             self.stdscr.addstr(2, 0, "No diff available", curses.color_pair(1))
             return
         
-        # Start at line 2 if we're showing refs, otherwise line 1
         start_line = 2 if self.commit.refs else 1
-        
-        # Calculate visible lines
-        display_count = min(len(self.commit.diff), self.max_lines - start_line - 1)
+        display_count = min(len(self.commit.diff) - self.diff_top, self.max_lines - start_line - 1)
         
         for i in range(display_count):
             idx = self.diff_top + i
             if idx >= len(self.commit.diff):
                 break
                 
-            line_num = i + start_line  # Adjust line number based on refs display
+            line_num = i + start_line
             diff_type, line = self.commit.diff[idx]
             
-            # Set color based on line type
             if diff_type == 'file':
                 attr = curses.color_pair(8)
             elif diff_type == 'add':
@@ -173,29 +163,27 @@ class DiffView(BaseView):
             else:
                 attr = curses.color_pair(1)
                 
-            # Highlight the line with cursor
-            if idx == self.diff_top + self.diff_cursor:
+            is_selected = idx == self.diff_top + self.diff_cursor
+            if is_selected:
                 attr |= curses.A_REVERSE
                 
-            # Highlight search matches
             if self.search_string and idx in self.search_results:
-                # Preserve original color but add bold
                 attr |= curses.A_BOLD
-                # If this is also cursor position, maintain reverse video
-                if idx == self.diff_top + self.diff_cursor:
-                    attr |= curses.A_REVERSE
             
             try:
-                # Apply horizontal scrolling
-                visible_line = line[self.h_scroll:self.h_scroll + self.max_cols - 1]
-                self.stdscr.addstr(line_num, 0, visible_line, attr)
-                
-                # Fill the rest of the line with spaces
-                if len(visible_line) < self.max_cols - 1:
-                    self.stdscr.addstr(line_num, len(visible_line), " " * (self.max_cols - 1 - len(visible_line)), attr)
+                if self.h_scroll < len(line):
+                    visible_text = line[self.h_scroll:]
+                    self.stdscr.addstr(line_num, 0, visible_text, attr)
+                else:
+                    visible_text = ""
+                    self.stdscr.addstr(line_num, 0, "", attr)
+                    
+                # Only fill selected line with spaces to end of screen
+                if is_selected:
+                    if len(visible_text) < self.max_cols:
+                        self.stdscr.addstr(line_num, len(visible_text), " " * (self.max_cols - len(visible_text)), attr)
                     
             except curses.error:
-                # Ignore potential curses errors
                 pass
                 
     def handle_key(self, key):
@@ -208,33 +196,36 @@ class DiffView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        # Handle search mode separately
+        # Direct handling for search mode
         if self.search_active:
             return self._handle_search_input(key)
-        
-        # Exit application or return to commit view
+            
+        # Handle exit keys
         if key == ord('q') or key == 10 or key == curses.KEY_ENTER:
             return True, True, "commit"  # Back to commit view
-        
+            
         # Help view
         elif key == ord('H'):
             return True, True, "help"
-        
+            
         # Handle resize event
         elif key == curses.KEY_RESIZE:
             return True, False, None
-        
-        # Handle horizontal scrolling
+            
+        # Handle horizontal scrolling directly
         elif key == ord('h') or key == curses.KEY_LEFT:
             self.h_scroll = max(0, self.h_scroll - 5)
         elif key == ord('l') or key == curses.KEY_RIGHT:
             self.h_scroll += 5
-        
-        # Calculate max cursor position for navigation
-        max_cursor = min(self.max_lines - 3, len(self.commit.diff) - self.diff_top - 1) if self.commit and self.commit.diff else 0
-        
-        # Handle vertical navigation with cursor
-        if key == ord('j') or key == curses.KEY_DOWN:
+            
+        # Check for search key
+        elif key == ord('/'):
+            self.search_active = True
+            self.search_string = ""
+            
+        # Custom navigation for diff view with cursor
+        elif key == ord('j') or key == curses.KEY_DOWN:
+            max_cursor = min(self.max_lines - 3, len(self.commit.diff) - self.diff_top - 1) if self.commit and self.commit.diff else 0
             if self.diff_cursor < max_cursor and self.diff_top + self.diff_cursor < len(self.commit.diff) - 1:
                 self.diff_cursor += 1
             else:
@@ -244,10 +235,12 @@ class DiffView(BaseView):
                 self.diff_cursor -= 1
             else:
                 self._scroll_diff(-1)
-        elif key == ord('g'):  # Go to top
+        elif key == ord('g'):
+            # Go to top
             self.diff_top = 0
             self.diff_cursor = 0
-        elif key == ord('G'):  # Go to bottom
+        elif key == ord('G'):
+            # Go to bottom
             if self.commit and self.commit.diff:
                 if len(self.commit.diff) > self.max_lines - 2:
                     self.diff_top = len(self.commit.diff) - (self.max_lines - 2)
@@ -263,24 +256,20 @@ class DiffView(BaseView):
             page_size = self.max_lines - 3
             self._scroll_diff(-page_size)
             self.diff_cursor = 0  # Reset cursor position when page up
-        
-        # Search functions
-        elif key == ord('/'):  # Start search
-            self.search_active = True
-            self.search_string = ""
-        elif key == ord('n'):  # Next search result
-            self._next_search_result()
-        elif key == ord('N'):  # Previous search result
-            self._prev_search_result()
-        
-        # Show line origin
         elif key == ord('b'):
+            # Show origin of current line
             result = self._show_line_origin()
             if result:
-                return result
+                return result  # Return the result if jumping to a commit
+        elif key == ord('n'):
+            # Jump to next search result
+            self._next_search_result()
+        elif key == ord('N'):
+            # Jump to previous search result
+            self._prev_search_result()
         
         return True, False, None  # Continue program, no view change
-
+        
     def _handle_search_input(self, key):
         """
         Handle key input while in search mode
@@ -291,29 +280,24 @@ class DiffView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        # Cancel search
         if key == 27:  # Escape key
+            # Cancel search
             self.search_active = False
-        
-        # Complete search
         elif key == 10 or key == curses.KEY_ENTER:
+            # Complete search
             self.search_active = False
             self._perform_search()
             if self.search_results:
                 self._next_search_result()
-        
-        # Handle text editing
         elif key == 127 or key == curses.KEY_BACKSPACE:  # Backspace
             if self.search_string:
                 self.search_string = self.search_string[:-1]
         elif key == curses.KEY_DC:  # Delete key
             if self.search_string:
                 self.search_string = self.search_string[:-1]
-        
-        # Handle printable characters
         elif 32 <= key <= 126:  # Printable ASCII
             self.search_string += chr(key)
-        
+            
         return True, False, None
             
     def _perform_search(self):

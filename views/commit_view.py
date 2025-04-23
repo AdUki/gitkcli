@@ -66,7 +66,6 @@ class CommitView(BaseView):
             
     def _draw_commits(self):
         """Draw the list of commits"""
-        # Calculate visible lines
         display_count = min(len(self.commits), self.max_lines - 2)
         
         for i in range(display_count):
@@ -77,12 +76,10 @@ class CommitView(BaseView):
             commit = self.commits[idx]
             is_selected = idx == self.current_index
             
-            # Format the commit info with aligned columns
             commit_id = commit.short_id.ljust(self.id_width)
             date = commit.date.ljust(self.date_width)
             author = commit.author[:self.author_width].ljust(self.author_width)
             
-            # Track field positions for coloring
             id_start = 0
             id_end = id_start + len(commit_id)
             
@@ -92,127 +89,100 @@ class CommitView(BaseView):
             author_start = date_end
             author_end = author_start + len(author)
             
-            # Build the complete line with all fields
-            message_start = author_end + 2  # +2 for " "
+            message_start = author_end + 2
             basic_info = f"{commit_id}{date}{author} {commit.message}"
             
-            # Calculate ref info and positions
             refs = []
-            ref_positions = []  # Store (start, end, is_tag) for each ref
+            ref_positions = []
             
             if commit.refs:
-                ref_text = " "  # Space before refs
+                ref_text = " "
                 current_pos = len(basic_info) + len(ref_text)
                 
                 for ref in commit.refs:
                     if ref.startswith("tag: "):
-                        ref_name = ref[5:]  # Remove "tag: " prefix
+                        ref_name = ref[5:]
                         ref_str = f"<{ref_name}>"
                         is_tag = True
                     else:
                         ref_str = f"[{ref}]"
                         is_tag = False
                     
-                    # Record the position and type
                     start_pos = current_pos
                     end_pos = start_pos + len(ref_str)
                     ref_positions.append((start_pos, end_pos, is_tag))
                     
-                    # Add to refs
                     refs.append(ref_str)
                     current_pos = end_pos
                     
-                    # Add space unless it's the last ref
                     if ref != commit.refs[-1]:
                         refs.append(" ")
                         current_pos += 1
             
-            # Combine the basic info with refs
             full_line = basic_info
             if refs:
                 full_line += " " + "".join(refs)
             
             selected_color = 100 if is_selected else 0
-
-            # Base attribute for the line
             base_attr = curses.color_pair(1 + selected_color)
             
-            # Highlight search matches if we're searching
             if self.search_string and idx in self.search_results:
-                # Use a different color for search matches
                 base_attr = curses.color_pair(5 + selected_color) | curses.A_BOLD
             
             try:
-                # Apply horizontal scrolling
-                visible_start = self.h_scroll
-                visible_end = visible_start + self.max_cols - 1
-                
-                # Draw the base line with horizontal scrolling
-                if visible_start < len(full_line):
-                    visible_part = full_line[visible_start:visible_end]
+                if self.h_scroll < len(full_line):
+                    visible_part = full_line[self.h_scroll:]
                     self.stdscr.addstr(i + 1, 0, visible_part, base_attr)
                 else:
-                    visible_part = ""
+                    self.stdscr.addstr(i + 1, 0, "", base_attr)
                 
-                # Colorize the fields if they are in the visible area
+                # Fill selected line with spaces to end of screen
+                if is_selected:
+                    visible_length = len(visible_part) if self.h_scroll < len(full_line) else 0
+                    if visible_length < self.max_cols:
+                        self.stdscr.addstr(i + 1, visible_length, " " * (self.max_cols - visible_length), base_attr)
+                
+                h_start = self.h_scroll
+                
                 field_colors = [
-                    (id_start, id_end, 2),         # Commit ID - Yellow
-                    (date_start, date_end, 4),     # Date - Cyan
-                    (author_start, author_end, 3), # Author - Green
-                    (message_start, len(basic_info), 1)  # Message - Default
+                    (id_start, id_end, 2),
+                    (date_start, date_end, 4),
+                    (author_start, author_end, 3),
+                    (message_start, len(basic_info), 1)
                 ]
                 
                 for start_pos, end_pos, color_num in field_colors:
-                    # Check if any part of this field is visible
-                    if end_pos > visible_start and start_pos < visible_end:
-                        # Calculate visible boundaries
-                        vis_start = max(0, start_pos - visible_start)
-                        vis_end = min(visible_end - visible_start, end_pos - visible_start)
+                    if end_pos > h_start and start_pos < h_start + self.max_cols:
+                        vis_start = max(0, start_pos - h_start)
+                        vis_end = min(self.max_cols, end_pos - h_start)
                         
-                        # Only proceed if there's something to draw
                         if vis_start < vis_end:
                             field_attr = curses.color_pair(color_num + selected_color)
                             
                             if is_selected:
                                 field_attr |= curses.A_BOLD
                             
-                            # Get the visible part of the field
-                            field_part = full_line[visible_start + vis_start:visible_start + vis_end]
-                            
-                            # Draw the colored field
+                            field_part = full_line[h_start + vis_start:h_start + vis_end]
                             self.stdscr.addstr(i + 1, vis_start, field_part, field_attr)
                 
-                # Color the refs that are within the visible area
                 for start_pos, end_pos, is_tag in ref_positions:
-                    # Check if any part of this ref is visible
-                    if end_pos > visible_start and start_pos < visible_end:
-                        # Calculate visible boundaries
-                        vis_start = max(0, start_pos - visible_start)
-                        vis_end = min(visible_end - visible_start, end_pos - visible_start)
+                    if end_pos > h_start and start_pos < h_start + self.max_cols:
+                        vis_start = max(0, start_pos - h_start)
+                        vis_end = min(self.max_cols, end_pos - h_start)
                         
-                        # Only proceed if there's something to draw
                         if vis_start < vis_end:
-                            # Choose color based on ref type
                             if is_tag:
-                                ref_attr = curses.color_pair(11 + selected_color)  # Yellow for tags
+                                ref_attr = curses.color_pair(11 + selected_color)
                             else:
-                                ref_attr = curses.color_pair(12 + selected_color)  # Green for branches
+                                ref_attr = curses.color_pair(12 + selected_color)
                                 
                             if is_selected:
                                 ref_attr |= curses.A_BOLD
                             
-                            # Get the visible part of the ref
-                            ref_part = full_line[visible_start + vis_start:visible_start + vis_end]
-                            
-                            # Draw the colored ref
+                            ref_part = full_line[h_start + vis_start:h_start + vis_end]
                             self.stdscr.addstr(i + 1, vis_start, ref_part, ref_attr)
                 
-                # Fill the rest of the line with spaces
-                if len(visible_part) < self.max_cols - 1:
-                    self.stdscr.addstr(i + 1, len(visible_part), " " * (self.max_cols - 1 - len(visible_part)), base_attr)
-                
             except curses.error:
-                # Ignore potential curses errors
                 pass
     
     def handle_key(self, key):
