@@ -26,6 +26,15 @@ class AppController:
         self.previous_view = None
         self.view_history = []
         
+        # View state storage
+        self.commit_view_state = {
+            'current_index': 0,
+            'top_index': 0,
+            'search_string': '',
+            'search_results': [],
+            'search_index': -1
+        }
+        
         # Set up curses
         self._setup_curses()
         
@@ -72,6 +81,10 @@ class AppController:
         
         # Main loop
         while self.running:
+            # Save commit view state if necessary
+            if isinstance(self.current_view, CommitView):
+                self._save_commit_view_state(self.current_view)
+            
             # Refresh the current view
             self.current_view.refresh()
             
@@ -92,6 +105,16 @@ class AppController:
                 self.running = False
                 break
                 
+    def _save_commit_view_state(self, commit_view):
+        """Save current commit view state"""
+        self.commit_view_state = {
+            'current_index': commit_view.current_index,
+            'top_index': commit_view.top_index,
+            'search_string': getattr(commit_view, 'search_string', ''),
+            'search_results': getattr(commit_view, 'search_results', []),
+            'search_index': getattr(commit_view, 'search_index', -1)
+        }
+                
     def _switch_view(self, view_name):
         """
         Switch to another view
@@ -99,7 +122,7 @@ class AppController:
         Args:
             view_name: Name of view to switch to or command
         """
-        # Save current view for history
+        # Save current view for history if not a help view
         if not isinstance(self.current_view, HelpView):
             self.previous_view = self.current_view
         
@@ -117,7 +140,13 @@ class AppController:
             self.repository = Repository()
             self.repository.open()
             self.repository.load_commits()
-            self.current_view = CommitView(self.stdscr, self.repository)
+            
+            # Create a new commit view with fresh data but keep position
+            new_view = CommitView(self.stdscr, self.repository)
+            # Apply saved state with bounds checking
+            new_view.current_index = min(self.commit_view_state['current_index'], len(self.repository.commits) - 1)
+            new_view.top_index = min(self.commit_view_state['top_index'], len(self.repository.commits) - 1)
+            self.current_view = new_view
             return
             
         elif view_name and view_name.startswith("copy:"):
@@ -132,7 +161,7 @@ class AppController:
             # Jump to a specific commit in the commit view
             commit_id = view_name[5:]
             
-            # Create a commit view and find the commit index
+            # Create a commit view
             commit_view = CommitView(self.stdscr, self.repository)
             
             # Find the commit in the list
@@ -140,6 +169,10 @@ class AppController:
                 if commit.id == commit_id or commit.id.startswith(commit_id):
                     commit_view.current_index = i
                     commit_view.top_index = max(0, i - (self.stdscr.getmaxyx()[0] // 2))
+                    
+                    # Update our saved state
+                    self.commit_view_state['current_index'] = commit_view.current_index
+                    self.commit_view_state['top_index'] = commit_view.top_index
                     break
                     
             self.current_view = commit_view
@@ -150,7 +183,17 @@ class AppController:
             self.current_view = HelpView(self.stdscr)
             
         elif view_name == "commit":
-            self.current_view = CommitView(self.stdscr, self.repository)
+            # Create a new commit view
+            new_view = CommitView(self.stdscr, self.repository)
+            
+            # Apply the saved state
+            new_view.current_index = self.commit_view_state['current_index']
+            new_view.top_index = self.commit_view_state['top_index']
+            new_view.search_string = self.commit_view_state['search_string']
+            new_view.search_results = self.commit_view_state['search_results']
+            new_view.search_index = self.commit_view_state['search_index']
+            
+            self.current_view = new_view
             
         elif view_name and view_name.startswith("diff:"):
             # Extract commit ID from command
