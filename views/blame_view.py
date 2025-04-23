@@ -105,7 +105,7 @@ class BlameView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        if key == 10:  # Enter key
+        if key == ord('q') or key == 10 or key == curses.KEY_ENTER:
             return True, True, f"diff:{self.commit_id}"  # Back to diff view
             
         # Simple scrolling with no cursor

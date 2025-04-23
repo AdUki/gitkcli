@@ -219,6 +219,8 @@ class DiffView(BaseView):
         elif key == ord('l') or key == curses.KEY_RIGHT:
             self.h_scroll += 5
             return True, False, None
+        elif key == ord('q') or key == 10 or key == curses.KEY_ENTER:
+            return True, True, "commit"  # Back to commit view
         
         # Use the default handler for other keys
         return super().handle_key(key)
@@ -233,10 +235,6 @@ class DiffView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        if not self.commit or not self.commit.diff:
-            if key == 10:  # Enter key
-                return True, True, "commit"  # Back to commit view
-            return True, False, None
             
         # Check for search key
         if key == ord('/'):
@@ -303,12 +301,10 @@ class DiffView(BaseView):
         Returns:
             tuple: (continue_program, switch_view, view_name)
         """
-        if key == ord('q'):  # Allow quitting from search mode
-            return False, False, None
-        elif key == 27:  # Escape key
+        if key == 27:  # Escape key
             # Cancel search
             self.search_active = False
-        elif key == 10 or key == curses.KEY_ENTER:  # Enter key
+        elif key == 10 or key == curses.KEY_ENTER:
             # Complete search
             self.search_active = False
             self._perform_search()
