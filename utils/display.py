@@ -24,6 +24,9 @@ def setup_colors():
 
     # Selected versions of colors (+100)
     curses.init_pair(100 + 1, curses.COLOR_WHITE, curses.COLOR_BLUE)
+    curses.init_pair(100 + 2, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+    curses.init_pair(100 + 3, curses.COLOR_GREEN, curses.COLOR_BLUE)
+    curses.init_pair(100 + 4, curses.COLOR_CYAN, curses.COLOR_BLUE)
     curses.init_pair(100 + 5, curses.COLOR_MAGENTA, curses.COLOR_BLUE)
     curses.init_pair(100 + 11, curses.COLOR_YELLOW, curses.COLOR_BLUE)
     curses.init_pair(100 + 12, curses.COLOR_GREEN, curses.COLOR_BLUE)

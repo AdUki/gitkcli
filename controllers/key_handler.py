@@ -16,7 +16,7 @@ class KeyHandler:
         """
         return {
             ord('q'): 'quit',
-            ord('h'): 'help',
+            ord('H'): 'help',
             curses.KEY_RESIZE: 'resize'
         }
     
@@ -31,8 +31,12 @@ class KeyHandler:
         return {
             ord('j'): 'down',
             ord('k'): 'up',
+            ord('h'): 'left',
+            ord('l'): 'right',
             curses.KEY_DOWN: 'down',
             curses.KEY_UP: 'up',
+            curses.KEY_LEFT: 'left',
+            curses.KEY_RIGHT: 'right',
             ord('g'): 'top',
             ord('G'): 'bottom',
             ord('d'): 'page_down',

@@ -42,7 +42,7 @@ class BaseView(ABC):
         # Common exit and help keys
         if key == ord('q'):
             return False, False, None  # Exit program
-        elif key == ord('h'):
+        elif key == ord('H'):
             return True, True, "help"  # Switch to help view
             
         # Let subclass handle specific navigation

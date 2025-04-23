@@ -25,6 +25,8 @@ class HelpView(BaseView):
             "Navigation:",
             "  j, DOWN    : Move down",
             "  k, UP      : Move up",
+            "  h, LEFT    : Scroll left",
+            "  l, RIGHT   : Scroll right",
             "  g          : Go to top",
             "  G          : Go to bottom",
             "  d, PgDn    : Page down",
@@ -67,7 +69,7 @@ class HelpView(BaseView):
             "  Any key    : Close the popup",
             "",
             "Views:",
-            "  h          : Show/hide this help",
+            "  H          : Show/hide this help",
             "  q          : Quit",
             "",
             "Press any key to close help"
