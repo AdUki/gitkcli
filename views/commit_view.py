@@ -117,19 +117,19 @@ class CommitView(BaseView):
                     for j, ref in enumerate(commit.refs):
                         # Determine color for different ref types
                         if ref.startswith(tagPrefix):
-                            ref = ref[len(tagPrefix):]
-                            ref = '<' + ref + '>'
+                            ref_name = ref[len(tagPrefix):]
+                            ref_str = '<' + ref_name + '>'
                             ref_attr = curses.color_pair(11 + selected_color)  # Yellow for tags
                         else:
-                            ref = '[' + ref + ']'
+                            ref_str = '[' + ref + ']'
                             ref_attr = curses.color_pair(12 + selected_color)  # Green for branches
                             
                         if is_selected:
                             ref_attr |= curses.A_BOLD
                             
                         # Add the ref
-                        self.stdscr.addstr(i + 1, pos, ref, ref_attr)
-                        pos += len(ref)
+                        self.stdscr.addstr(i + 1, pos, ref_str, ref_attr)
+                        pos += len(ref_str)
                         
                         # Add separator if not the last ref
                         if j < len(commit.refs) - 1:
