@@ -26,6 +26,7 @@ class DiffView(BaseView):
         self.search_active = False
         self.search_results = []
         self.search_index = -1
+        self.h_scroll = 0  # Horizontal scroll position
         
         # Load diff if not already loaded
         if self.commit and not hasattr(self.commit, 'diff') or self.commit.diff is None:
@@ -41,7 +42,11 @@ class DiffView(BaseView):
         header = f"Diff for {self.commit.short_id}: {self.commit.message}"
         self.draw_header(header)
         
-        # Draw diff content
+        # Draw refs line if commit has refs
+        if self.commit.refs:
+            self._draw_refs_line()
+        
+        # Draw diff content with proper offset based on whether refs line is shown
         self._draw_diff_content()
         
         # Draw status line
@@ -50,23 +55,110 @@ class DiffView(BaseView):
             self.draw_status(status)
         else:
             diff_length = len(self.commit.diff) if self.commit.diff else 0
-            status = f" Lines {self.diff_top + 1}-{min(self.diff_top + self.max_lines - 2, diff_length)}/{diff_length} | Press ENTER to return "
+            status = f" Lines {self.diff_top + 1}-{min(self.diff_top + self.max_lines - 2, diff_length)}/{diff_length} | Scroll: {self.h_scroll} | Press ENTER to return "
             self.draw_status(status)
+    
+    def _draw_refs_line(self):
+        """Draw a line showing the refs for this commit"""
+        if not self.commit.refs:
+            return
+        
+        # Format refs text
+        refs_text = "Refs: "
+        tags = []
+        branches = []
+        other_refs = []
+        
+        for ref in self.commit.refs:
+            if ref.startswith("tag: "):
+                ref_name = ref[5:]  # Remove "tag: " prefix
+                tags.append(f"<{ref_name}>")
+            else:
+                branches.append(f"[{ref}]")
+        
+        # Combine all refs
+        all_refs = []
+        if tags:
+            all_refs.extend(tags)
+        if branches:
+            all_refs.extend(branches)
+        if other_refs:
+            all_refs.extend(other_refs)
+            
+        refs_text += ", ".join(all_refs)
+        
+        # Apply horizontal scrolling to the visible portion
+        visible_text = refs_text[self.h_scroll:self.h_scroll + self.max_cols - 1]
+        
+        # Draw the refs line
+        try:
+            self.stdscr.addstr(1, 0, visible_text, curses.color_pair(1))
+            
+            # Fill the rest of the line with spaces
+            if len(visible_text) < self.max_cols - 1:
+                self.stdscr.addstr(1, len(visible_text), " " * (self.max_cols - 1 - len(visible_text)), curses.color_pair(1))
+                
+            # Colorize the tags and branches in the visible text
+            pos = 0
+            start_pos = 0
+            
+            # Find "Refs: " in the visible text
+            if "Refs: " in visible_text:
+                start_pos = visible_text.find("Refs: ") + 6
+                pos = start_pos
+            else:
+                # If "Refs: " is scrolled off, start from beginning
+                pos = 0
+            
+            # Parse the visible text to find and colorize refs
+            while pos < len(visible_text):
+                # Check for tags (inside angle brackets)
+                tag_start = visible_text.find('<', pos)
+                if tag_start != -1 and tag_start < len(visible_text):
+                    tag_end = visible_text.find('>', tag_start)
+                    if tag_end != -1 and tag_end < len(visible_text):
+                        # Color the tag
+                        tag_text = visible_text[tag_start:tag_end+1]
+                        self.stdscr.addstr(1, tag_start, tag_text, curses.color_pair(11))
+                        pos = tag_end + 1
+                        continue
+                
+                # Check for branches (inside square brackets)
+                branch_start = visible_text.find('[', pos)
+                if branch_start != -1 and branch_start < len(visible_text):
+                    branch_end = visible_text.find(']', branch_start)
+                    if branch_end != -1 and branch_end < len(visible_text):
+                        # Color the branch
+                        branch_text = visible_text[branch_start:branch_end+1]
+                        self.stdscr.addstr(1, branch_start, branch_text, curses.color_pair(12))
+                        pos = branch_end + 1
+                        continue
+                
+                # Move to next position if no tag or branch found
+                pos += 1
+            
+        except curses.error:
+            # Ignore potential curses errors
+            pass
         
     def _draw_diff_content(self):
         """Draw the diff content"""
         if not self.commit.diff:
-            self.stdscr.addstr(1, 0, "No diff available", curses.color_pair(1))
+            self.stdscr.addstr(2, 0, "No diff available", curses.color_pair(1))
             return
-            
+        
+        # Start at line 2 if we're showing refs, otherwise line 1
+        start_line = 2 if self.commit.refs else 1
+        
         # Calculate visible lines
-        display_count = min(len(self.commit.diff), self.max_lines - 2)
+        display_count = min(len(self.commit.diff), self.max_lines - start_line - 1)
         
         for i in range(display_count):
             idx = self.diff_top + i
             if idx >= len(self.commit.diff):
                 break
                 
+            line_num = i + start_line  # Adjust line number based on refs display
             diff_type, line = self.commit.diff[idx]
             
             # Set color based on line type
@@ -92,17 +184,44 @@ class DiffView(BaseView):
                 # If this is also cursor position, maintain reverse video
                 if idx == self.diff_top + self.diff_cursor:
                     attr |= curses.A_REVERSE
-                
-            # Truncate if too long
-            if len(line) > self.max_cols:
-                line = line[:self.max_cols - 3] + "..."
-                
-            # Draw the line
+            
             try:
-                self.stdscr.addstr(i + 1, 0, line.ljust(self.max_cols - 1), attr)
+                # Apply horizontal scrolling
+                visible_line = line[self.h_scroll:self.h_scroll + self.max_cols - 1]
+                self.stdscr.addstr(line_num, 0, visible_line, attr)
+                
+                # Fill the rest of the line with spaces
+                if len(visible_line) < self.max_cols - 1:
+                    self.stdscr.addstr(line_num, len(visible_line), " " * (self.max_cols - 1 - len(visible_line)), attr)
+                    
             except curses.error:
                 # Ignore potential curses errors
                 pass
+                
+    def handle_key(self, key):
+        """
+        Override the base handle_key to properly handle search mode
+        
+        Args:
+            key: Key code
+            
+        Returns:
+            tuple: (continue_program, switch_view, view_name)
+        """
+        # Direct handling for search mode
+        if self.search_active:
+            return self._handle_search_input(key)
+            
+        # Handle horizontal scrolling directly
+        if key == ord('h') or key == curses.KEY_LEFT:
+            self.h_scroll = max(0, self.h_scroll - 5)
+            return True, False, None
+        elif key == ord('l') or key == curses.KEY_RIGHT:
+            self.h_scroll += 5
+            return True, False, None
+        
+        # Use the default handler for other keys
+        return super().handle_key(key)
                 
     def _handle_specific_key(self, key):
         """
@@ -118,10 +237,6 @@ class DiffView(BaseView):
             if key == 10:  # Enter key
                 return True, True, "commit"  # Back to commit view
             return True, False, None
-            
-        # Handle search mode
-        if self.search_active:
-            return self._handle_search_input(key)
             
         # Check for search key
         if key == ord('/'):
@@ -317,23 +432,6 @@ class DiffView(BaseView):
                     return parts[3][2:]  # Remove the 'b/' prefix
                     
         return None
-
-    def handle_key(self, key):
-        """
-        Override the base handle_key to properly handle search mode
-        
-        Args:
-            key: Key code
-            
-        Returns:
-            tuple: (continue_program, switch_view, view_name)
-        """
-        # Direct handling for search mode
-        if self.search_active:
-            return self._handle_search_input(key)
-            
-        # Use the default handler for non-search mode
-        return super().handle_key(key)
 
     def _show_line_origin(self):
         """Show the origin of the current line at cursor position"""
