@@ -151,15 +151,14 @@ class DiffView(BaseView):
             try:
                 if self.h_scroll < len(line):
                     visible_text = line[self.h_scroll:]
-                    self.stdscr.addstr(line_num, 0, visible_text, attr)
                 else:
                     visible_text = ""
-                    self.stdscr.addstr(line_num, 0, "", attr)
-                    
+
                 # Only fill selected line with spaces to end of screen
                 if is_selected:
-                    if len(visible_text) < self.max_cols:
-                        self.stdscr.addstr(line_num, len(visible_text), " " * (self.max_cols - len(visible_text)), attr)
+                    visible_text = visible_text.ljust(self.max_cols)
+
+                self.stdscr.addstr(line_num, 0, visible_text, attr)
                     
             except curses.error:
                 pass
