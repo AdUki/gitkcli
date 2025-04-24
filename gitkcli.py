@@ -78,9 +78,9 @@ def parse_arguments():
     
     return log_args
 
-def main(stdscr):
+def main_curses(stdscr):
     """
-    Main application function
+    Main application function to be wrapped by curses
     
     Args:
         stdscr: Curses standard screen
@@ -100,11 +100,16 @@ def main(stdscr):
         
     return 0
 
-if __name__ == "__main__":
+def main():
+    """
+    Entry point function that wraps the curses application
+    """
     try:
-        exit_code = curses.wrapper(main)
-        sys.exit(exit_code)
+        return curses.wrapper(main_curses)
     except KeyboardInterrupt:
         # Handle Ctrl+C gracefully
         print("Interrupted by user", file=sys.stderr)
-        sys.exit(130)
+        return 130
+
+if __name__ == "__main__":
+    sys.exit(main())

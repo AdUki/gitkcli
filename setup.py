@@ -16,7 +16,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/gitkcli",
-    packages=find_packages(),
+    py_modules=["gitkcli"],  # Use py_modules instead of packages for a single file
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -30,7 +30,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "gitkcli=gitkcli.gitkcli:main",
+            "gitkcli=gitkcli:main",  # Change this line to point directly to gitkcli.py's main function
         ],
     },
 )

@@ -66,7 +66,7 @@ class Repository:
         
         # Process commits
         count = 0
-        max_count = self._get_max_count(args) or 1000  # Default limit to prevent loading too many commits
+        max_count = self._get_max_count(args) or 100000  # Default limit to prevent loading too many commits
         
         # Path filters
         path_filters = self._get_path_filters(args)
