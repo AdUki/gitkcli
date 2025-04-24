@@ -270,11 +270,17 @@ class DiffView(BaseView):
         elif key == 127 or key == curses.KEY_BACKSPACE:  # Backspace
             if self.search_string:
                 self.search_string = self.search_string[:-1]
+                # Perform incremental search
+                self._perform_search()
         elif key == curses.KEY_DC:  # Delete key
             if self.search_string:
                 self.search_string = self.search_string[:-1]
+                # Perform incremental search
+                self._perform_search()
         elif 32 <= key <= 126:  # Printable ASCII
             self.search_string += chr(key)
+            # Perform incremental search
+            self._perform_search()
             
         return True, False, None
             

@@ -513,10 +513,14 @@ class CommitView(BaseView):
         elif key == 127 or key == curses.KEY_BACKSPACE or key == curses.KEY_DC:
             if self.search_string:
                 self.search_string = self.search_string[:-1]
+                # Perform incremental search
+                self._perform_search()
         
         # Handle printable characters
         elif 32 <= key <= 126:  # Printable ASCII
             self.search_string += chr(key)
+            # Perform incremental search
+            self._perform_search()
         
         return True, False, None
             
