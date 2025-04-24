@@ -1197,6 +1197,8 @@ class GitSearchDialogPopup(SearchDialogPopup):
         self.win.addstr("Type: ")
         self.win.addstr("[Txt]", curses_color(1, self.search_type == "txt"))
         self.win.addstr(" ")
+        self.win.addstr("[ID]", curses_color(1, self.search_type == "id"))
+        self.win.addstr(" ")
         self.win.addstr("[Message]", curses_color(1, self.search_type == "message"))
         self.win.addstr(" ")
         self.win.addstr("[Filepaths]", curses_color(1, self.search_type == "path"))
@@ -1217,6 +1219,8 @@ class GitSearchDialogPopup(SearchDialogPopup):
             args = []
             if not self.case_sensitive:
                 args.append('-i')
+            elif self.search_type == "id":
+                args.append(f"{self.query}^!")
             if self.search_type == "message":
                 if not self.use_regexp:
                     args.append('-F')
@@ -1236,6 +1240,8 @@ class GitSearchDialogPopup(SearchDialogPopup):
 
         elif key == 9:  # Tab key - cycle through search types
             if self.search_type == "txt":
+                self.search_type = "id"
+            elif self.search_type == "id":
                 self.search_type = "message"
             elif self.search_type == "message":
                 self.search_type = "path"
