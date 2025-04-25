@@ -1,22 +1,31 @@
 """
-Git repository interface
+Git repository interface with dynamic loading
 """
 import re
 from datetime import datetime, timedelta
 import pygit2
 from pygit2 import GIT_SORT_TOPOLOGICAL, GIT_SORT_TIME, GIT_SORT_REVERSE
+import threading
+import time
 
 from models.commit import GitCommit
 from utils.date_parser import parse_date
 
 class Repository:
-    """Interface to the Git repository"""
+    """Interface to the Git repository with dynamic loading support"""
     
     def __init__(self):
         """Initialize repository interface"""
         self.repo = None
         self.commits = []
         self.commit_map = {}
+        self.loading = False
+        self.loaded_count = 0
+        self.total_count = 0
+        self.loading_thread = None
+        self.loading_error = None
+        self.loading_finished = False
+        self.loading_callbacks = []  # Callbacks to be invoked during/after loading
         
     def open(self, path=None):
         """
@@ -34,29 +43,83 @@ class Repository:
         except Exception:
             return False
             
-    def load_commits(self, args=None):
+    def load_commits(self, args=None, callback=None):
         """
-        Load commit history using pygit2 - optimized for large repositories
+        Start loading commit history with an immediate first batch
         
         Args:
             args (list, optional): Arguments for filtering commits
+            callback (callable, optional): Callback to invoke when commits are loaded
             
         Returns:
-            tuple: List of commits and commit map
+            bool: True if loading started successfully
         """
         if args is None:
             args = ["--all"]
             
-        # Initialize lists and dictionaries
-        commits = []
-        commit_map = {}
+        if self.loading:
+            # Already loading, just add callback
+            if callback:
+                self.loading_callbacks.append(callback)
+            return False
+            
+        # Reset state
+        self.loading = True
+        self.loaded_count = 0
+        self.total_count = 0
+        self.loading_error = None
+        self.loading_finished = False
+        self.commits = []
+        self.commit_map = {}
         
+        # Add callback
+        if callback:
+            self.loading_callbacks.append(callback)
+            
+        # IMPORTANT CHANGE: Load a small initial batch synchronously for immediate display
+        try:
+            # Set up repository and get initial commits (just a few)
+            first_batch = self._load_initial_commits(args, 10)
+            if first_batch:
+                self.commits = first_batch
+                for commit in first_batch:
+                    self.commit_map[commit.id] = commit
+                self.loaded_count = len(first_batch)
+                
+                # Notify callback about initial commits
+                if callback:
+                    callback()
+        except Exception as e:
+            print(f"Error loading initial commits: {e}")
+            # Continue with background loading even if initial batch fails
+        
+        # Start background thread for loading remaining commits
+        self.loading_thread = threading.Thread(
+            target=self._load_commits_thread,
+            args=(args,)
+        )
+        self.loading_thread.daemon = True
+        self.loading_thread.start()
+        
+        return True
+    
+    def _load_initial_commits(self, args, count=10):
+        """
+        Load a small initial batch of commits synchronously
+        
+        Args:
+            args: Git arguments
+            count: Number of commits to load initially
+            
+        Returns:
+            list: Initial batch of commits
+        """
         # Get walker references
         walk_refs = self._get_walk_refs(args)
         
         # If no valid references were found, return empty
         if not walk_refs:
-            return commits, commit_map
+            return []
             
         # Create a walker and add starting points
         walker = self._setup_walker(walk_refs)
@@ -64,21 +127,18 @@ class Repository:
         # Apply filters from arguments
         self._apply_filters(walker, args)
         
-        # Process commits
-        count = 0
-        max_count = self._get_max_count(args) or 100000  # Default limit to prevent loading too many commits
-        
-        # Path filters
-        path_filters = self._get_path_filters(args)
-        
-        # Author, date and message filters
+        # Extract filters
         author_filter = self._get_author_filter(args)
         since_time, until_time = self._get_date_filters(args)
         grep_pattern = self._get_grep_pattern(args)
         
-        # First pass - collect commits without linking
+        # Process commits for initial batch
+        commits = []
+        commit_map = {}
+        
+        # Collect first few commits
         for pygit_commit in walker:
-            # Apply filters
+            # Check if we should skip this commit
             if self._should_skip_commit(pygit_commit, author_filter, since_time, 
                                       until_time, grep_pattern):
                 continue
@@ -98,20 +158,211 @@ class Repository:
             commits.append(commit)
             commit_map[commit_id] = commit
             
-            # Increment counter and check max_count
-            count += 1
-            if max_count and count >= max_count:
+            # Break after collecting enough commits
+            if len(commits) >= count:
                 break
         
-        # Only link parents and children for commits we have loaded
-        self._link_commits_optimized(commits, commit_map)
+        # Link the commits
+        if commits:
+            self._link_commits_optimized(commits, commit_map)
+            
+            # Load refs for commits
+            self._load_refs(commit_map)
+            
+        return commits
         
-        # Load refs for commits
-        self._load_refs(commit_map)
+    def get_loading_status(self):
+        """
+        Get current loading status
         
-        self.commits = commits
-        self.commit_map = commit_map
-        return commits, commit_map
+        Returns:
+            tuple: (is_loading, loaded_count, total_count, error_message)
+        """
+        return (
+            self.loading,
+            self.loaded_count,
+            self.total_count,
+            self.loading_error
+        )
+        
+    def _load_commits_thread(self, args):
+        """
+        Background thread for loading remaining commits
+        
+        Args:
+            args: Git arguments
+        """
+        try:
+            # Small delay to let the UI stabilize after initial batch
+            time.sleep(0.1)
+            
+            # Get walker references
+            walk_refs = self._get_walk_refs(args)
+            
+            # If no valid references were found, mark as done and return
+            if not walk_refs:
+                self._finish_loading(error="No valid references found")
+                return
+                
+            # Create a walker and add starting points
+            walker = self._setup_walker(walk_refs)
+            
+            # Apply filters from arguments
+            self._apply_filters(walker, args)
+            
+            # Try to estimate total count by counting refs
+            try:
+                # We can't know the exact count without walking the entire graph
+                # so we'll estimate based on refs and update as we go
+                self.total_count = min(100, len(list(self.repo.references))) * 10
+            except Exception:
+                self.total_count = 100  # Default estimate
+            
+            # Filters from arguments
+            author_filter = self._get_author_filter(args)
+            since_time, until_time = self._get_date_filters(args)
+            grep_pattern = self._get_grep_pattern(args)
+            path_filters = self._get_path_filters(args)
+            
+            # Get current list of commits
+            commits = list(self.commits)  # Create a copy
+            commit_map = dict(self.commit_map)  # Create a copy
+            
+            # Skip commits we already have loaded
+            skip_count = len(commits)
+            commit_skip_ids = set(commit.id for commit in commits)
+            
+            # Process commits in batches to support incremental loading
+            batch_size = 50
+            current_batch = []
+            
+            # Continue from where we left off
+            count = 0
+            for pygit_commit in walker:
+                count += 1
+                
+                # Skip commits we already processed in the initial batch
+                commit_id = str(pygit_commit.id)
+                if commit_id in commit_skip_ids:
+                    continue
+                
+                # Check if we should skip this commit
+                if self._should_skip_commit(pygit_commit, author_filter, since_time, 
+                                          until_time, grep_pattern):
+                    continue
+                    
+                # Create commit object
+                author = pygit_commit.author.name
+                date = datetime.fromtimestamp(pygit_commit.commit_time).strftime('%Y-%m-%d')
+                message = pygit_commit.message.split('\n')[0]  # First line only
+                
+                commit = GitCommit(commit_id, author, date, message)
+                
+                # Get parent commits - store parent IDs but don't link yet
+                for parent in pygit_commit.parents:
+                    commit.add_parent(str(parent.id))
+                
+                current_batch.append(commit)
+                commit_map[commit_id] = commit
+                
+                # Process batch if it's full
+                if len(current_batch) >= batch_size:
+                    # Add batch to main list
+                    commits.extend(current_batch)
+                    
+                    # Link the commits
+                    self._link_commits_batch(current_batch, commit_map)
+                    
+                    # Update our main repository state
+                    self.commits = commits
+                    self.commit_map = commit_map
+                    self.loaded_count = len(commits)
+                    
+                    # If we've loaded more than 80% of the estimated total,
+                    # adjust the estimate upward
+                    if self.loaded_count > self.total_count * 0.8:
+                        self.total_count = int(self.loaded_count * 1.25)
+                        
+                    # Notify callbacks about new commits
+                    for callback in self.loading_callbacks:
+                        try:
+                            callback()
+                        except Exception:
+                            pass
+                    
+                    # Reset batch
+                    current_batch = []
+            
+            # Process final batch if any
+            if current_batch:
+                commits.extend(current_batch)
+                self._link_commits_batch(current_batch, commit_map)
+                
+                # Update main repository state
+                self.commits = commits
+                self.commit_map = commit_map
+                self.loaded_count = len(commits)
+                
+            # Link all commits now that we have the full set
+            self._link_commits_optimized(commits, commit_map)
+            
+            # Load refs for commits
+            self._load_refs(commit_map)
+            
+            # Store results
+            self.commits = commits
+            self.commit_map = commit_map
+            self.loaded_count = len(commits)
+            self.total_count = self.loaded_count
+            
+            # Mark as done
+            self._finish_loading()
+            
+        except Exception as e:
+            # Handle any errors
+            self._finish_loading(error=str(e))
+    
+    def _finish_loading(self, error=None):
+        """
+        Mark loading as finished and notify callbacks
+        
+        Args:
+            error (str, optional): Error message if loading failed
+        """
+        self.loading = False
+        self.loading_finished = True
+        self.loading_error = error
+        
+        # Notify all callbacks
+        for callback in self.loading_callbacks:
+            try:
+                callback()
+            except Exception:
+                pass
+                
+        # Clear callbacks
+        self.loading_callbacks = []
+
+    def _link_commits_batch(self, batch_commits, commit_map):
+        """
+        Link a batch of commits to existing ones - used during incremental loading
+        
+        Args:
+            batch_commits: The new batch of commits to link
+            commit_map: Map of all commits by ID
+        """
+        # Create a set of commit IDs for faster lookups
+        commit_ids = set(commit.id for commit in self.commits + batch_commits)
+        
+        # Only establish parent-child relationships for commits we've loaded
+        for commit in batch_commits:
+            # Filter parents to only those in our loaded commits
+            commit.parents = [pid for pid in commit.parents if pid in commit_ids]
+            
+            # Add this commit as a child to each of its parents
+            for parent_id in commit.parents:
+                if parent_id in commit_map:
+                    commit_map[parent_id].add_child(commit.id)
 
     def _link_commits_optimized(self, commits, commit_map):
         """Link commits with parents and children - optimized version"""
@@ -131,64 +382,14 @@ class Repository:
         # No need to sort parents/children for the optimized version
         # This significantly improves performance for large repos
 
-    def _get_walk_refs(self, args):
-        """Get references to walk based on arguments"""
-        walk_refs = []
-        
-        if "--all" in args:
-            # Get all branches (local and remote)
-            for ref_name in self.repo.references:
-                if ref_name.startswith("refs/heads/") or ref_name.startswith("refs/remotes/"):
-                    ref = self.repo.references.get(ref_name)
-                    if ref:
-                        target_hex = self._get_ref_target_hex(ref)
-                        if target_hex not in walk_refs:
-                            walk_refs.append(target_hex)
-        else:
-            # Get HEAD only
-            try:
-                head = self.repo.head
-                if hasattr(head.target, 'hex'):
-                    walk_refs.append(head.target.hex)
-                else:
-                    walk_refs.append(str(head.target))
-            except:
-                # If HEAD doesn't exist or can't be resolved
-                # Try to find a branch to start from
-                for ref_name in self.repo.references:
-                    if ref_name.startswith("refs/heads/"):
-                        ref = self.repo.references.get(ref_name)
-                        if ref and hasattr(ref.target, 'hex'):
-                            walk_refs.append(ref.target.hex)
-                            break
-                            
-        return walk_refs
-    
-    def _get_ref_target_hex(self, ref):
-        """Get hex string of reference target"""
-        if hasattr(ref, 'target'):
-            target_oid = ref.target
-            # For direct references, target is the OID
-            if hasattr(target_oid, 'hex'):
-                return target_oid.hex
-            # For symbolic references, resolve to the ultimate target
-            elif isinstance(target_oid, str):
-                try:
-                    target_ref = self.repo.references.get(target_oid)
-                    if target_ref and hasattr(target_ref.target, 'hex'):
-                        return target_ref.target.hex
-                    else:
-                        return target_oid
-                except:
-                    return target_oid
-            else:
-                return str(target_oid)
-        return None
-    
+
     def _setup_walker(self, walk_refs):
         """Set up Git revwalk with initial references"""
         # Use TOPO and TIME sort together to get commits in a sensible order
         # This ensures merge commits are shown with their branch commits
+        if not walk_refs:
+            return None
+            
         walker = self.repo.walk(walk_refs[0], GIT_SORT_TOPOLOGICAL)
         
         # Add all refs to walker
@@ -213,6 +414,9 @@ class Repository:
     
     def _apply_filters(self, walker, args):
         """Apply commit filters to the walker"""
+        if not walker:
+            return
+            
         if "--merges" in args:
             walker.hide_non_merges()
         elif "--no-merges" in args:
@@ -290,50 +494,6 @@ class Repository:
             
         return False
         
-    def _link_commits(self, commits, commit_map):
-        """Link commits with parents and children"""
-        # First, create the parent-child relationships
-        for commit in commits:
-            for parent_id in commit.parents:
-                if parent_id in commit_map:
-                    commit_map[parent_id].add_child(commit.id)
-        
-        # Sort commits for better branch visualization
-        # This doesn't change the actual list but improves our graph generation
-        for commit in commits:
-            # Sort parents by their appearance in the commits list
-            # This makes the graph more predictable
-            parent_indices = []
-            for parent_id in commit.parents:
-                try:
-                    # Find the index of this parent in the commits list
-                    parent_idx = next(i for i, c in enumerate(commits) if c.id == parent_id)
-                    parent_indices.append((parent_id, parent_idx))
-                except StopIteration:
-                    # Parent not in visible commits
-                    parent_indices.append((parent_id, float('inf')))
-            
-            # Sort parents by their position in the list
-            sorted_parents = [p[0] for p in sorted(parent_indices, key=lambda x: x[1])]
-            
-            # Replace parents with sorted version
-            commit.parents = sorted_parents
-            
-            # Same for children
-            child_indices = []
-            for child_id in commit.children:
-                try:
-                    child_idx = next(i for i, c in enumerate(commits) if c.id == child_id)
-                    child_indices.append((child_id, child_idx))
-                except StopIteration:
-                    child_indices.append((child_id, float('inf')))
-            
-            # Sort children by their position in the list
-            sorted_children = [c[0] for c in sorted(child_indices, key=lambda x: x[1])]
-            
-            # Replace children with sorted version
-            commit.children = sorted_children
-                    
     def _load_refs(self, commit_map):
         """Load references (branches, tags) for commits"""
         # First get all references
@@ -612,11 +772,6 @@ class Repository:
                     elif search_type == "content":
                         if self._commit_changes_content(commit.id, search_term, use_regex, pattern):
                             results.append(i)
-                
-                # If searching a very large repo, add a note about limited results
-                if len(self.commits) > max_commits:
-                    print(f"Note: Search limited to most recent {max_commits} commits")
-                        
         except Exception as e:
             # Log error and return empty results on failure
             print(f"Search error: {e}")
@@ -823,3 +978,69 @@ class Repository:
         except Exception as e:
             print(f"Error in get_line_origin: {e}")
             return None
+
+    def _get_walk_refs(self, args):
+        """Get references to walk based on arguments"""
+        walk_refs = []
+        
+        if "--all" in args:
+            # Get all branches (local and remote)
+            for ref_name in self.repo.references:
+                if ref_name.startswith("refs/heads/") or ref_name.startswith("refs/remotes/"):
+                    ref = self.repo.references.get(ref_name)
+                    if ref:
+                        target_hex = self._get_ref_target_hex(ref)
+                        if target_hex and target_hex not in walk_refs:
+                            walk_refs.append(target_hex)
+        else:
+            # Get HEAD only
+            try:
+                head = self.repo.head
+                if hasattr(head.target, 'hex'):
+                    walk_refs.append(head.target.hex)
+                else:
+                    walk_refs.append(str(head.target))
+            except Exception:
+                # If HEAD doesn't exist or can't be resolved
+                # Try to find a branch to start from
+                for ref_name in self.repo.references:
+                    if ref_name.startswith("refs/heads/"):
+                        ref = self.repo.references.get(ref_name)
+                        if ref and hasattr(ref.target, 'hex'):
+                            walk_refs.append(ref.target.hex)
+                            break
+        
+        # Make sure we have at least one valid reference
+        if not walk_refs:
+            # Try to find any valid reference
+            for ref_name in self.repo.references:
+                ref = self.repo.references.get(ref_name)
+                if ref and hasattr(ref.target, 'hex'):
+                    walk_refs.append(ref.target.hex)
+                    break
+                    
+        return walk_refs
+    
+    def _get_ref_target_hex(self, ref):
+        """Get hex string of reference target"""
+        if not ref or not hasattr(ref, 'target'):
+            return None
+            
+        target_oid = ref.target
+        
+        # For direct references, target is the OID
+        if hasattr(target_oid, 'hex'):
+            return target_oid.hex
+            
+        # For symbolic references, resolve to the ultimate target
+        elif isinstance(target_oid, str):
+            try:
+                target_ref = self.repo.references.get(target_oid)
+                if target_ref and hasattr(target_ref.target, 'hex'):
+                    return target_ref.target.hex
+                else:
+                    return target_oid
+            except Exception:
+                return target_oid
+        else:
+            return str(target_oid) if target_oid else None

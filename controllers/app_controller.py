@@ -6,7 +6,7 @@ import time
 import sys
 
 from models import Repository
-from views import CommitView, DiffView, HelpView, LoadingView
+from views import CommitView, DiffView, HelpView
 from utils import copy_to_clipboard, setup_colors, show_message
 
 class AppController:
@@ -25,6 +25,10 @@ class AppController:
         self.current_view = None
         self.previous_view = None
         self.view_history = []
+        
+        # Set up refresh timer for dynamic updates
+        self.last_refresh_time = 0
+        self.refresh_interval = 0.1  # refresh UI at most 10 times per second
         
         # View state storage
         self.commit_view_state = {
@@ -51,10 +55,6 @@ class AppController:
         
     def _open_repository(self):
         """Open Git repository"""
-        # Show loading view
-        loading_view = LoadingView(self.stdscr)
-        loading_view.refresh()
-        
         # Try to open repository
         if not self.repository.open():
             self._exit_with_message("Not in a git repository")
@@ -66,33 +66,40 @@ class AppController:
         Args:
             args: Command line arguments
         """
-        # Show loading view while loading commits
-        loading_view = LoadingView(self.stdscr)
-        loading_view.refresh()
-        
         try:
-            # Load commits
-            self.repository.load_commits(args)
-            
-            if not self.repository.commits:
-                self._exit_with_message("No commits to display")
-                return
-                
-            # Set initial view
+            # Immediately set up the commit view
             self.current_view = CommitView(self.stdscr, self.repository)
+            
+            # Start loading commits in the background
+            self.repository.load_commits(args, callback=self.on_commits_updated)
             
             # Main loop
             while self.running:
                 try:
+                    # Check if UI needs refreshing
+                    current_time = time.time()
+                    needs_refresh = current_time - self.last_refresh_time >= self.refresh_interval
+                    
                     # Save commit view state if necessary
                     if isinstance(self.current_view, CommitView):
                         self._save_commit_view_state(self.current_view)
                     
-                    # Refresh the current view
-                    self.current_view.refresh()
+                    # Refresh the current view if needed
+                    if needs_refresh:
+                        self.current_view.refresh()
+                        self.last_refresh_time = current_time
                     
-                    # Get user input
+                    # Get user input with a timeout
+                    self.stdscr.timeout(int(self.refresh_interval * 1000))
                     key = self.stdscr.getch()
+                    
+                    # Reset to blocking mode if key was received
+                    if key != -1:  # -1 means no key was pressed (timeout)
+                        self.stdscr.timeout(-1)
+                    
+                    # If no key was pressed, continue to next iteration
+                    if key == -1:
+                        continue
                     
                     # Handle key in current view
                     try:
@@ -117,6 +124,16 @@ class AppController:
                     self._show_error(f"Application error: {str(e)}")
         except Exception as e:
             self._exit_with_message(f"Error loading repository: {str(e)}")
+
+    def on_commits_updated(self):
+        """Callback for when commits are updated/loaded"""
+        # Only trigger refresh if in commit view
+        if isinstance(self.current_view, CommitView):
+            self._force_refresh()
+    
+    def _force_refresh(self):
+        """Force an immediate refresh"""
+        self.last_refresh_time = 0  # This forces a refresh on the next frame
 
     def _save_commit_view_state(self, commit_view):
         """Save current commit view state"""
@@ -150,10 +167,6 @@ class AppController:
             view_name: Name of view to switch to or command
         """
         try:
-            # Safety check - if we have no commits, don't attempt to switch to commit-related views
-            if not self.repository.commits and view_name in ("commit", "diff"):
-                return
-                
             # Save current view for history if not a help view
             if not isinstance(self.current_view, HelpView):
                 self.previous_view = self.current_view
@@ -167,26 +180,18 @@ class AppController:
                     
             elif view_name == "refresh":
                 # Refresh commits
-                loading_view = LoadingView(self.stdscr)
-                loading_view.refresh()
-                
                 try:
                     self.repository = Repository()
                     if not self.repository.open():
                         self._show_error("Could not open repository")
                         return
                         
-                    self.repository.load_commits()
-                    
                     # Create a new commit view with fresh data but keep position
-                    if self.repository.commits:
-                        new_view = CommitView(self.stdscr, self.repository)
-                        # Apply saved state with bounds checking
-                        new_view.current_index = min(self.commit_view_state['current_index'], len(self.repository.commits) - 1)
-                        new_view.top_index = min(self.commit_view_state['top_index'], len(self.repository.commits) - 1)
-                        self.current_view = new_view
-                    else:
-                        self._show_error("No commits to display after refresh")
+                    new_view = CommitView(self.stdscr, self.repository)
+                    self.current_view = new_view
+                    
+                    # Start loading commits in the background
+                    self.repository.load_commits(callback=self.on_commits_updated)
                 except Exception as e:
                     self._show_error(f"Error refreshing: {str(e)}")
                 return
@@ -235,16 +240,13 @@ class AppController:
                 self.current_view = HelpView(self.stdscr)
                 
             elif view_name == "commit":
-                if not self.repository.commits:
-                    self._show_error("No commits to display")
-                    return
-                    
                 # Create a new commit view
                 new_view = CommitView(self.stdscr, self.repository)
                 
                 # Apply the saved state with bounds checking
-                new_view.current_index = min(self.commit_view_state['current_index'], len(self.repository.commits) - 1)
-                new_view.top_index = min(self.commit_view_state['top_index'], len(self.repository.commits) - 1)
+                if self.repository.commits:
+                    new_view.current_index = min(self.commit_view_state['current_index'], len(self.repository.commits) - 1)
+                    new_view.top_index = min(self.commit_view_state['top_index'], len(self.repository.commits) - 1)
                 new_view.search_string = self.commit_view_state['search_string']
                 new_view.search_results = self.commit_view_state['search_results']
                 new_view.search_index = self.commit_view_state['search_index']

@@ -457,7 +457,7 @@ class DiffView(BaseView):
             popup_content.append(f"  {line}")
             
         popup_content.append("")
-        popup_content.append("Press 'j' to jump to this commit, any other key to close")
+        popup_content.append("Press 'Enter' to jump to this commit, any other key to close")
         
         # Calculate popup dimensions
         popup_width = max(min(self.max_cols - 10, 80), 60)  # Width between 60 and 80, or smaller if screen is small
@@ -500,8 +500,8 @@ class DiffView(BaseView):
         popup.refresh()
         key = popup.getch()  # Wait for any key
         
-        # If 'j' was pressed, jump to the commit
-        if key == ord('j'):
+        # If 'Enter' was pressed, jump to the commit
+        if key == 10 or key == curses.KEY_ENTER:
             return True, True, f"jump:{commit_id}"
         
         return True, False, None
