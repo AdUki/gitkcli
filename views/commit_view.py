@@ -34,6 +34,10 @@ class CommitView(BaseView):
         self.search_index = -1
         self.search_types = ["message", "path", "content"]
         self.search_type_index = 0  # Default to search by message
+
+        # Command input properties
+        self.command_active = False
+        self.command_string = ""
         
         # Horizontal scrolling properties
         self.h_scroll = 0
@@ -85,16 +89,20 @@ class CommitView(BaseView):
             current_type = search_type_display[self.search_types[self.search_type_index]]
             status = f" Search [{current_type}]: {self.search_string} (Tab to change type, Esc to cancel) "
             self.draw_status(status)
+        elif self.command_active:
+            status = f" :{self.command_string} (Format 'git <cmd> [git-id]', Enter to execute, Esc to cancel) "
+            self.draw_status(status)
         else:
             # Include loading status in the status bar
             if loading:
                 if total_count > 0:
                     # Show percentage if we have a total count
                     percent = int(loaded_count/total_count*100) if total_count > 0 else 0
-                    status = f" Loading: {loaded_count}/{total_count} commits ({percent}%) | Press '/' to search | 'H' for help "
+                    status = f" Loading: {loaded_count}/{total_count} commits ({percent}%) | Press '/' to search | ':' for commands | 'H' for help "
                 else:
                     # Otherwise just show count
-                    status = f" Loading: {loaded_count} commits | Press '/' to search | 'H' for help "
+                    status = f" Loading: {loaded_count} commits | Press '/' to search | ':' for commands | 'H' for help "
+
             else:
                 # Show total when loading is complete
                 if self.commits:
@@ -497,6 +505,10 @@ class CommitView(BaseView):
         # Handle search mode separately
         if self.search_active:
             return self._handle_search_input(key)
+            
+        # Handle command input mode separately
+        if self.command_active:
+            return self._handle_command_input(key)
         
         # Exit application
         if key == ord('q'):
@@ -543,6 +555,11 @@ class CommitView(BaseView):
             self._next_search_result()
         elif key == ord('N') and self.commits and self.search_results:  # Previous search result
             self._prev_search_result()
+            
+        # Command input mode
+        elif key == ord(':'):  # Colon key - start command input
+            self.command_active = True
+            self.command_string = ""
         
         # Action commands
         elif key == 10 and self.commits and self.current_index < len(self.commits):  # Enter key - show diff
@@ -554,6 +571,53 @@ class CommitView(BaseView):
             return True, True, "refresh"
         
         return True, False, None  # Continue program, no view change
+
+    def _handle_command_input(self, key):
+        """
+        Handle key input while in command mode
+        
+        Args:
+            key: Key code
+            
+        Returns:
+            tuple: (continue_program, switch_view, view_name)
+        """
+        # Exit command mode (not the program)
+        if key == 27:  # Escape key
+            self.command_active = False
+            return True, False, None
+        
+        # Execute command
+        elif key == 10 or key == curses.KEY_ENTER:  # Enter key
+            self.command_active = False
+            
+            # Skip if command is empty
+            if not self.command_string.strip():
+                return True, False, None
+                
+            # Get current commit ID if available
+            commit_id = None
+            if self.commits and self.current_index < len(self.commits):
+                commit_id = self.commits[self.current_index].id
+                
+            # Create the command to execute (add commit ID at the end)
+            command_to_execute = self.command_string
+            if commit_id:
+                command_to_execute = f"git {command_to_execute} {commit_id}"
+                
+            # Execute command
+            return True, True, f"execute:{command_to_execute}"
+        
+        # Handle text editing
+        elif key == 127 or key == curses.KEY_BACKSPACE or key == curses.KEY_DC:  # Backspace/Delete
+            if self.command_string:
+                self.command_string = self.command_string[:-1]
+        
+        # Handle printable characters
+        elif 32 <= key <= 126:  # Printable ASCII
+            self.command_string += chr(key)
+        
+        return True, False, None   
 
     def _handle_search_input(self, key):
         """

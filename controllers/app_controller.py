@@ -6,7 +6,7 @@ import time
 import sys
 
 from models import Repository
-from views import CommitView, DiffView, HelpView
+from views import CommitView, DiffView, HelpView, CommandOutputView
 from utils import copy_to_clipboard, setup_colors, show_message
 
 class AppController:
@@ -260,6 +260,16 @@ class AppController:
                     self.current_view = DiffView(self.stdscr, self.repository, commit_id)
                 else:
                     self._show_error(f"Commit {commit_id} not found")
+                    
+            elif view_name and view_name.startswith("execute:"):
+                # Extract command from the command string
+                command = view_name[8:]
+                if command:
+                    # Show command output view
+                    self.current_view = CommandOutputView(self.stdscr, self.repository, command)
+                else:
+                    self._show_error("Empty command")
+
         except Exception as e:
             self._show_error(f"Error switching view: {str(e)}")
 

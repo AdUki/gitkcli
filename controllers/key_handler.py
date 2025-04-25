@@ -28,7 +28,8 @@ class KeyHandler:
             'g': 'Go to top',
             'G': 'Go to bottom',
             'd/PgDn': 'Page down',
-            'u/PgUp': 'Page up'
+            'u/PgUp': 'Page up',
+            ':': 'Enter command mode'
         }
         
         # View-specific key descriptions
