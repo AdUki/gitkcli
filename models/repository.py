@@ -147,7 +147,7 @@ class Repository:
             commit_id = str(pygit_commit.id)
             author = pygit_commit.author.name
             date = datetime.fromtimestamp(pygit_commit.commit_time).strftime('%Y-%m-%d')
-            message = pygit_commit.message.split('\n')[0]  # First line only
+            message = pygit_commit.message
             
             commit = GitCommit(commit_id, author, date, message)
             
@@ -254,7 +254,7 @@ class Repository:
                 # Create commit object
                 author = pygit_commit.author.name
                 date = datetime.fromtimestamp(pygit_commit.commit_time).strftime('%Y-%m-%d')
-                message = pygit_commit.message.split('\n')[0]  # First line only
+                message = pygit_commit.message
                 
                 commit = GitCommit(commit_id, author, date, message)
                 

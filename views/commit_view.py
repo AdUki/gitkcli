@@ -231,7 +231,7 @@ class CommitView(BaseView):
                 
                 # Build the commit message
                 message_start = author_end + 1
-                basic_info = f"{graph_col}{commit_id}{date}{author} {commit.message}"
+                basic_info = f"{graph_col}{commit_id}{date}{author} {commit.title}"
                 
                 # Format refs more like git log --decorate
                 refs_str = ""
@@ -473,6 +473,7 @@ class CommitView(BaseView):
         if not self.commits:
             return
             
+        old_top_index = self.top_index
         old_index = self.current_index
         new_index = max(0, min(len(self.commits) - 1, self.current_index + delta))
         
@@ -491,6 +492,9 @@ class CommitView(BaseView):
         # Safety check - ensure top_index is valid
         if self.top_index >= len(self.commits):
             self.top_index = max(0, len(self.commits) - 1)
+
+        if old_top_index != self.top_index:
+            self._update_visible_search_results()
     
     def handle_key(self, key):
         """
@@ -542,9 +546,11 @@ class CommitView(BaseView):
         elif key == ord('g') and self.commits:  # Go to top
             self.current_index = 0
             self.top_index = 0
+            self._update_visible_search_results()
         elif key == ord('G') and self.commits:  # Go to bottom
             self.current_index = len(self.commits) - 1
             self.top_index = max(0, self.current_index - (self.max_lines - 3))
+            self._update_visible_search_results()
         
         # Search functions
         elif key == ord('/'):  # Start search
@@ -663,6 +669,32 @@ class CommitView(BaseView):
         
         return True, False, None
             
+    def _commit_matches_search(self, commit, search_type, search_term):
+        """
+        Check if a commit matches the search criteria
+        
+        Args:
+            commit: The commit to check
+            search_type: Type of search ('message', 'path', 'content')
+            search_term: Term to search for (already lowercase)
+            
+        Returns:
+            bool: True if the commit matches, False otherwise
+        """
+        if search_type == "message":
+            # Search in ID, author, message
+            searchable_text = f"{commit.id} {commit.author} {commit.message}".lower()
+            return search_term in searchable_text
+        elif search_type == "path":
+            # Search in paths touched by this commit
+            return commit.matches_path_pattern(self.repository, search_term)
+        elif search_type == "content":
+            return commit.matches_content_pattern(self.repository, search_term)
+        
+        # Unknown search type
+        return False
+
+
     def _perform_search(self):
         """
         Perform incremental search on visible commits for initial results,
@@ -690,17 +722,10 @@ class CommitView(BaseView):
                 
             commit = self.commits[i]
             
-            # Simple case-insensitive search for all text content
-            if search_type == "message":
-                # Search in ID, author, message
-                searchable_text = f"{commit.id} {commit.author} {commit.message}".lower()
-                if search_term in searchable_text:
-                    self.search_results.append(i)
-                    
-            # For more complex searches, simple string matching for performance
-            elif search_type == "path" or search_type == "content":
-                # Just use simple string matching on the message
-                if search_term in commit.message.lower():
+            if self._commit_matches_search(commit, search_type, search_term):
+                next_idx = i
+                # Add to search results so we can cycle through them
+                if i not in self.search_results:
                     self.search_results.append(i)
     
     def _next_search_result(self):
@@ -711,44 +736,23 @@ class CommitView(BaseView):
         if not search_term or not self.commits:
             return
             
-        # Find next result after current index
         next_idx = None
-        for idx in self.search_results:
-            if idx > self.current_index:
-                next_idx = idx
+
+        # Start from current position
+        start_idx = self.current_index + 1
+        
+        # Look through all commits below current position
+        for i in range(start_idx, len(self.commits)):
+            commit = self.commits[i]
+            search_type = self.search_types[self.search_type_index]
+            
+            if self._commit_matches_search(commit, search_type, search_term):
+                next_idx = i
+                # Add to search results so we can cycle through them
+                if i not in self.search_results:
+                    self.search_results.append(i)
                 break
-                
-        # If no result found below current position in visible area, 
-        # search non-visible commits below until one is found
-        if next_idx is None:
-            # Start from current position
-            start_idx = self.current_index + 1
-            
-            # Look through all commits below current position
-            for i in range(start_idx, len(self.commits)):
-                commit = self.commits[i]
-                search_type = self.search_types[self.search_type_index]
-                
-                # Simple case-insensitive search
-                if search_type == "message":
-                    searchable_text = f"{commit.id} {commit.author} {commit.message}".lower()
-                    if search_term in searchable_text:
-                        next_idx = i
-                        # Add to search results so we can cycle through them
-                        if i not in self.search_results:
-                            self.search_results.append(i)
-                        break
-                else:
-                    # Simple string matching for other search types
-                    if search_term in commit.message.lower():
-                        next_idx = i
-                        if i not in self.search_results:
-                            self.search_results.append(i)
-                        break
-            
-            # If still not found, wrap around to beginning
-            if next_idx is None and self.search_results:
-                next_idx = self.search_results[0]
+
                 
         # If found a result, move to it
         if next_idx is not None:
@@ -770,44 +774,22 @@ class CommitView(BaseView):
         if not search_term or not self.commits:
             return
             
-        # Find previous result before current index
         prev_idx = None
-        for idx in reversed(self.search_results):
-            if idx < self.current_index:
-                prev_idx = idx
+
+        # Start from current position
+        start_idx = self.current_index - 1
+        
+        # Look through all commits above current position
+        for i in range(start_idx, -1, -1):
+            commit = self.commits[i]
+            search_type = self.search_types[self.search_type_index]
+            
+            if self._commit_matches_search(commit, search_type, search_term):
+                prev_idx = i
+                # Add to search results so we can cycle through them
+                if i not in self.search_results:
+                    self.search_results.append(i)
                 break
-                
-        # If no result found above current position in visible area, 
-        # search non-visible commits above until one is found
-        if prev_idx is None:
-            # Start from current position
-            start_idx = self.current_index - 1
-            
-            # Look through all commits above current position
-            for i in range(start_idx, -1, -1):
-                commit = self.commits[i]
-                search_type = self.search_types[self.search_type_index]
-                
-                # Simple case-insensitive search
-                if search_type == "message":
-                    searchable_text = f"{commit.id} {commit.author} {commit.message}".lower()
-                    if search_term in searchable_text:
-                        prev_idx = i
-                        # Add to search results so we can cycle through them
-                        if i not in self.search_results:
-                            self.search_results.append(i)
-                        break
-                else:
-                    # Simple string matching for other search types
-                    if search_term in commit.message.lower():
-                        prev_idx = i
-                        if i not in self.search_results:
-                            self.search_results.append(i)
-                        break
-            
-            # If still not found, wrap around to end
-            if prev_idx is None and self.search_results:
-                prev_idx = self.search_results[-1]
                 
         # If found a result, move to it
         if prev_idx is not None:
@@ -830,6 +812,7 @@ class CommitView(BaseView):
             return
             
         search_term = self.search_string.lower()
+        search_type = self.search_types[self.search_type_index]
         
         # Calculate visible range
         start_idx, end_idx = self.visible_commits_range = (
@@ -847,12 +830,5 @@ class CommitView(BaseView):
                 continue
                 
             commit = self.commits[i]
-            search_type = self.search_types[self.search_type_index]
-            
-            if search_type == "message":
-                searchable_text = f"{commit.id} {commit.author} {commit.message}".lower()
-                if search_term in searchable_text:
-                    self.search_results.append(i)
-            else:
-                if search_term in commit.message.lower():
-                    self.search_results.append(i)
+            if self._commit_matches_search(commit, search_type, search_term):
+                self.search_results.append(i)
