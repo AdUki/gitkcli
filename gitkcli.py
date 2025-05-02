@@ -336,8 +336,11 @@ class RefListItem:
     def __init__(self, data):
         self.data = data
 
+    def get_text(self):
+        return self.data['name']
+
     def draw_line(self, stdsrc, y, offset, width, selected, matched):
-        line = self.data['name']
+        line = self.get_text()
         line = line[offset:]
         color, _ = get_ref_color_and_title(self.data)
         if matched:
@@ -423,6 +426,22 @@ class CommitListItem:
 
     def get_id(self):
         return self.data['id']
+
+    def get_text(self):
+        text = ''
+        text += self.data['id'][:7] + ' '
+        text += self.data['date'].strftime("%Y-%m-%d %H:%M") + ' '
+        text += self.data['author'].ljust(22) + ' '
+        text += self.data['title']
+
+        refs_map = Gitkcli.get_job('git-refs').refs
+        refs = refs_map.get(self.data['id'], [])
+        for ref in refs:
+            text += ' '
+            _, title = get_ref_color_and_title(ref)
+            text += title
+
+        return text
 
     def draw_line(self, stdsrc, y, offset, width, selected, matched):
         stdsrc.move(y, 0)
