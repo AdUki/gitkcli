@@ -1,115 +1,904 @@
-#!/usr/bin/env python3
-"""
-GitkCLI - Terminal-based Git repository viewer
-"""
-import curses
+#!/usr/bin/python
+
 import argparse
-import sys
-import os
+import curses
+import datetime
+import pprint
+import queue
+import re
+import subprocess
+import threading
 
-# Adjust Python path - add parent directory to path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, current_dir)
+def curses_ctrl(key):
+    return ord(key) & 0x1F
 
-# Direct imports from the local modules
-from controllers.app_controller import AppController
+def curses_color(number, selected = False, bold = False, reverse = False, dim = False):
+    if selected:
+        color = curses.color_pair(100 + number)
+    else:
+        color = curses.color_pair(number)
+    if reverse:
+        color = color | curses.A_REVERSE
+    if bold or selected:
+        color = color | curses.A_BOLD
+    if dim:
+        color = color | curses.A_DIM
+    return color
 
-def parse_arguments():
-    """
-    Parse command line arguments
-    
-    Returns:
-        list: Command line arguments for git log
-    """
-    parser = argparse.ArgumentParser(description="Interactive command-line gitk")
-    parser.add_argument("--all", action="store_true", help="Show all branches")
-    parser.add_argument("--author", help="Filter by author")
-    parser.add_argument("--since", help="Show commits more recent than a specific date")
-    parser.add_argument("--until", help="Show commits older than a specific date")
-    parser.add_argument("--grep", help="Filter commits by message")
-    parser.add_argument("-n", "--max-count", type=int, help="Limit number of commits")
-    parser.add_argument("--merges", action="store_true", help="Show only merge commits")
-    parser.add_argument("--no-merges", action="store_true", help="Hide merge commits")
-    parser.add_argument("--first-parent", action="store_true", 
-                       help="Follow only the first parent commit upon seeing a merge")
-    parser.add_argument("paths", nargs="*", help="Limit commits to those affecting specific paths")
-    
-    # Parse arguments, handling parsing errors gracefully
-    try:
-        args = parser.parse_args()
-    except SystemExit:
-        # If argument parsing fails, use default values
-        args = argparse.Namespace(
-            all=True,
-            author=None,
-            since=None,
-            until=None,
-            grep=None,
-            max_count=None,
-            merges=False,
-            no_merges=False,
-            first_parent=False,
-            paths=[]
-        )
-    
-    # Convert namespace to git log arguments
-    log_args = []
-    if args.all:
-        log_args.append("--all")
-    if args.author:
-        log_args.append(f"--author={args.author}")
-    if args.since:
-        log_args.append(f"--since={args.since}")
-    if args.until:
-        log_args.append(f"--until={args.until}")
-    if args.grep:
-        log_args.append(f"--grep={args.grep}")
-    if args.max_count:
-        log_args.append(f"-n{args.max_count}")
-    if args.merges:
-        log_args.append("--merges")
-    if args.no_merges:
-        log_args.append("--no-merges")
-    if args.first_parent:
-        log_args.append("--first-parent")
-    if args.paths:
-        log_args.append("--")
-        log_args.extend(args.paths)
-    
-    return log_args
+def get_ref_color_and_title(ref):
+    title = f"({ref['name']})"
+    color = 11
+    if ref['type'] == 'head': color = 13
+    elif ref['type'] == 'heads':
+        title = f"[{ref['name']}]"
+    elif ref['type'] == 'remotes':
+        color = 15
+        title = f"{{{ref['name']}}}"
+    elif ref['type'] == 'tags':
+        color = 12
+        title = f"<{ref['name']}>"
+    elif ref['type'] == 'stash':
+        color = 14
+    return color, title
 
-def main_curses(stdscr):
-    """
-    Main application function to be wrapped by curses
-    
-    Args:
-        stdscr: Curses standard screen
-    """
-    # Parse arguments
-    log_args = parse_arguments()
-    
-    try:
-        # Initialize and run the application
-        app = AppController(stdscr)
-        app.run(log_args)
-    except Exception as e:
-        # Handle unexpected exceptions
-        curses.endwin()
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+def get_ref_color_and_title(ref):
+    title = f"({ref['name']})"
+    color = 11
+    if ref['type'] == 'head': color = 13
+    elif ref['type'] == 'heads':
+        title = f"[{ref['name']}]"
+    elif ref['type'] == 'remotes':
+        color = 15
+        title = f"{{{ref['name']}}}"
+    elif ref['type'] == 'tags':
+        color = 12
+        title = f"<{ref['name']}>"
+    elif ref['type'] == 'stash':
+        color = 14
+    return color, title
+
+class Gitkcli:
+    showed_views = []
+    jobs = {}
+    views = {}
+    running = True
+
+    @classmethod
+    def add_job(cls, id, job):
+        if id in cls.jobs:
+            cls.jobs[id].stop_job()
+        cls.jobs[id] = job
+
+    @classmethod
+    def add_view(cls, id, view):
+        cls.views[id] = view
+
+    @classmethod
+    def exit_program(cls):
+        cls.running = False
+        for job in cls.jobs.values():
+            job.stop_job()
+
+    @classmethod
+    def process_all_jobs(cls):
+        for job in cls.jobs.values():
+            job.process_items()
+
+    @classmethod
+    def get_job(cls, id = None):
+        if len(cls.showed_views) > 0:
+            id = cls.showed_views[-1] if not id else id
+            if id in cls.jobs:
+                return cls.jobs[id]
+        return None
+
+    @classmethod
+    def get_view(cls, id = None):
+        if len(cls.showed_views) > 0:
+            id = cls.showed_views[-1] if not id else id
+            if id in cls.views:
+                return cls.views[id]
+            if id in cls.jobs:
+                return cls.jobs[id].view
+        return None
+
+    @classmethod
+    def show_view(cls, id):
+        if len(cls.showed_views) > 0 and cls.showed_views[-1] == id:
+            return
+        if id in cls.showed_views:
+            cls.showed_views.remove(id)
+        cls.showed_views.append(id)
+
+    @classmethod
+    def hide_view(cls):
+        if len(cls.showed_views) > 0:
+            cls.showed_views.pop(-1)
+
+    @classmethod
+    def draw_status_bar(cls, stdscr):
+        lines, cols = stdscr.getmaxyx()
+        job = cls.get_job()
+
+        if not job or not job.view:
+            return
+
+        job_status = ''
+        if job.job_running():
+            job_status = 'Running'
+        elif job.get_exit_code() == None:
+            job_status = f"Not started"
+        else:
+            job_status = f"Exited with code {job.get_exit_code()}"
+
+        stdscr.addstr(lines-1, 0, f"Line {job.view.selected+1}/{len(job.view.items)} - Offset {job.view.offset_x} - Process '{cls.showed_views[-1]}' {job_status}".ljust(cols - 1), curses_color(7))
+
+class SubprocessJob:
+
+    def __init__(self):
+        self.cmd = ''
+        self.args = []
+        self.job = None
+        self.stop = True
+        self.items = queue.Queue()
+        self.stderr_queue = queue.Queue()
+
+    def process_line(self, line):
+        # This should be implemented by derived classes
+        pass
+
+    def process_item(self, item):
+        # This should be implemented by derived classes
+        pass
+
+    def process_error(self, line):
+        Gitkcli.get_view('error').append(TextListItem(line))
+
+    def process_items(self):
+        try:
+            while True:
+                item = self.items.get_nowait()
+                self.items.task_done()
+                if not item:
+                    return;
+                self.process_item(item)
+        except queue.Empty:
+            pass
+        try:
+            while True:
+                line = self.stderr_queue.get_nowait()
+                self.stderr_queue.task_done()
+                if not line:
+                    return
+                self.process_error(line)
+        except queue.Empty:
+            pass
+
+    def stop_job(self):
+        self.stop = True
+        if self.job and self.job.poll() is None:
+            self.job.terminate()
+            try:
+                self.job.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                self.job.kill()
+
+
+    def start_job(self, args = []):
+        self.stop_job()
+
+        self.job = subprocess.Popen(
+                self.cmd.split(' ') + self.args + args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
         
-    return 0
+        stdout_thread = threading.Thread(target=self._reader_thread, args=(self.job.stdout, False))
+        stderr_thread = threading.Thread(target=self._reader_thread, args=(self.job.stderr, True))
+        stdout_thread.start()
+        stderr_thread.start()
+
+        self.stop = False
+
+    def get_exit_code(self):
+        if not self.job:
+            return False
+        else:
+            return self.job.poll()
+
+    def job_running(self):
+        if not self.job:
+            return False
+        else:
+            return self.job.poll() is None
+
+    def _reader_thread(self, stream, is_stderr=False):
+        for bytearr in iter(stream.readline, b''):
+            if self.stop:
+                break
+            try:
+                # curses automatically converts tab to spaces, so we will replace it here and cut off newline
+                line = bytearr.decode('utf-8', errors='replace').replace('\t', ' ' * curses.get_tabsize())[:-1]
+                if is_stderr:
+                    self.stderr_queue.put(line)
+                else:
+                    item = self.process_line(line)
+                    if item:
+                        self.items.put(item)
+
+            except Exception as e:
+                self.stderr_queue.put(f"Error processing line: {line}")
+                self.stderr_queue.put(str(e))
+        stream.close()
+
+class GitLogJob(SubprocessJob):
+    def __init__(self, view = None):
+        super().__init__() 
+        self.cmd = 'git log --format=%H|%P|%aI|%an|%s'
+        self.view = view
+
+    def process_line(self, line):
+        id, parents_str, date_str, author, title = line.split('|', 4)
+        self.items.put({
+            'id':id,
+            'parents': parents_str.split(' '),
+            'date': datetime.datetime.fromisoformat(date_str),
+            'author': author,
+            'title': title,
+        })
+    def process_item(self, item):
+        if self.view:
+            self.view.append(CommitListItem(item))
+
+class GitShowJob(SubprocessJob):
+    def __init__(self, view = None):
+        super().__init__() 
+        self.cmd = 'git show -m --no-color'
+        self.view = view
+
+    def process_line(self, line):
+        self.items.put(line)
+
+    def process_item(self, item):
+        if self.view:
+            self.view.append(DiffListItem(item))
+
+class GitSearchJob(SubprocessJob):
+    def __init__(self, view = None):
+        super().__init__() 
+        self.cmd = 'git log --format=%H'
+        self.view = view
+        self.ids = set()
+
+    def start_job(self, args = []):
+        self.ids = set()
+        super().start_job(args) 
+
+    def process_line(self, line):
+        self.items.put(line)
+
+    def process_item(self, item):
+        self.ids.add(item)
+        if self.view:
+            self.view.append(TextListItem(item))
+
+class GitRefsJob(SubprocessJob):
+    def __init__(self, view = None):
+        super().__init__() 
+        self.cmd = 'git show-ref --head'
+        self.view = view
+
+    def start_job(self, args = []):
+        self.refs = {} # map: git_id --> { 'type':<ref-type>, 'name':<ref-name> }
+        super().start_job(args) 
+
+    def process_line(self, line):
+        id, value = tuple(line.split(' '))
+
+        ref = {}
+        ref['id'] = id
+        if value == 'HEAD':
+            ref['name'] = value
+            ref['type'] = 'head'
+        else:
+            parts = value.split('/', 2)
+            if len(parts) == 2:
+                ref['type'] = parts[1]
+                ref['name'] = parts[1]
+            else:
+                ref['type'] = parts[1]
+                ref['name'] = parts[2]
+
+        self.items.put(ref)
+
+    def process_item(self, item):
+        if self.view:
+            self.view.append(RefListItem(item))
+
+        id = item['id']
+        if id in self.refs:
+            self.refs[id].append(item)
+        else:
+            self.refs[id] = [item]
+
+class RefListItem:
+    def __init__(self, data):
+        self.data = data
+
+    def draw_line(self, stdsrc, y, offset, width, selected, matched):
+        line = self.data['name']
+        line = line[offset:]
+        color, _ = get_ref_color_and_title(self.data)
+        if matched:
+            color = 16
+        if selected:
+            line += ' ' * (width - len(line))
+        if len(line) > width:
+            line = line[:width]
+
+        stdsrc.move(y, 0)
+        stdsrc.addstr(line, curses_color(color, selected))
+        stdsrc.clrtoeol()
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == 10 or key == 13:
+            if Gitkcli.get_view('git-log').jump_to_id(self.data['id']):
+                Gitkcli.hide_view()
+                Gitkcli.show_view('git-log')
+        else:
+            return False
+        return True
+
+class TextListItem:
+    def __init__(self, txt):
+        self.txt = txt
+
+    def get_text(self):
+        return self.txt
+
+    def draw_line(self, stdsrc, y, offset, width, selected, matched):
+        line = self.txt[offset:]
+        if selected:
+            line += ' ' * (width - len(line))
+        if len(line) > width:
+            line = line[:width]
+
+        stdsrc.move(y, 0)
+        stdsrc.addstr(line, curses_color(16 if matched else 1, selected))
+        stdsrc.clrtoeol()
+
+    def handle_input(self, key):
+        return False
+
+class DiffListItem:
+    def __init__(self, line):
+        self.line = line
+
+    def get_text(self):
+        return self.line
+
+    def draw_line(self, stdsrc, y, offset, width, selected, matched):
+        stdsrc.move(y, 0)
+
+        line = self.line[offset:]
+        if selected:
+            line += ' ' * (width - len(line))
+        if len(line) > width:
+            line = line[:width]
+        
+        if matched:
+            stdsrc.addstr(line, curses_color(16, selected))
+        elif self.line.startswith('commit '):
+            stdsrc.addstr(line, curses_color(4, selected))
+        elif self.line.startswith(('git-diff', 'index', '+++', '---')):
+            stdsrc.addstr(line, curses_color(1, selected, bold = True))
+        elif self.line.startswith('-'):
+            stdsrc.addstr(line, curses_color(8, selected))
+        elif self.line.startswith('+'):
+            stdsrc.addstr(line, curses_color(9, selected))
+        elif self.line.startswith('@@'):
+            stdsrc.addstr(line, curses_color(10, selected))
+        else:
+            stdsrc.addstr(line, curses_color(1, selected))
+        
+        stdsrc.clrtoeol()
+
+    def handle_input(self, key):
+        return False
+
+class CommitListItem:
+    def __init__(self, data):
+        self.data = data
+
+    def get_id(self):
+        return self.data['id']
+
+    def draw_line(self, stdsrc, y, offset, width, selected, matched):
+        stdsrc.move(y, 0)
+
+        segments = [
+            (self.data['id'][:7] + ' ', curses_color(4, selected)),
+            (self.data['date'].strftime("%Y-%m-%d %H:%M") + ' ', curses_color(5, selected)),
+            (self.data['author'].ljust(22) + ' ', curses_color(6, selected)),
+            (self.data['title'], curses_color(16 if matched else 1, selected))
+        ]
+
+        refs_map = Gitkcli.get_job('git-refs').refs
+        refs = refs_map.get(self.data['id'], [])
+        for ref in refs:
+            segments.append((' ', curses_color(1, selected)))
+            color, title = get_ref_color_and_title(ref)
+            segments.append((title, curses_color(color, selected, True)))
+
+        current_pos = 0
+        for text, attr in segments:
+            if offset <= current_pos + len(text):
+                # This segment is partially or fully visible
+                seg_offset = max(0, offset - current_pos)
+                visible_text = text[seg_offset:]
+  
+                # Truncate if it exceeds remaining width
+                if len(visible_text) > width:
+                    visible_text = visible_text[:width]
+  
+                if visible_text:
+                    stdsrc.addstr(visible_text, attr)
+                    width -= len(visible_text)
+  
+                if width <= 0:
+                    break
+  
+            current_pos += len(text)
+
+        if selected:
+            stdsrc.addstr(' ' * width, attr)
+        else:
+            stdsrc.clrtoeol()
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == 10 or key == 13:
+            Gitkcli.get_view('git-diff').clear()
+            Gitkcli.get_job('git-diff').start_job([self.data['id']])
+            Gitkcli.show_view('git-diff')
+        else:
+            return False
+        return True
+
+class ListView:
+    def __init__(self, win, search_dialog = None):
+        self.win = win
+        self.items = []
+        self.selected = 0
+        self.offset_y = 0
+        self.offset_x = 0
+        self.search_dialog = search_dialog
+        
+    def append(self, item):
+        """Add item to end of list"""
+        self.items.append(item)
+        
+    def prepend(self, item):
+        """Add item to beginning of list"""
+        self.items.insert(0, item)
+        self.selected += 1
+        self.offset_y += 1
+        
+    def insert(self, item, position=None):
+        """Insert item at position or selected position"""
+        pos = position if position is not None else self.selected
+        self.items.insert(pos, item)
+        if pos <= self.selected:
+            self.selected += 1
+        if pos <= self.offset_y:
+            self.offset_y += 1
+
+    def clear(self):
+        self.items = []
+        self.selected = 0
+        self.offset_y = 0
+        self.offset_x = 0
+
+    def handle_input(self, key):
+        if not self.items:
+            return False
+
+        height, width = self.win.getmaxyx()
+        offset_jump = int(width / 4)
+
+        if key == curses.KEY_UP or key == ord('k'):
+            if self.selected > 0:
+                self.selected -= 1
+        elif key == curses.KEY_DOWN or key == ord('j'):
+            if self.selected < len(self.items) - 1:
+                self.selected += 1
+        elif key == curses.KEY_LEFT or key == ord('h'):
+            if self.offset_x - offset_jump >= 0:
+                self.offset_x -= offset_jump
+            else:
+                self.offset_x = 0
+        elif key == curses.KEY_RIGHT or key == ord('l'):
+            self.offset_x += offset_jump
+        elif key == curses.KEY_PPAGE or key == curses_ctrl('b'):
+            if self.selected - height >= 0:
+                self.selected -= height
+            if self.offset_y - height >= 0:
+                self.offset_y -= height
+        elif key == curses.KEY_NPAGE or key == curses_ctrl('f'):
+            if self.selected + height < len(self.items):
+                self.selected += height
+            if self.offset_y + height < len(self.items):
+                self.offset_y = min(self.offset_y + height, max(0, len(self.items) - height))
+        elif key == curses.KEY_HOME or key == ord('g'):
+            self.selected = 0
+            self.offset_y = 0
+        elif key == curses.KEY_END or key == ord('G'):
+            self.selected = max(0, len(self.items) - 1)
+            self.offset_y = max(0, len(self.items) - height)
+        elif key == ord('/'):
+            if self.search_dialog:
+                Gitkcli.get_view(self.search_dialog).clear()
+                Gitkcli.show_view(self.search_dialog)
+        elif key == ord('n'):
+            if self.search_dialog:
+                for i in range(self.selected + 1, len(self.items)):
+                    if Gitkcli.get_view(self.search_dialog).matches(self.items[i]):
+                        self.selected = i
+                        break
+        elif key == ord('N'):
+            if self.search_dialog:
+                for i in reversed(range(0, self.selected - 1)):
+                    if Gitkcli.get_view(self.search_dialog).matches(self.items[i]):
+                        self.selected = i
+                        break
+        else: 
+            return self.items[self.selected].handle_input(key)
+
+        if self.selected < self.offset_y:
+            self.offset_y = self.selected
+        elif self.selected >= self.offset_y + height:
+            self.offset_y = self.selected - height + 1
+
+        return True
+
+    def draw(self):
+        height, width = self.win.getmaxyx()
+        
+        for i in range(0, min(height, len(self.items) - self.offset_y)):
+            idx = i + self.offset_y
+            item = self.items[idx]
+            selected = idx == self.selected
+            matched = Gitkcli.get_view(self.search_dialog).matches(item) if self.search_dialog else False
+            item.draw_line(self.win, i, self.offset_x, width - 1, selected, matched)
+
+        self.win.clrtobot()
+        self.win.refresh()
+
+class GitLogView(ListView):
+    def __init__(self, win, search_dialog = None):
+        super().__init__(win, search_dialog) 
+
+    def jump_to_id(self, id):
+        idx = 0
+        for item in self.items:
+            if id == item.get_id():
+                self.selected = idx
+                self.offset_y = idx - 1
+                return True
+            idx += 1
+        return False
+
+    def handle_input(self, key):
+        if key == ord('q'):
+            Gitkcli.exit_program()
+        else:
+            return super().handle_input(key)
+        return True
+
+class SearchDialogPopup:
+    def __init__(self, parent_win):
+        self.query = ""
+        self.cursor_pos = 0
+        self.case_sensitive = True
+        self.use_regexp = False
+        self.height = 7
+        self.width = 80
+        self.help_text = "Enter: Search | Esc: Cancel | F1: Case | F2: Regexp"
+
+        parent_height, parent_width = parent_win.getmaxyx()
+        start_y = parent_height // 2 - self.height // 2
+        start_x = parent_width // 2 - self.width // 2
+        self.win = curses.newwin(self.height, self.width, start_y, start_x)
+
+    def matches(self, item):
+        if self.query:
+            if self.use_regexp:
+                if self.case_sensitive:
+                    return re.search(self.query, item.get_text())
+                else:
+                    return re.search(self.query, item.get_text(), re.IGNORECASE)
+            elif self.case_sensitive:
+                return self.query in item.get_text()
+            else:
+                return self.query.lower() in item.get_text().lower()
+        else:
+            return False
+
+    def draw_top_panel(self):
+        self.win.move(1, 2)
+        self.win.addstr("Flags: ")
+        self.win.addstr("<Case>", curses_color(1, self.case_sensitive))
+        self.win.addstr(" ")
+        self.win.addstr("<Regexp>", curses_color(1, self.use_regexp))
+
+    def draw(self):
+        self.draw_top_panel()
+        
+        # Draw query with cursor
+        prompt = ""
+        max_display = self.width - 4
+        query_display = self.query
+        
+        # Adjust scroll position if needed
+        start_pos = max(0, self.cursor_pos - max_display + 5)
+        if start_pos > 0:
+            query_display = "..." + query_display[start_pos:]
+            adjusted_cursor_pos = self.cursor_pos - start_pos + 3
+        else:
+            adjusted_cursor_pos = self.cursor_pos
+        
+        # Display query
+        display_text = query_display[:max_display]
+        self.win.addstr(3, 2 + len(prompt), display_text)
+        self.win.clrtoeol()
+        
+        # Draw help text
+        self.win.addstr(5, (self.width - len(self.help_text)) // 2, self.help_text, curses.A_DIM)
+        
+        self.win.box()
+        title = " Search "
+        self.win.addstr(0, (self.width - len(title)) // 2, title)
+        
+        # Move cursor to its position
+        self.win.move(3, 2 + len(prompt) + adjusted_cursor_pos)
+        
+        self.win.refresh()
+
+    def clear(self):
+        curses.curs_set(1)
+        self.query = ""
+        self.cursor_pos = 0
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
+            curses.curs_set(0)
+            Gitkcli.hide_view()
+
+        elif key == curses.KEY_EXIT or key == 27:  # Escape key
+            curses.curs_set(0)
+            self.query = ""
+            self.cursor_pos = 0
+            Gitkcli.hide_view()
+                
+        elif key == curses.KEY_F1:
+            self.case_sensitive = not self.case_sensitive
+            
+        elif key == curses.KEY_F2:
+            self.use_regexp = not self.use_regexp
+            
+        elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
+            if self.cursor_pos > 0:
+                self.query = self.query[:self.cursor_pos-1] + self.query[self.cursor_pos:]
+                self.cursor_pos -= 1
+                
+        elif key == curses.KEY_DC:  # Delete key
+            if self.cursor_pos < len(self.query):
+                self.query = self.query[:self.cursor_pos] + self.query[self.cursor_pos+1:]
+                
+        elif key == curses.KEY_LEFT:  # Left arrow
+            if self.cursor_pos > 0:
+                self.cursor_pos -= 1
+                
+        elif key == curses.KEY_RIGHT:  # Right arrow
+            if self.cursor_pos < len(self.query):
+                self.cursor_pos += 1
+                
+        elif key == curses.KEY_HOME:  # Home key
+            self.cursor_pos = 0
+            
+        elif key == curses.KEY_END:  # End key
+            self.cursor_pos = len(self.query)
+            
+        elif 32 <= key <= 126:  # Printable characters
+            self.query = self.query[:self.cursor_pos] + chr(key) + self.query[self.cursor_pos:]
+            self.cursor_pos += 1
+
+        else:
+            return False
+            
+        return True
+
+
+class GitSearchDialogPopup(SearchDialogPopup):
+    def __init__(self, parent_win):
+        super().__init__(parent_win) 
+        self.search_type = "message"
+        self.help_text = "Enter: Search | Esc: Cancel | Tab: Change type | F1: Case | F2: Regexp"
+
+    def matches(self, item):
+        return item.get_id() in Gitkcli.get_job('git-search-results').ids
+
+    def draw_top_panel(self):
+        self.win.move(1, 2)
+        self.win.addstr("Type: ")
+        self.win.addstr("[Message]", curses_color(1, self.search_type == "message"))
+        self.win.addstr(" ")
+        self.win.addstr("[Author]", curses_color(1, self.search_type == "author"))
+        self.win.addstr(" ")
+        self.win.addstr("[Filepaths]", curses_color(1, self.search_type == "path"))
+        self.win.addstr(" ")
+        self.win.addstr("[Diff]", curses_color(1, self.search_type == "diff"))
+        self.win.addstr("    Flags: ")
+        self.win.addstr("<Case>", curses_color(1, self.case_sensitive, dim = self.search_type == 'path'))
+        self.win.addstr(" ")
+        self.win.addstr("<Regexp>", curses_color(1, self.use_regexp, dim = self.search_type == 'path'))
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
+            curses.curs_set(0)
+            Gitkcli.hide_view()
+
+            args = []
+            if not self.case_sensitive:
+                args.append('-i')
+            if self.search_type == "message":
+                if not self.use_regexp:
+                    args.append('-F')
+                args.append("--grep")
+                args.append(self.query)
+            if self.search_type == "author":
+                if not self.use_regexp:
+                    args.append('-F')
+                args.append("--author")
+                args.append(self.query)
+            elif self.search_type == "diff":
+                if self.use_regexp:
+                    args.append("-G")
+                else:
+                    args.append("-S")
+                args.append(self.query)
+            elif self.search_type == "path":
+                args.append('--')
+                args.append(f"*{self.query}*")
+
+            Gitkcli.get_job('git-search-results').start_job(args)
+
+        elif key == 9:  # Tab key - cycle through search types
+            if self.search_type == "message":
+                self.search_type = "author"
+            elif self.search_type == "author":
+                self.search_type = "path"
+            elif self.search_type == "path":
+                self.search_type = "diff"
+            else:
+                self.search_type = "message"
+
+        else:
+            return super().handle_input(key)
+            
+        return True
+
+
+def launch_curses(stdscr, cmd_args):
+    # Run with curses
+    curses.use_default_colors()
+
+    curses.start_color()
+    curses.init_pair(1, curses.COLOR_WHITE, -1)  # Normal text
+    curses.init_pair(2, curses.COLOR_RED, -1)    # Error text
+    curses.init_pair(3, curses.COLOR_GREEN, -1)  # Status text
+    curses.init_pair(4, curses.COLOR_YELLOW, -1) # Git ID
+    curses.init_pair(5, curses.COLOR_BLUE, -1)   # Data
+    curses.init_pair(6, curses.COLOR_GREEN, -1)  # Author
+    curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_BLUE) # Header Footer
+    curses.init_pair(8, curses.COLOR_RED, -1)    # diff -
+    curses.init_pair(9, curses.COLOR_GREEN, -1)  # diff +
+    curses.init_pair(10, curses.COLOR_CYAN, -1)  # diff ranges
+    curses.init_pair(11, curses.COLOR_GREEN, -1) # local ref
+    curses.init_pair(12, curses.COLOR_YELLOW, -1) # tag
+    curses.init_pair(13, curses.COLOR_BLUE, -1) # head
+    curses.init_pair(14, curses.COLOR_CYAN, -1) # stash
+    curses.init_pair(15, curses.COLOR_RED, -1) # remote ref
+    curses.init_pair(16, curses.COLOR_MAGENTA, -1) # search match
+
+    # selected colors have offset 100
+    curses.init_pair(101, curses.COLOR_WHITE, 235)
+    curses.init_pair(102, curses.COLOR_RED, 235)
+    curses.init_pair(103, curses.COLOR_GREEN, 235)
+    curses.init_pair(104, curses.COLOR_YELLOW, 235)
+    curses.init_pair(105, curses.COLOR_BLUE, 235)
+    curses.init_pair(106, curses.COLOR_GREEN, 235)
+    curses.init_pair(108, curses.COLOR_RED, 235)
+    curses.init_pair(109, curses.COLOR_GREEN, 235)
+    curses.init_pair(110, curses.COLOR_CYAN, 235)
+    curses.init_pair(111, curses.COLOR_GREEN, 235)
+    curses.init_pair(112, curses.COLOR_YELLOW, 235)
+    curses.init_pair(113, curses.COLOR_BLUE, 235)
+    curses.init_pair(114, curses.COLOR_CYAN, 235)
+    curses.init_pair(115, curses.COLOR_RED, 235)
+    curses.init_pair(116, curses.COLOR_MAGENTA, 235)
+
+    curses.curs_set(0)  # Hide cursor
+    stdscr.timeout(100)
+    
+    lines, cols = stdscr.getmaxyx()
+    stdscr.addstr(0, 0, "Gitkcli git browser".ljust(cols-1), curses_color(7))
+
+    git_log_view = GitLogView(curses.newwin(lines-2, cols, 1, 0), 'git-log-search')
+    git_log_job = GitLogJob(git_log_view)
+    Gitkcli.add_job('git-log', git_log_job)
+    git_log_job.start_job(cmd_args)
+
+    git_search_job = GitSearchJob()
+    git_search_job.args = cmd_args
+    Gitkcli.add_job('git-search-results', git_search_job)
+
+    git_search_dialog = GitSearchDialogPopup(stdscr)
+    Gitkcli.add_view('git-log-search', git_search_dialog)
+
+    git_diff_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'git-diff-search')
+    git_diff_job = GitShowJob(git_diff_view)
+    Gitkcli.add_job('git-diff', git_diff_job)
+
+    git_diff_search_dialog = SearchDialogPopup(stdscr)
+    Gitkcli.add_view('git-diff-search', git_diff_search_dialog)
+
+    git_refs_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'git-refs-search')
+    git_refs_job = GitRefsJob(git_refs_view)
+    Gitkcli.add_job('git-refs', git_refs_job)
+    git_refs_job.start_job()
+
+    git_refs_search_dialog = SearchDialogPopup(stdscr)
+    Gitkcli.add_view('git-refs-search', git_refs_search_dialog)
+
+    error_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'error-search')
+    Gitkcli.add_view('error', error_view)
+
+    error_search_dialog = SearchDialogPopup(stdscr)
+    Gitkcli.add_view('error-search', error_search_dialog)
+
+    Gitkcli.show_view('git-log')
+
+    while Gitkcli.running:
+        Gitkcli.process_all_jobs()
+
+        Gitkcli.draw_status_bar(stdscr)
+        stdscr.refresh()
+
+        active_view = Gitkcli.get_view()
+        if not active_view:
+            break;
+
+        active_view.draw()
+        
+        key = stdscr.getch()
+        handled = False
+
+        if not active_view.handle_input(key):
+            if key == ord('q'):
+                Gitkcli.hide_view()
+            elif key == curses.KEY_F1:
+                Gitkcli.show_view('git-log')
+            elif key == curses.KEY_F2:
+                Gitkcli.show_view('git-refs')
+            elif key == curses.KEY_F3:
+                Gitkcli.show_view('error')
+
+    Gitkcli.exit_program()
 
 def main():
-    """
-    Entry point function that wraps the curses application
-    """
-    try:
-        return curses.wrapper(main_curses)
-    except KeyboardInterrupt:
-        # Handle Ctrl+C gracefully
-        print("Interrupted by user", file=sys.stderr)
-        return 130
+    parser = argparse.ArgumentParser(description='')
+    args, cmd_args = parser.parse_known_args()
+
+    curses.wrapper(lambda stdscr: launch_curses(stdscr, cmd_args))
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

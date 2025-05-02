@@ -10,27 +10,24 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="gitkcli",
     version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Simon Mikuda",
+    author_email="simon.mikuda@example.com",
     description="A terminal-based Git repository viewer",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/gitkcli",
+    url="https://github.com/AdUki/gitkcli",
     py_modules=["gitkcli"],  # Use py_modules instead of packages for a single file
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Environment :: Console :: Curses",
         "Topic :: Software Development :: Version Control :: Git",
     ],
     python_requires=">=3.6",
-    install_requires=[
-        "pygit2>=1.5.0",
-    ],
     entry_points={
         "console_scripts": [
-            "gitkcli=gitkcli:main",  # Change this line to point directly to gitkcli.py's main function
+            "gitkcli=gitkcli:main",
         ],
     },
 )
+
