@@ -389,8 +389,8 @@ class DiffListItem:
             stdsrc.addstr(line, curses_color(16, selected))
         elif self.line.startswith('commit '):
             stdsrc.addstr(line, curses_color(4, selected))
-        elif self.line.startswith(('git-diff', 'index', '+++', '---')):
-            stdsrc.addstr(line, curses_color(1, selected, bold = True))
+        elif self.line.startswith(('diff', 'new', 'index', '+++', '---')):
+            stdsrc.addstr(line, curses_color(17, selected, bold = True))
         elif self.line.startswith('-'):
             stdsrc.addstr(line, curses_color(8, selected))
         elif self.line.startswith('+'):
@@ -808,6 +808,7 @@ def launch_curses(stdscr, cmd_args):
     curses.init_pair(14, curses.COLOR_CYAN, -1) # stash
     curses.init_pair(15, curses.COLOR_RED, -1) # remote ref
     curses.init_pair(16, curses.COLOR_MAGENTA, -1) # search match
+    curses.init_pair(17, curses.COLOR_BLUE, -1) # diff info lines
 
     # selected colors have offset 100
     curses.init_pair(101, curses.COLOR_WHITE, 235)
@@ -825,6 +826,7 @@ def launch_curses(stdscr, cmd_args):
     curses.init_pair(114, curses.COLOR_CYAN, 235)
     curses.init_pair(115, curses.COLOR_RED, 235)
     curses.init_pair(116, curses.COLOR_MAGENTA, 235)
+    curses.init_pair(117, curses.COLOR_BLUE, 235)
 
     curses.curs_set(0)  # Hide cursor
     stdscr.timeout(100)
