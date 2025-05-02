@@ -620,6 +620,7 @@ class GitLogView(ListView):
                     self.offset_y = max(0, self.selected - int(height / 2))
                 return True
             idx += 1
+        log_error(f'Commit with hash {id} not found')
         return False
 
     def handle_input(self, key):
@@ -671,18 +672,6 @@ class GitLogView(ListView):
 class GitDiffView(ListView):
     def __init__(self, win, search_dialog = None):
         super().__init__(win, search_dialog) 
-
-    def handle_input(self, key):
-        if key == ord('b'):
-            # TODO: implement jump to commit origin
-
-            id = '3a77bf2fd4835bf0cb74fde01ae2f0912bc5992e' # TODO: here we should get actual it from selected line
-
-            if Gitkcli.get_job('git-log').view.jump_to_id(id):
-                Gitkcli.hide_view()
-        else:
-            return super().handle_input(key)
-        return True
 
     def handle_input(self, key):
         if key == ord('b'):
