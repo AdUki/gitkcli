@@ -650,7 +650,7 @@ class GitDiffView(ListView):
                     Gitkcli.get_view('git-log').jump_to_id(id)
                     Gitkcli.hide_view()
                 else:
-                    log_error(f'{' '.join(args)} - exited with code {blame_process.returncode}')
+                    log_error({' '.join(args)} + f' - exited with code {blame_process.returncode}')
                     for line in blame_process.stderr.splitlines():
                         log_error(line)
             return True
