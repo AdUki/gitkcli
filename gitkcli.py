@@ -252,7 +252,7 @@ class GitLogJob(SubprocessJob):
 class GitShowJob(SubprocessJob):
     def __init__(self, view = None):
         super().__init__() 
-        self.cmd = 'git show -m --no-color'
+        self.cmd = 'git show -m --no-color --parents'
         self.view = view
 
     def process_line(self, line):
@@ -388,9 +388,9 @@ class DiffListItem:
         if matched:
             stdsrc.addstr(line, curses_color(16, selected))
         elif self.line.startswith('commit '):
-            stdsrc.addstr(line, curses_color(4, selected))
+            stdsrc.addstr('commit ' + line.split()[1], curses_color(4, selected))
         elif self.line.startswith(('diff', 'new', 'index', '+++', '---')):
-            stdsrc.addstr(line, curses_color(17, selected, bold = True))
+            stdsrc.addstr(line, curses_color(17, selected))
         elif self.line.startswith('-'):
             stdsrc.addstr(line, curses_color(8, selected))
         elif self.line.startswith('+'):
@@ -581,7 +581,9 @@ class GitLogView(ListView):
         for item in self.items:
             if id == item.get_id():
                 self.selected = idx
-                self.offset_y = idx - 1
+                height, _ = self.win.getmaxyx()
+                if self.selected < self.offset_y or self.selected >= self.offset_y + height:
+                    self.offset_y = self.selected - int(height / 2)
                 return True
             idx += 1
         return False
@@ -605,6 +607,45 @@ class GitDiffView(ListView):
 
             if Gitkcli.get_job('git-log').view.jump_to_id(id):
                 Gitkcli.hide_view()
+        else:
+            return super().handle_input(key)
+        return True
+
+    def handle_input(self, key):
+        if key == ord('b'):
+            if not self.selected or self.items[self.selected].line.startswith('+'):
+                return True
+
+            parent_id = self.items[0].line.split(' ')[2]
+            file_path = None
+            line_number = None
+            line_offset = 0
+            
+            for i in range(self.selected - 1, -1, -1):
+                text = self.items[i].get_text()
+                
+                if text.startswith('---'):
+                    file_path = text[6:]  # Remove the "--- b/" prefix
+                    break
+                
+                if line_number is None:
+                    if text.startswith(' ') or text.startswith('-'):
+                        line_offset += 1
+                    else:
+                        match = re.search(r'@@ -(\d+),\d+ \+\d+,\d+ @@', text)
+                        if match:
+                            line_number = int(match.group(1)) + line_offset
+            
+            if file_path:
+                blame_process = subprocess.run(['git', 'blame', '-l', '-s', '-L',
+                                                f'{line_number},{line_number}', parent_id,
+                                                '--', file_path], capture_output=True, text=True)
+
+                if blame_process.returncode == 0:
+                    id = blame_process.stdout.split(' ')[0]
+                    Gitkcli.get_view('git-log').jump_to_id(id)
+                    Gitkcli.hide_view()
+            return True
         else:
             return super().handle_input(key)
         return True
@@ -908,6 +949,8 @@ def launch_curses(stdscr, cmd_args):
             elif key == curses.KEY_F2:
                 Gitkcli.show_view('git-refs')
             elif key == curses.KEY_F3:
+                Gitkcli.show_view('git-diff')
+            elif key == curses.KEY_F4:
                 Gitkcli.show_view('error')
 
     Gitkcli.exit_program()
