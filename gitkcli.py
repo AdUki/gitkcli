@@ -10,12 +10,19 @@ import subprocess
 import threading
 
 def log_error(txt):
-    Gitkcli.get_view('error').append(TextListItem(txt))
+    for line in txt.splitlines():
+        Gitkcli.get_view('error').append(TextListItem(line))
+
+def refresh_refs():
+    Gitkcli.get_job('git-refs').start_job()
+
+def refresh_head():
+    pass
 
 def curses_ctrl(key):
     return ord(key) & 0x1F
 
-def curses_color(number, selected = False, bold = False, reverse = False, dim = False):
+def curses_color(number, selected = False, bold = False, reverse = False, dim = False, underline = False):
     if selected:
         color = curses.color_pair(100 + number)
     else:
@@ -26,6 +33,8 @@ def curses_color(number, selected = False, bold = False, reverse = False, dim = 
         color = color | curses.A_BOLD
     if dim:
         color = color | curses.A_DIM
+    if underline:
+        color = color | curses.A_UNDERLINE
     return color
 
 def get_ref_color_and_title(ref):
@@ -418,11 +427,13 @@ class CommitListItem:
     def draw_line(self, stdsrc, y, offset, width, selected, matched):
         stdsrc.move(y, 0)
 
+        marked = Gitkcli.get_job('git-log').view.marked == self.data['id']
+
         segments = [
-            (self.data['id'][:7] + ' ', curses_color(4, selected)),
-            (self.data['date'].strftime("%Y-%m-%d %H:%M") + ' ', curses_color(5, selected)),
-            (self.data['author'].ljust(22) + ' ', curses_color(6, selected)),
-            (self.data['title'], curses_color(16 if matched else 1, selected))
+            (self.data['id'][:7] + ' ', curses_color(4, selected, underline=marked)),
+            (self.data['date'].strftime("%Y-%m-%d %H:%M") + ' ', curses_color(5, selected, underline=marked)),
+            (self.data['author'].ljust(22) + ' ', curses_color(6, selected, underline=marked)),
+            (self.data['title'], curses_color(16 if matched else 1, selected, underline=marked))
         ]
 
         refs_map = Gitkcli.get_job('git-refs').refs
@@ -453,7 +464,7 @@ class CommitListItem:
             current_pos += len(text)
 
         if selected:
-            stdsrc.addstr(' ' * width, attr)
+            stdsrc.addstr(' ' * width, curses_color(1, selected))
         else:
             stdsrc.clrtoeol()
 
@@ -578,6 +589,7 @@ class ListView:
 class GitLogView(ListView):
     def __init__(self, win, search_dialog = None):
         super().__init__(win, search_dialog) 
+        self.marked = ''
 
     def jump_to_id(self, id):
         idx = 0
@@ -586,7 +598,7 @@ class GitLogView(ListView):
                 self.selected = idx
                 height, _ = self.win.getmaxyx()
                 if self.selected < self.offset_y or self.selected >= self.offset_y + height:
-                    self.offset_y = self.selected - int(height / 2)
+                    self.offset_y = max(0, self.selected - int(height / 2))
                 return True
             idx += 1
         return False
@@ -594,6 +606,45 @@ class GitLogView(ListView):
     def handle_input(self, key):
         if key == ord('q'):
             Gitkcli.exit_program()
+
+        elif key == ord('b'):
+            selected_item = self.items[self.selected]
+            commit_id = selected_item.get_id()
+            branch_name = "new-branch" # TODO: This would be replaced with actual user input
+            result = subprocess.run(['git', 'branch', branch_name, commit_id], capture_output=True, text=True)
+            if result.returncode == 0:
+                refresh_refs()
+            else:
+                log_error(f"Error creating branch: " + result.stderr)
+
+        elif key == ord('r') or key == ord('R'):
+            selected_item = self.items[self.selected]
+            commit_id = selected_item.get_id()
+            reset_type = '--hard' if key == ord('R') else '--soft'
+            result = subprocess.run(['git', 'reset', reset_type, commit_id], capture_output=True, text=True)
+            if result.returncode == 0:
+                refresh_refs()
+            else:
+                log_error(f"Error during {reset_type} reset:" + result.stderr)
+
+        elif key == ord('c'):
+            selected_item = self.items[self.selected]
+            commit_id = selected_item.get_id()
+            result = subprocess.run(['git', 'cherry-pick', '-m', '1', commit_id], capture_output=True, text=True)
+            if result.returncode == 0:
+                refresh_refs()
+                refresh_head()
+            else:
+                log_error(f"Error during cherry-pick: " + result.stderr)
+
+        elif key == ord('m'):
+            selected_item = self.items[self.selected]
+            commit_id = selected_item.get_id()
+            self.marked = commit_id
+
+        elif key == ord('M'):
+            self.jump_to_id(self.marked)
+
         else:
             return super().handle_input(key)
         return True
@@ -644,15 +695,13 @@ class GitDiffView(ListView):
                         f'{line_number},{line_number}', parent_id,
                         '--', file_path]
 
-                blame_process = subprocess.run(args, capture_output=True, text=True)
-                if blame_process.returncode == 0:
-                    id = blame_process.stdout.split(' ')[0]
+                result = subprocess.run(args, capture_output=True, text=True)
+                if result.returncode == 0:
+                    id = result.stdout.split(' ')[0]
                     Gitkcli.get_view('git-log').jump_to_id(id)
                     Gitkcli.hide_view()
                 else:
-                    log_error({' '.join(args)} + f' - exited with code {blame_process.returncode}')
-                    for line in blame_process.stderr.splitlines():
-                        log_error(line)
+                    log_error({' '.join(args)} + f' - exited with code {result.returncode}' + result.stderr)
             return True
         else:
             return super().handle_input(key)
