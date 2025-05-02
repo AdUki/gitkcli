@@ -593,6 +593,22 @@ class GitLogView(ListView):
             return super().handle_input(key)
         return True
 
+class GitDiffView(ListView):
+    def __init__(self, win, search_dialog = None):
+        super().__init__(win, search_dialog) 
+
+    def handle_input(self, key):
+        if key == ord('b'):
+            # TODO: implement jump to commit origin
+
+            id = '3a77bf2fd4835bf0cb74fde01ae2f0912bc5992e' # TODO: here we should get actual it from selected line
+
+            if Gitkcli.get_job('git-log').view.jump_to_id(id):
+                Gitkcli.hide_view()
+        else:
+            return super().handle_input(key)
+        return True
+
 class SearchDialogPopup:
     def __init__(self, parent_win):
         self.query = ""
@@ -846,7 +862,7 @@ def launch_curses(stdscr, cmd_args):
     git_search_dialog = GitSearchDialogPopup(stdscr)
     Gitkcli.add_view('git-log-search', git_search_dialog)
 
-    git_diff_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'git-diff-search')
+    git_diff_view = GitDiffView(curses.newwin(lines-2, cols, 1, 0), 'git-diff-search')
     git_diff_job = GitShowJob(git_diff_view)
     Gitkcli.add_job('git-diff', git_diff_job)
 
