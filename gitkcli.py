@@ -9,6 +9,9 @@ import re
 import subprocess
 import threading
 
+def log_error(txt):
+    Gitkcli.get_view('error').append(TextListItem(txt))
+
 def curses_ctrl(key):
     return ord(key) & 0x1F
 
@@ -152,7 +155,7 @@ class SubprocessJob:
         pass
 
     def process_error(self, line):
-        Gitkcli.get_view('error').append(TextListItem(line))
+        log_error(line)
 
     def process_items(self):
         try:
@@ -637,14 +640,19 @@ class GitDiffView(ListView):
                             line_number = int(match.group(1)) + line_offset
             
             if file_path:
-                blame_process = subprocess.run(['git', 'blame', '-l', '-s', '-L',
-                                                f'{line_number},{line_number}', parent_id,
-                                                '--', file_path], capture_output=True, text=True)
+                args = ['git', 'blame', '-l', '-s', '-L',
+                        f'{line_number},{line_number}', parent_id,
+                        '--', file_path]
 
+                blame_process = subprocess.run(args, capture_output=True, text=True)
                 if blame_process.returncode == 0:
                     id = blame_process.stdout.split(' ')[0]
                     Gitkcli.get_view('git-log').jump_to_id(id)
                     Gitkcli.hide_view()
+                else:
+                    log_error(f'{' '.join(args)} - exited with code {blame_process.returncode}')
+                    for line in blame_process.stderr.splitlines():
+                        log_error(line)
             return True
         else:
             return super().handle_input(key)
