@@ -530,6 +530,19 @@ class ListView:
         self.offset_y = 0
         self.offset_x = 0
 
+    def ensure_selection_is_visible(self):
+        height, _ = self.win.getmaxyx()
+        if self.selected < self.offset_y:
+            if self.offset_y - self.selected > 1:
+                self.offset_y = max(0, self.selected - int(height / 2))
+            else:
+                self.offset_y = self.selected
+        elif self.selected >= self.offset_y + height:
+            if self.selected - self.offset_y - height > 1:
+                self.offset_y = min(max(0, len(self.items) - height), self.selected - int(height / 2))
+            else:
+                self.offset_y = self.selected - height + 1
+
     def handle_input(self, key):
         if not self.items:
             return False
@@ -540,9 +553,11 @@ class ListView:
         if key == curses.KEY_UP or key == ord('k'):
             if self.selected > 0:
                 self.selected -= 1
+            self.ensure_selection_is_visible()
         elif key == curses.KEY_DOWN or key == ord('j'):
             if self.selected < len(self.items) - 1:
                 self.selected += 1
+            self.ensure_selection_is_visible()
         elif key == curses.KEY_LEFT or key == ord('h'):
             if self.offset_x - offset_jump >= 0:
                 self.offset_x -= offset_jump
@@ -551,21 +566,27 @@ class ListView:
         elif key == curses.KEY_RIGHT or key == ord('l'):
             self.offset_x += offset_jump
         elif key == curses.KEY_PPAGE or key == curses_ctrl('b'):
-            if self.selected - height >= 0:
-                self.selected -= height
-            if self.offset_y - height >= 0:
-                self.offset_y -= height
+            self.selected -= height
+            self.offset_y -= height
+            if self.selected < 0:
+                self.selected = 0
+            if self.offset_y < 0:
+                self.offset_y = 0
+            self.ensure_selection_is_visible()
         elif key == curses.KEY_NPAGE or key == curses_ctrl('f'):
-            if self.selected + height < len(self.items):
-                self.selected += height
-            if self.offset_y + height < len(self.items):
-                self.offset_y = min(self.offset_y + height, max(0, len(self.items) - height))
+            self.selected += height
+            self.offset_y += height
+            if self.selected >= len(self.items):
+                self.selected = max(0, len(self.items) - 1)
+            if self.offset_y >= len(self.items) - height:
+                self.offset_y = max(0, len(self.items) - height)
+            self.ensure_selection_is_visible()
         elif key == curses.KEY_HOME or key == ord('g'):
             self.selected = 0
-            self.offset_y = 0
+            self.ensure_selection_is_visible()
         elif key == curses.KEY_END or key == ord('G'):
             self.selected = max(0, len(self.items) - 1)
-            self.offset_y = max(0, len(self.items) - height)
+            self.ensure_selection_is_visible()
         elif key == curses.KEY_MOUSE:
             _, mouse_x, mouse_y, _, mouse_state = curses.getmouse()
             begin_y, begin_x = self.win.getbegyx()
@@ -579,13 +600,13 @@ class ListView:
                     if mouse_state == curses.BUTTON1_DOUBLE_CLICKED:
                         return self.handle_input(curses.KEY_ENTER)
                 elif mouse_state == curses.BUTTON4_PRESSED: # wheel up
-                    self.selected -= 5
-                    if self.selected < 0:
-                        self.selected = 0
+                    self.offset_y -= 5
+                    if self.offset_y < 0:
+                        self.offset_y = 0
                 elif mouse_state == curses.BUTTON5_PRESSED: # wheel down
-                    self.selected += 5
-                    if self.selected >= len(self.items):
-                        self.selected = max(0, len(self.items) - 1)
+                    self.offset_y += 5
+                    if self.offset_y >= len(self.items) - height:
+                        self.offset_y = max(0, len(self.items) - height)
         elif key == ord('/'):
             if self.search_dialog:
                 Gitkcli.get_view(self.search_dialog).clear()
@@ -595,20 +616,17 @@ class ListView:
                 for i in range(self.selected + 1, len(self.items)):
                     if Gitkcli.get_view(self.search_dialog).matches(self.items[i]):
                         self.selected = i
+                        self.ensure_selection_is_visible()
                         break
         elif key == ord('N'):
             if self.search_dialog:
                 for i in reversed(range(0, self.selected - 1)):
                     if Gitkcli.get_view(self.search_dialog).matches(self.items[i]):
                         self.selected = i
+                        self.ensure_selection_is_visible()
                         break
         else: 
             return self.items[self.selected].handle_input(key)
-
-        if self.selected < self.offset_y:
-            self.offset_y = self.selected
-        elif self.selected >= self.offset_y + height:
-            self.offset_y = self.selected - height + 1
 
         return True
 
