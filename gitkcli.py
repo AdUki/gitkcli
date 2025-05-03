@@ -566,6 +566,26 @@ class ListView:
         elif key == curses.KEY_END or key == ord('G'):
             self.selected = max(0, len(self.items) - 1)
             self.offset_y = max(0, len(self.items) - height)
+        elif key == curses.KEY_MOUSE:
+            _, mouse_x, mouse_y, _, mouse_state = curses.getmouse()
+            begin_y, begin_x = self.win.getbegyx()
+            click_x = mouse_x - begin_x
+            click_y = mouse_y - begin_y
+            if 0 <= click_y < height and 0 <= click_x < width:
+                if mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_DOUBLE_CLICKED:
+                    new_selected = self.offset_y + click_y
+                    if 0 <= new_selected < len(self.items):
+                        self.selected = new_selected
+                    if mouse_state == curses.BUTTON1_DOUBLE_CLICKED:
+                        return self.handle_input(curses.KEY_ENTER)
+                elif mouse_state == curses.BUTTON4_PRESSED: # wheel up
+                    self.selected -= 5
+                    if self.selected < 0:
+                        self.selected = 0
+                elif mouse_state == curses.BUTTON5_PRESSED: # wheel down
+                    self.selected += 5
+                    if self.selected >= len(self.items):
+                        self.selected = max(0, len(self.items) - 1)
         elif key == ord('/'):
             if self.search_dialog:
                 Gitkcli.get_view(self.search_dialog).clear()
@@ -952,6 +972,7 @@ def launch_curses(stdscr, cmd_args):
 
     curses.curs_set(0)  # Hide cursor
     stdscr.timeout(100)
+    curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
     
     lines, cols = stdscr.getmaxyx()
     stdscr.addstr(0, 0, "Gitkcli git browser".ljust(cols-1), curses_color(7))
