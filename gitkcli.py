@@ -200,7 +200,7 @@ class SubprocessJob:
         self.stop_job()
 
         self.job = subprocess.Popen(
-                self.cmd.split(' ') + self.args + args,
+                self.cmd.split(' ') + args + self.args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE)
         
