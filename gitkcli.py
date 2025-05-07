@@ -19,7 +19,9 @@ def refresh_refs():
     Gitkcli.get_job('git-refs').start_job()
 
 def refresh_head():
-    pass
+    commit_id = Gitkcli.get_job('git-refs').head_id
+    if commit_id:
+        Gitkcli.get_job('git-refresh-head').start_job(['--reverse', f'{commit_id}..HEAD'], clear_view = False)
 
 def curses_ctrl(key):
     return ord(key) & 0x1F
@@ -44,7 +46,7 @@ def get_ref_color_and_title(ref):
     color = 11
     if ref['type'] == 'head':
         color = 13
-        if Gitkcli.get_job('git-refs').head:
+        if Gitkcli.get_job('git-refs').head_branch:
             title += ' ->'
     elif ref['type'] == 'heads':
         title = f"[{ref['name']}]"
@@ -195,10 +197,10 @@ class SubprocessJob:
                 self.job.kill()
 
 
-    def start_job(self, args = []):
+    def start_job(self, args = [], clear_view = True):
         self.stop_job()
 
-        if self.view:
+        if clear_view and self.view:
             self.view.clear()
 
         self.job = subprocess.Popen(
@@ -263,6 +265,11 @@ class GitLogJob(SubprocessJob):
         if self.view:
             self.view.append(CommitListItem(item))
 
+class GitRefreshHeadJob(GitLogJob):
+    def process_item(self, item):
+        if self.view:
+            self.view.prepend(CommitListItem(item))
+
 class GitShowJob(SubprocessJob):
     def __init__(self, view = None):
         super().__init__() 
@@ -300,12 +307,13 @@ class GitRefsJob(SubprocessJob):
         super().__init__() 
         self.cmd = 'git show-ref --head'
         self.view = view
+        self.head_id = ''
 
     def start_job(self, args = []):
         self.refs = {} # map: git_id --> { 'type':<ref-type>, 'name':<ref-name> }
 
-        self.head = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True, text=True).stdout.rstrip()
-        if self.head == 'HEAD': self.head = ''
+        self.head_branch = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True, text=True).stdout.rstrip()
+        if self.head_branch == 'HEAD': self.head_branch = ''
 
         super().start_job(args) 
 
@@ -337,6 +345,8 @@ class GitRefsJob(SubprocessJob):
             self.refs[id].append(item)
         else:
             self.refs[id] = [item]
+        if item['type'] == 'head':
+            self.head_id = item['id']
 
 class RefListItem:
     def __init__(self, data):
@@ -460,12 +470,12 @@ class CommitListItem:
             (self.data['title'], curses_color(16 if matched else 1, selected, underline=marked))
         ]
 
-        head = Gitkcli.get_job('git-refs').head
+        head_branch = Gitkcli.get_job('git-refs').head_branch
         head_position = 0
         refs_map = Gitkcli.get_job('git-refs').refs
         refs = refs_map.get(self.data['id'], [])
         for ref in refs:
-            if ref['name'] == head:
+            if ref['name'] == head_branch:
                 position = head_position + 2
             else:
                 position = len(segments)
@@ -523,9 +533,13 @@ class ListView:
         
     def prepend(self, item):
         """Add item to beginning of list"""
+        height, _ = self.win.getmaxyx()
         self.items.insert(0, item)
         self.selected += 1
-        self.offset_y += 1
+        if self.offset_y > 0:
+            self.offset_y += 1
+        else:
+            self.ensure_selection_is_visible()
         
     def insert(self, item, position=None):
         """Insert item at position or selected position"""
@@ -696,8 +710,8 @@ class GitLogView(ListView):
             commit_id = selected_item.get_id()
             result = subprocess.run(['git', 'cherry-pick', '-m', '1', commit_id], capture_output=True, text=True)
             if result.returncode == 0:
-                refresh_refs()
                 refresh_head()
+                refresh_refs()
             else:
                 log(f"Error during cherry-pick: " + result.stderr)
 
@@ -1061,6 +1075,11 @@ def launch_curses(stdscr, cmd_args):
     Gitkcli.add_job('git-log', git_log_job)
     git_log_job.start_job()
 
+    # NOTE: This job will be no longer needed when we will have implemented graph with topology order
+    git_refresh_head_job = GitRefreshHeadJob(git_log_view)
+    git_refresh_head_job.args = cmd_args
+    Gitkcli.add_job('git-refresh-head', git_refresh_head_job)
+
     git_search_job = GitSearchJob()
     git_search_job.args = cmd_args
     Gitkcli.add_job('git-search-results', git_search_job)
@@ -1115,8 +1134,8 @@ def launch_curses(stdscr, cmd_args):
             elif key == curses.KEY_F4:
                 Gitkcli.show_view('log')
             elif key == curses.KEY_F5:
-                refresh_refs()
                 refresh_head()
+                refresh_refs()
             elif key == ord('~'): # Shift + F5
                 refresh_refs()
                 Gitkcli.get_job('git-log').start_job()
