@@ -112,9 +112,19 @@ class Gitkcli:
         cls.showed_views.append(id)
 
     @classmethod
+    def clear_and_show_view(cls, id):
+        cls.get_view(id).clear()
+        cls.show_view(id)
+
+    @classmethod
     def hide_view(cls):
         if len(cls.showed_views) > 0:
             cls.showed_views.pop(-1)
+
+    @classmethod
+    def hide_current_and_show_view(cls, id):
+        cls.hide_view()
+        cls.show_view(id)
 
     @classmethod
     def draw_status_bar(cls, stdscr):
@@ -353,8 +363,7 @@ class RefListItem:
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:
             if Gitkcli.get_view('git-log').jump_to_id(self.data['id']):
-                Gitkcli.hide_view()
-                Gitkcli.show_view('git-log')
+                Gitkcli.hide_current_and_show_view('git-log')
         else:
             return False
         return True
@@ -493,9 +502,8 @@ class CommitListItem:
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:
-            Gitkcli.get_view('git-diff').clear()
             Gitkcli.get_job('git-diff').start_job([self.data['id']])
-            Gitkcli.show_view('git-diff')
+            Gitkcli.clear_and_show_view('git-diff')
         else:
             return False
         return True
@@ -613,8 +621,7 @@ class ListView:
                         self.offset_y = max(0, len(self.items) - height)
         elif key == ord('/'):
             if self.search_dialog:
-                Gitkcli.get_view(self.search_dialog).clear()
-                Gitkcli.show_view(self.search_dialog)
+                Gitkcli.clear_and_show_view(self.search_dialog)
         elif key == ord('n'):
             if self.search_dialog:
                 for i in range(self.selected + 1, len(self.items)):
@@ -672,8 +679,7 @@ class GitLogView(ListView):
         elif key == ord('b'):
             selected_item = self.items[self.selected]
             Gitkcli.get_view('git-log-branch').commit_id = selected_item.get_id()
-            Gitkcli.get_view('git-log-branch').clear()
-            Gitkcli.show_view('git-log-branch')
+            Gitkcli.clear_and_show_view('git-log-branch')
 
         elif key == ord('r') or key == ord('R'):
             selected_item = self.items[self.selected]
