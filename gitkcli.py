@@ -9,9 +9,11 @@ import re
 import subprocess
 import threading
 
-def log_error(txt):
-    for line in txt.splitlines():
-        Gitkcli.get_view('error').append(TextListItem(line))
+def log(txt):
+    view = Gitkcli.get_view('log')
+    if view:
+        for line in txt.splitlines():
+            view.append(TextListItem(line))
 
 def refresh_refs():
     Gitkcli.get_job('git-refs').start_job()
@@ -40,23 +42,10 @@ def curses_color(number, selected = False, bold = False, reverse = False, dim = 
 def get_ref_color_and_title(ref):
     title = f"({ref['name']})"
     color = 11
-    if ref['type'] == 'head': color = 13
-    elif ref['type'] == 'heads':
-        title = f"[{ref['name']}]"
-    elif ref['type'] == 'remotes':
-        color = 15
-        title = f"{{{ref['name']}}}"
-    elif ref['type'] == 'tags':
-        color = 12
-        title = f"<{ref['name']}>"
-    elif ref['type'] == 'stash':
-        color = 14
-    return color, title
-
-def get_ref_color_and_title(ref):
-    title = f"({ref['name']})"
-    color = 11
-    if ref['type'] == 'head': color = 13
+    if ref['type'] == 'head':
+        color = 13
+        if Gitkcli.get_job('git-refs').head:
+            title += ' ->'
     elif ref['type'] == 'heads':
         title = f"[{ref['name']}]"
     elif ref['type'] == 'remotes':
@@ -164,7 +153,7 @@ class SubprocessJob:
         pass
 
     def process_error(self, line):
-        log_error(line)
+        log(line)
 
     def process_items(self):
         try:
@@ -301,6 +290,10 @@ class GitRefsJob(SubprocessJob):
 
     def start_job(self, args = []):
         self.refs = {} # map: git_id --> { 'type':<ref-type>, 'name':<ref-name> }
+
+        self.head = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True, text=True).stdout.rstrip()
+        if self.head == 'HEAD': self.head = ''
+
         super().start_job(args) 
 
     def process_line(self, line):
@@ -455,12 +448,20 @@ class CommitListItem:
             (self.data['title'], curses_color(16 if matched else 1, selected, underline=marked))
         ]
 
+        head = Gitkcli.get_job('git-refs').head
+        head_position = 0
         refs_map = Gitkcli.get_job('git-refs').refs
         refs = refs_map.get(self.data['id'], [])
         for ref in refs:
-            segments.append((' ', curses_color(1, selected)))
+            if ref['name'] == head:
+                position = head_position + 2
+            else:
+                position = len(segments)
+            if ref['type'] == 'head':
+                head_position = position
+            segments.insert(position, (' ', curses_color(1, selected)))
             color, title = get_ref_color_and_title(ref)
-            segments.append((title, curses_color(color, selected, True)))
+            segments.insert(position + 1, (title, curses_color(color, selected, True)))
 
         current_pos = 0
         for text, attr in segments:
@@ -658,7 +659,7 @@ class GitLogView(ListView):
                     self.offset_y = max(0, self.selected - int(height / 2))
                 return True
             idx += 1
-        log_error(f'Commit with hash {id} not found')
+        log(f'Commit with hash {id} not found')
         return False
 
     def handle_input(self, key):
@@ -673,7 +674,7 @@ class GitLogView(ListView):
             if result.returncode == 0:
                 refresh_refs()
             else:
-                log_error(f"Error creating branch: " + result.stderr)
+                log(f"Error creating branch: " + result.stderr)
 
         elif key == ord('r') or key == ord('R'):
             selected_item = self.items[self.selected]
@@ -683,7 +684,7 @@ class GitLogView(ListView):
             if result.returncode == 0:
                 refresh_refs()
             else:
-                log_error(f"Error during {reset_type} reset:" + result.stderr)
+                log(f"Error during {reset_type} reset:" + result.stderr)
 
         elif key == ord('c'):
             selected_item = self.items[self.selected]
@@ -693,7 +694,7 @@ class GitLogView(ListView):
                 refresh_refs()
                 refresh_head()
             else:
-                log_error(f"Error during cherry-pick: " + result.stderr)
+                log(f"Error during cherry-pick: " + result.stderr)
 
         elif key == ord('m'):
             selected_item = self.items[self.selected]
@@ -747,7 +748,7 @@ class GitDiffView(ListView):
                     Gitkcli.get_view('git-log').jump_to_id(id)
                     Gitkcli.hide_view()
                 else:
-                    log_error({' '.join(args)} + f' - exited with code {result.returncode}' + result.stderr)
+                    log({' '.join(args)} + f' - exited with code {result.returncode}' + result.stderr)
             return True
         else:
             return super().handle_input(key)
@@ -995,6 +996,12 @@ def launch_curses(stdscr, cmd_args):
     lines, cols = stdscr.getmaxyx()
     stdscr.addstr(0, 0, "Gitkcli git browser".ljust(cols-1), curses_color(7))
 
+    log_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'log-search')
+    Gitkcli.add_view('log', log_view)
+
+    log_search_dialog = SearchDialogPopup(stdscr)
+    Gitkcli.add_view('log-search', log_search_dialog)
+
     git_log_view = GitLogView(curses.newwin(lines-2, cols, 1, 0), 'git-log-search')
     git_log_job = GitLogJob(git_log_view)
     Gitkcli.add_job('git-log', git_log_job)
@@ -1021,12 +1028,6 @@ def launch_curses(stdscr, cmd_args):
 
     git_refs_search_dialog = SearchDialogPopup(stdscr)
     Gitkcli.add_view('git-refs-search', git_refs_search_dialog)
-
-    error_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'error-search')
-    Gitkcli.add_view('error', error_view)
-
-    error_search_dialog = SearchDialogPopup(stdscr)
-    Gitkcli.add_view('error-search', error_search_dialog)
 
     Gitkcli.show_view('git-log')
 
@@ -1055,7 +1056,7 @@ def launch_curses(stdscr, cmd_args):
             elif key == curses.KEY_F3:
                 Gitkcli.show_view('git-diff')
             elif key == curses.KEY_F4:
-                Gitkcli.show_view('error')
+                Gitkcli.show_view('log')
 
     Gitkcli.exit_program()
 
