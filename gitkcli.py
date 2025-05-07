@@ -569,6 +569,18 @@ class ListView:
             else:
                 self.offset_y = self.selected - height + 1
 
+    def execute_search(self, search_dialog_view):
+        for i in range(self.selected, len(self.items)):
+            if search_dialog_view.matches(self.items[i]):
+                self.selected = i
+                self.ensure_selection_is_visible()
+                return
+        for i in range(0, self.selected):
+            if search_dialog_view.matches(self.items[i]):
+                self.selected = i
+                self.ensure_selection_is_visible()
+                return
+
     def handle_input(self, key):
         if not self.items:
             return False
@@ -645,7 +657,7 @@ class ListView:
                         break
         elif key == ord('N'):
             if self.search_dialog:
-                for i in reversed(range(0, self.selected - 1)):
+                for i in reversed(range(0, self.selected)):
                     if Gitkcli.get_view(self.search_dialog).matches(self.items[i]):
                         self.selected = i
                         self.ensure_selection_is_visible()
@@ -907,8 +919,9 @@ class NewBranchDialogPopup(UserInputDialogPopup):
             log(f"Error creating branch: " + result.stderr)
 
 class SearchDialogPopup(UserInputDialogPopup):
-    def __init__(self, parent_win):
+    def __init__(self, parent_win, list_view):
         super().__init__(parent_win) 
+        self.list_view = list_view
         self.case_sensitive = True
         self.use_regexp = False
         self.title_text = " Search "
@@ -944,10 +957,12 @@ class SearchDialogPopup(UserInputDialogPopup):
             return super().handle_input(key)
         return True
 
+    def execute(self):
+        self.list_view.execute_search(self)
 
 class GitSearchDialogPopup(SearchDialogPopup):
-    def __init__(self, parent_win):
-        super().__init__(parent_win) 
+    def __init__(self, parent_win, list_view):
+        super().__init__(parent_win, list_view) 
         self.search_type = "message"
         self.help_text = "Enter: Search | Esc: Cancel | Tab: Change type | F1: Case | F2: Regexp"
 
@@ -1066,7 +1081,7 @@ def launch_curses(stdscr, cmd_args):
     log_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'log-search')
     Gitkcli.add_view('log', log_view)
 
-    log_search_dialog = SearchDialogPopup(stdscr)
+    log_search_dialog = SearchDialogPopup(stdscr, log_view)
     Gitkcli.add_view('log-search', log_search_dialog)
 
     git_log_view = GitLogView(curses.newwin(lines-2, cols, 1, 0), 'git-log-search')
@@ -1084,7 +1099,7 @@ def launch_curses(stdscr, cmd_args):
     git_search_job.args = cmd_args
     Gitkcli.add_job('git-search-results', git_search_job)
 
-    git_search_dialog = GitSearchDialogPopup(stdscr)
+    git_search_dialog = GitSearchDialogPopup(stdscr, git_log_view)
     Gitkcli.add_view('git-log-search', git_search_dialog)
 
     log_branch_dialog = NewBranchDialogPopup(stdscr)
@@ -1094,7 +1109,7 @@ def launch_curses(stdscr, cmd_args):
     git_diff_job = GitShowJob(git_diff_view)
     Gitkcli.add_job('git-diff', git_diff_job)
 
-    git_diff_search_dialog = SearchDialogPopup(stdscr)
+    git_diff_search_dialog = SearchDialogPopup(stdscr, git_diff_view)
     Gitkcli.add_view('git-diff-search', git_diff_search_dialog)
 
     git_refs_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'git-refs-search')
@@ -1102,7 +1117,7 @@ def launch_curses(stdscr, cmd_args):
     Gitkcli.add_job('git-refs', git_refs_job)
     git_refs_job.start_job()
 
-    git_refs_search_dialog = SearchDialogPopup(stdscr)
+    git_refs_search_dialog = SearchDialogPopup(stdscr, git_refs_view)
     Gitkcli.add_view('git-refs-search', git_refs_search_dialog)
 
     Gitkcli.show_view('git-log')
