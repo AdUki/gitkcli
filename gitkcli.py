@@ -671,13 +671,9 @@ class GitLogView(ListView):
 
         elif key == ord('b'):
             selected_item = self.items[self.selected]
-            commit_id = selected_item.get_id()
-            branch_name = "new-branch" # TODO: This would be replaced with actual user input
-            result = subprocess.run(['git', 'branch', branch_name, commit_id], capture_output=True, text=True)
-            if result.returncode == 0:
-                refresh_refs()
-            else:
-                log(f"Error creating branch: " + result.stderr)
+            Gitkcli.get_view('git-log-branch').commit_id = selected_item.get_id()
+            Gitkcli.get_view('git-log-branch').clear()
+            Gitkcli.show_view('git-log-branch')
 
         elif key == ord('r') or key == ord('R'):
             selected_item = self.items[self.selected]
@@ -757,41 +753,25 @@ class GitDiffView(ListView):
             return super().handle_input(key)
         return True
 
-class SearchDialogPopup:
+class UserInputDialogPopup:
     def __init__(self, parent_win):
         self.query = ""
         self.cursor_pos = 0
-        self.case_sensitive = True
-        self.use_regexp = False
         self.height = 7
         self.width = 80
-        self.help_text = "Enter: Search | Esc: Cancel | F1: Case | F2: Regexp"
+        self.title_text = "Title"
+        self.help_text = "Enter: Execute | Esc: Cancel"
 
         parent_height, parent_width = parent_win.getmaxyx()
         start_y = parent_height // 2 - self.height // 2
         start_x = parent_width // 2 - self.width // 2
         self.win = curses.newwin(self.height, self.width, start_y, start_x)
 
-    def matches(self, item):
-        if self.query:
-            if self.use_regexp:
-                if self.case_sensitive:
-                    return re.search(self.query, item.get_text())
-                else:
-                    return re.search(self.query, item.get_text(), re.IGNORECASE)
-            elif self.case_sensitive:
-                return self.query in item.get_text()
-            else:
-                return self.query.lower() in item.get_text().lower()
-        else:
-            return False
-
     def draw_top_panel(self):
-        self.win.move(1, 2)
-        self.win.addstr("Flags: ")
-        self.win.addstr("<Case>", curses_color(1, self.case_sensitive))
-        self.win.addstr(" ")
-        self.win.addstr("<Regexp>", curses_color(1, self.use_regexp))
+        pass
+
+    def execute(self):
+        pass
 
     def draw(self):
         self.draw_top_panel()
@@ -818,8 +798,7 @@ class SearchDialogPopup:
         self.win.addstr(5, (self.width - len(self.help_text)) // 2, self.help_text, curses.A_DIM)
         
         self.win.box()
-        title = " Search "
-        self.win.addstr(0, (self.width - len(title)) // 2, title)
+        self.win.addstr(0, (self.width - len(self.title_text)) // 2, self.title_text)
         
         # Move cursor to its position
         self.win.move(3, 2 + len(prompt) + adjusted_cursor_pos)
@@ -835,6 +814,7 @@ class SearchDialogPopup:
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
             curses.curs_set(0)
             Gitkcli.hide_view()
+            self.execute()
 
         elif key == curses.KEY_EXIT or key == 27:  # Escape key
             curses.curs_set(0)
@@ -842,12 +822,6 @@ class SearchDialogPopup:
             self.cursor_pos = 0
             Gitkcli.hide_view()
                 
-        elif key == curses.KEY_F1:
-            self.case_sensitive = not self.case_sensitive
-            
-        elif key == curses.KEY_F2:
-            self.use_regexp = not self.use_regexp
-            
         elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
             if self.cursor_pos > 0:
                 self.query = self.query[:self.cursor_pos-1] + self.query[self.cursor_pos:]
@@ -878,6 +852,76 @@ class SearchDialogPopup:
         else:
             return False
             
+        return True
+
+class NewBranchDialogPopup(UserInputDialogPopup):
+    def __init__(self, parent_win):
+        super().__init__(parent_win) 
+        self.force = False
+        self.title_text = " New Branch "
+        self.help_text = "Enter: Execute | Esc: Cancel | F1: Force"
+        self.commit_id = ''
+
+    def draw_top_panel(self):
+        self.win.move(1, 2)
+        self.win.addstr("Specify the new branch name")
+        self.win.addstr("    Flags: ")
+        self.win.addstr("<Force>", curses_color(1, self.force))
+
+    def handle_input(self, key):
+        if key == curses.KEY_F1:
+            self.force = not self.force
+        else:
+            return super().handle_input(key)
+        return True
+
+    def execute(self):
+        args = ['git', 'branch']
+        if self.force:
+            args += ['-f']
+        args += [self.query, self.commit_id]
+        result = subprocess.run(args, capture_output=True, text=True)
+        if result.returncode == 0:
+            refresh_refs()
+        else:
+            log(f"Error creating branch: " + result.stderr)
+
+class SearchDialogPopup(UserInputDialogPopup):
+    def __init__(self, parent_win):
+        super().__init__(parent_win) 
+        self.case_sensitive = True
+        self.use_regexp = False
+        self.title_text = " Search "
+        self.help_text = "Enter: Search | Esc: Cancel | F1: Case | F2: Regexp"
+
+    def matches(self, item):
+        if self.query:
+            if self.use_regexp:
+                if self.case_sensitive:
+                    return re.search(self.query, item.get_text())
+                else:
+                    return re.search(self.query, item.get_text(), re.IGNORECASE)
+            elif self.case_sensitive:
+                return self.query in item.get_text()
+            else:
+                return self.query.lower() in item.get_text().lower()
+        else:
+            return False
+
+    def draw_top_panel(self):
+        self.win.move(1, 2)
+        self.win.addstr("Flags: ")
+        self.win.addstr("<Case>", curses_color(1, self.case_sensitive))
+        self.win.addstr(" ")
+        self.win.addstr("<Regexp>", curses_color(1, self.use_regexp))
+
+    def handle_input(self, key):
+        if key == curses.KEY_F1:
+            self.case_sensitive = not self.case_sensitive
+        elif key == curses.KEY_F2:
+            self.use_regexp = not self.use_regexp
+        else:
+            return super().handle_input(key)
         return True
 
 
@@ -1017,6 +1061,9 @@ def launch_curses(stdscr, cmd_args):
 
     git_search_dialog = GitSearchDialogPopup(stdscr)
     Gitkcli.add_view('git-log-search', git_search_dialog)
+
+    log_branch_dialog = NewBranchDialogPopup(stdscr)
+    Gitkcli.add_view('git-log-branch', log_branch_dialog)
 
     git_diff_view = GitDiffView(curses.newwin(lines-2, cols, 1, 0), 'git-diff-search')
     git_diff_job = GitShowJob(git_diff_view)
