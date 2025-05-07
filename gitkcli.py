@@ -188,6 +188,9 @@ class SubprocessJob:
     def start_job(self, args = []):
         self.stop_job()
 
+        if self.view:
+            self.view.clear()
+
         self.job = subprocess.Popen(
                 self.cmd.split(' ') + args + self.args,
                 stdout=subprocess.PIPE,
@@ -1004,8 +1007,9 @@ def launch_curses(stdscr, cmd_args):
 
     git_log_view = GitLogView(curses.newwin(lines-2, cols, 1, 0), 'git-log-search')
     git_log_job = GitLogJob(git_log_view)
+    git_log_job.args = cmd_args
     Gitkcli.add_job('git-log', git_log_job)
-    git_log_job.start_job(cmd_args)
+    git_log_job.start_job()
 
     git_search_job = GitSearchJob()
     git_search_job.args = cmd_args
@@ -1057,6 +1061,12 @@ def launch_curses(stdscr, cmd_args):
                 Gitkcli.show_view('git-diff')
             elif key == curses.KEY_F4:
                 Gitkcli.show_view('log')
+            elif key == curses.KEY_F5:
+                refresh_refs()
+                refresh_head()
+            elif key == ord('~'): # Shift + F5
+                refresh_refs()
+                Gitkcli.get_job('git-log').start_job()
 
     Gitkcli.exit_program()
 
