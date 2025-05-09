@@ -9,11 +9,15 @@ import re
 import subprocess
 import threading
 
-def log(txt):
+def log(color, txt):
+    now = datetime.datetime.now()
     view = Gitkcli.get_view('log')
     if view:
         for line in txt.splitlines():
-            view.append(TextListItem(line))
+            view.append(TextListItem(f'{now} {line}', color))
+
+def log_info(txt): log(1, txt)
+def log_error(txt): log(2, txt)
 
 def refresh_refs():
     Gitkcli.get_job('git-refs').start_job()
@@ -129,6 +133,19 @@ class Gitkcli:
         cls.show_view(id)
 
     @classmethod
+    def draw_title_bar(cls, stdscr):
+        lines, cols = stdscr.getmaxyx()
+
+        title = "Gitkcli git browser"
+        for view_id in reversed(cls.showed_views):
+            view = cls.get_view(view_id)
+            if view.title:
+                title = view.title
+                break
+
+        stdscr.addstr(0, 0, title.ljust(cols-1), curses_color(7))
+
+    @classmethod
     def draw_status_bar(cls, stdscr):
         lines, cols = stdscr.getmaxyx()
         job = cls.get_job()
@@ -152,9 +169,10 @@ class SubprocessJob:
         self.cmd = ''
         self.args = []
         self.job = None
-        self.stop = True
+        self.running = False
+        self.stop = False
         self.items = queue.Queue()
-        self.stderr_queue = queue.Queue()
+        self.messages = queue.Queue()
 
     def process_line(self, line):
         # This should be implemented by derived classes
@@ -164,8 +182,13 @@ class SubprocessJob:
         # This should be implemented by derived classes
         pass
 
-    def process_error(self, line):
-        log(line)
+    def process_message(self, message):
+        if message['type'] == 'error':
+            log_error(message)
+        elif message['type'] == 'started':
+            self.running = True
+        elif message['type'] == 'finished':
+            self.running = False
 
     def process_items(self):
         try:
@@ -179,11 +202,11 @@ class SubprocessJob:
             pass
         try:
             while True:
-                line = self.stderr_queue.get_nowait()
-                self.stderr_queue.task_done()
+                line = self.messages.get_nowait()
+                self.messages.task_done()
                 if not line:
                     return
-                self.process_error(line)
+                self.process_message(line)
         except queue.Empty:
             pass
 
@@ -195,7 +218,7 @@ class SubprocessJob:
                 self.job.wait(timeout=1)
             except subprocess.TimeoutExpired:
                 self.job.kill()
-
+                self.running = False
 
     def start_job(self, args = [], clear_view = True):
         self.stop_job()
@@ -215,18 +238,16 @@ class SubprocessJob:
         stderr_thread.start()
 
     def get_exit_code(self):
-        if not self.job:
-            return False
-        else:
-            return self.job.poll()
+        exit_code = None
+        if self.job:
+            exit_code = self.job.poll()
+        return exit_code
 
     def job_running(self):
-        if not self.job:
-            return False
-        else:
-            return self.job.poll() is None
+        return self.get_exit_code() != None
 
     def _reader_thread(self, stream, is_stderr=False):
+        self.messages.put({'type': 'started'})
         for bytearr in iter(stream.readline, b''):
             if self.stop:
                 break
@@ -234,16 +255,17 @@ class SubprocessJob:
                 # curses automatically converts tab to spaces, so we will replace it here and cut off newline
                 line = bytearr.decode('utf-8', errors='replace').replace('\t', ' ' * curses.get_tabsize())[:-1]
                 if is_stderr:
-                    self.stderr_queue.put(line)
+                    self.messages.put({'type': 'error', 'message' :line})
                 else:
                     item = self.process_line(line)
                     if item:
                         self.items.put(item)
 
             except Exception as e:
-                self.stderr_queue.put(f"Error processing line: {line}")
-                self.stderr_queue.put(str(e))
+                self.messages.put(f"Error processing line: {line}")
+                self.messages.put(str(e))
         stream.close()
+        self.messages.put({'type': 'finished'})
 
 class GitLogJob(SubprocessJob):
     def __init__(self, view = None):
@@ -378,8 +400,9 @@ class RefListItem:
         return True
 
 class TextListItem:
-    def __init__(self, txt):
+    def __init__(self, txt, color = 1):
         self.txt = txt
+        self.color = color
 
     def get_text(self):
         return self.txt
@@ -392,7 +415,7 @@ class TextListItem:
             line = line[:width]
 
         stdsrc.move(y, 0)
-        stdsrc.addstr(line, curses_color(16 if matched else 1, selected))
+        stdsrc.addstr(line, curses_color(16 if matched else self.color, selected))
         stdsrc.clrtoeol()
 
     def handle_input(self, key):
@@ -519,6 +542,7 @@ class CommitListItem:
 
 class ListView:
     def __init__(self, win, search_dialog = None):
+        self.title = ''
         self.win = win
         self.items = []
         self.selected = 0
@@ -682,6 +706,7 @@ class ListView:
 class GitLogView(ListView):
     def __init__(self, win, search_dialog = None):
         super().__init__(win, search_dialog) 
+        self.title = "Git commit log"
         self.marked = ''
 
     def jump_to_id(self, id):
@@ -694,7 +719,7 @@ class GitLogView(ListView):
                     self.offset_y = max(0, self.selected - int(height / 2))
                 return True
             idx += 1
-        log(f'Commit with hash {id} not found')
+        log_error(f'Commit with hash {id} not found')
         return False
 
     def handle_input(self, key):
@@ -714,7 +739,7 @@ class GitLogView(ListView):
             if result.returncode == 0:
                 refresh_refs()
             else:
-                log(f"Error during {reset_type} reset:" + result.stderr)
+                log_error(f"Error during {reset_type} reset:" + result.stderr)
 
         elif key == ord('c'):
             selected_item = self.items[self.selected]
@@ -724,7 +749,7 @@ class GitLogView(ListView):
                 refresh_head()
                 refresh_refs()
             else:
-                log(f"Error during cherry-pick: " + result.stderr)
+                log_error(f"Error during cherry-pick: " + result.stderr)
 
         elif key == ord('m'):
             selected_item = self.items[self.selected]
@@ -741,6 +766,7 @@ class GitLogView(ListView):
 class GitDiffView(ListView):
     def __init__(self, win, search_dialog = None):
         super().__init__(win, search_dialog) 
+        self.title = "Git commit diff"
 
     def handle_input(self, key):
         if key == ord('b'):
@@ -778,7 +804,7 @@ class GitDiffView(ListView):
                     Gitkcli.get_view('git-log').jump_to_id(id)
                     Gitkcli.hide_view()
                 else:
-                    log({' '.join(args)} + f' - exited with code {result.returncode}' + result.stderr)
+                    log_error({' '.join(args)} + f' - exited with code {result.returncode}' + result.stderr)
             return True
         else:
             return super().handle_input(key)
@@ -786,6 +812,7 @@ class GitDiffView(ListView):
 
 class UserInputDialogPopup:
     def __init__(self, parent_win):
+        self.title = ''
         self.query = ""
         self.cursor_pos = 0
         self.height = 7
@@ -915,7 +942,7 @@ class NewBranchDialogPopup(UserInputDialogPopup):
         if result.returncode == 0:
             refresh_refs()
         else:
-            log(f"Error creating branch: " + result.stderr)
+            log_error(f"Error creating branch: " + result.stderr)
 
 class SearchDialogPopup(UserInputDialogPopup):
     def __init__(self, parent_win, list_view):
@@ -1073,11 +1100,11 @@ def launch_curses(stdscr, cmd_args):
     curses.curs_set(0)  # Hide cursor
     stdscr.timeout(100)
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
-    
+
     lines, cols = stdscr.getmaxyx()
-    stdscr.addstr(0, 0, "Gitkcli git browser".ljust(cols-1), curses_color(7))
 
     log_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'log-search')
+    log_view.title = "Logs"
     Gitkcli.add_view('log', log_view)
 
     log_search_dialog = SearchDialogPopup(stdscr, log_view)
@@ -1112,6 +1139,7 @@ def launch_curses(stdscr, cmd_args):
     Gitkcli.add_view('git-diff-search', git_diff_search_dialog)
 
     git_refs_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'git-refs-search')
+    git_refs_view.title = 'Git references'
     git_refs_job = GitRefsJob(git_refs_view)
     Gitkcli.add_job('git-refs', git_refs_job)
     git_refs_job.start_job()
@@ -1124,6 +1152,7 @@ def launch_curses(stdscr, cmd_args):
     while Gitkcli.running:
         Gitkcli.process_all_jobs()
 
+        Gitkcli.draw_title_bar(stdscr)
         Gitkcli.draw_status_bar(stdscr)
         stdscr.refresh()
 
