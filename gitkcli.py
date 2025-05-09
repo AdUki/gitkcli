@@ -251,7 +251,7 @@ class SubprocessJob:
         if clear_view and self.view:
             self.view.clear()
 
-        log_info(self.cmd + ' '.join(args) + ' '.join(self.args))
+        log_info(' '.join([self.cmd] + args + self.args))
 
         self.job = subprocess.Popen(
                 self.cmd.split(' ') + args + self.args,
@@ -796,7 +796,7 @@ class GitDiffView(ListView):
         self.title = "Git commit diff"
 
     def handle_input(self, key):
-        if key == ord('b'):
+        if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
             if not self.selected or self.items[self.selected].line.startswith('+'):
                 return True
 
