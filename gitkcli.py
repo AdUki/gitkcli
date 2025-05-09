@@ -1118,7 +1118,6 @@ def launch_curses(stdscr, cmd_args):
 
     # NOTE: This job will be no longer needed when we will have implemented graph with topology order
     git_refresh_head_job = GitRefreshHeadJob(git_log_view)
-    git_refresh_head_job.args = cmd_args
     Gitkcli.add_job('git-refresh-head', git_refresh_head_job)
 
     git_search_job = GitSearchJob()
