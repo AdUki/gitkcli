@@ -1017,18 +1017,21 @@ class SearchDialogPopup(UserInputDialogPopup):
 class GitSearchDialogPopup(SearchDialogPopup):
     def __init__(self, parent_win, list_view):
         super().__init__(parent_win, list_view) 
-        self.search_type = "message"
+        self.search_type = "txt"
         self.help_text = "Enter: Search | Esc: Cancel | Tab: Change type | F1: Case | F2: Regexp"
 
     def matches(self, item):
-        return item.get_id() in Gitkcli.get_job('git-search-results').ids
+        if self.search_type == "txt":
+            return super().matches(item)
+        else:
+            return item.get_id() in Gitkcli.get_job('git-search-results').ids
 
     def draw_top_panel(self):
         self.win.move(1, 2)
         self.win.addstr("Type: ")
-        self.win.addstr("[Message]", curses_color(1, self.search_type == "message"))
+        self.win.addstr("[Txt]", curses_color(1, self.search_type == "txt"))
         self.win.addstr(" ")
-        self.win.addstr("[Author]", curses_color(1, self.search_type == "author"))
+        self.win.addstr("[Message]", curses_color(1, self.search_type == "message"))
         self.win.addstr(" ")
         self.win.addstr("[Filepaths]", curses_color(1, self.search_type == "path"))
         self.win.addstr(" ")
@@ -1040,6 +1043,9 @@ class GitSearchDialogPopup(SearchDialogPopup):
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
+            if self.search_type == "message":
+                return super().handle_input(key)
+
             curses.curs_set(0)
             Gitkcli.hide_view()
 
@@ -1050,11 +1056,6 @@ class GitSearchDialogPopup(SearchDialogPopup):
                 if not self.use_regexp:
                     args.append('-F')
                 args.append("--grep")
-                args.append(self.query)
-            if self.search_type == "author":
-                if not self.use_regexp:
-                    args.append('-F')
-                args.append("--author")
                 args.append(self.query)
             elif self.search_type == "diff":
                 if self.use_regexp:
@@ -1069,14 +1070,14 @@ class GitSearchDialogPopup(SearchDialogPopup):
             Gitkcli.get_job('git-search-results').start_job(args)
 
         elif key == 9:  # Tab key - cycle through search types
-            if self.search_type == "message":
-                self.search_type = "author"
-            elif self.search_type == "author":
+            if self.search_type == "txt":
+                self.search_type = "message"
+            elif self.search_type == "message":
                 self.search_type = "path"
             elif self.search_type == "path":
                 self.search_type = "diff"
             else:
-                self.search_type = "message"
+                self.search_type = "txt"
 
         else:
             return super().handle_input(key)
