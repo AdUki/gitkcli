@@ -199,6 +199,7 @@ class SubprocessJob:
 
     def start_job(self, args = [], clear_view = True):
         self.stop_job()
+        self.stop = False
 
         if clear_view and self.view:
             self.view.clear()
@@ -212,8 +213,6 @@ class SubprocessJob:
         stderr_thread = threading.Thread(target=self._reader_thread, args=(self.job.stderr, True))
         stdout_thread.start()
         stderr_thread.start()
-
-        self.stop = False
 
     def get_exit_code(self):
         if not self.job:
