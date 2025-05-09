@@ -3,29 +3,16 @@
 import argparse
 import curses
 import datetime
+import time
 import pprint
 import queue
 import re
 import subprocess
 import threading
 
-def log(color, txt):
-    now = datetime.datetime.now()
-    view = Gitkcli.get_view('log')
-    if view:
-        for line in txt.splitlines():
-            view.append(TextListItem(f'{now} {line}', color))
-
-def log_info(txt): log(1, txt)
-def log_error(txt): log(2, txt)
-
-def refresh_refs():
-    Gitkcli.get_job('git-refs').start_job()
-
-def refresh_head():
-    commit_id = Gitkcli.get_job('git-refs').head_id
-    if commit_id:
-        Gitkcli.get_job('git-refresh-head').start_job(['--reverse', f'{commit_id}..HEAD'], clear_view = False)
+def log_info(txt): Gitkcli.log(1, txt)
+def log_success(txt): Gitkcli.log(1, txt, 201)
+def log_error(txt): Gitkcli.log(2, txt, 202)
 
 def curses_ctrl(key):
     return ord(key) & 0x1F
@@ -69,6 +56,35 @@ class Gitkcli:
     jobs = {}
     views = {}
     running = True
+
+    status_bar_message = ''
+    status_bar_color = None
+    status_bar_time = None
+
+    @classmethod
+    def log(cls, color, txt, status_color = None):
+        now = datetime.datetime.now()
+        view = Gitkcli.get_view('log')
+        first_line = ''
+        if view:
+            for line in txt.splitlines():
+                view.append(TextListItem(f'{now} {line}', color))
+                if not first_line:
+                    first_line = line
+        if status_color:
+            cls.status_bar_message = first_line
+            cls.status_bar_time = time.time()
+            cls.status_bar_color = status_color
+
+    @classmethod
+    def refresh_refs(cls):
+        cls.get_job('git-refs').start_job()
+
+    @classmethod
+    def refresh_head(cls):
+        commit_id = cls.get_job('git-refs').head_id
+        if commit_id:
+            cls.get_job('git-refresh-head').start_job(['--reverse', f'{commit_id}..HEAD'], clear_view = False)
 
     @classmethod
     def add_job(cls, id, job):
@@ -143,13 +159,21 @@ class Gitkcli:
                 title = view.title
                 break
 
-        stdscr.addstr(0, 0, title.ljust(cols-1), curses_color(7))
+        stdscr.addstr(0, 0, title.ljust(cols-1), curses_color(200))
 
     @classmethod
     def draw_status_bar(cls, stdscr):
         lines, cols = stdscr.getmaxyx()
-        job = cls.get_job()
 
+        if cls.status_bar_message:
+            # show status bar message for 2 seconds
+            if time.time() - cls.status_bar_time < 2:
+                stdscr.addstr(lines-1, 0, cls.status_bar_message.ljust(cols - 1), curses_color(cls.status_bar_color))
+                return
+            else:
+                cls.status_bar_message = ''
+
+        job = cls.get_job()
         if not job or not job.view:
             return
 
@@ -161,7 +185,7 @@ class Gitkcli:
         else:
             job_status = f"Exited with code {job.get_exit_code()}"
 
-        stdscr.addstr(lines-1, 0, f"Line {job.view.selected+1}/{len(job.view.items)} - Offset {job.view.offset_x} - Process '{cls.showed_views[-1]}' {job_status}".ljust(cols - 1), curses_color(7))
+        stdscr.addstr(lines-1, 0, f"Line {job.view.selected+1}/{len(job.view.items)} - Offset {job.view.offset_x} - Process '{cls.showed_views[-1]}' {job_status}".ljust(cols - 1), curses_color(200))
 
 class SubprocessJob:
 
@@ -184,7 +208,7 @@ class SubprocessJob:
 
     def process_message(self, message):
         if message['type'] == 'error':
-            log_error(message)
+            log_error(message['message'])
         elif message['type'] == 'started':
             self.running = True
         elif message['type'] == 'finished':
@@ -226,6 +250,8 @@ class SubprocessJob:
 
         if clear_view and self.view:
             self.view.clear()
+
+        log_info(self.cmd + ' '.join(args) + ' '.join(self.args))
 
         self.job = subprocess.Popen(
                 self.cmd.split(' ') + args + self.args,
@@ -737,7 +763,7 @@ class GitLogView(ListView):
             reset_type = '--hard' if key == ord('R') else '--soft'
             result = subprocess.run(['git', 'reset', reset_type, commit_id], capture_output=True, text=True)
             if result.returncode == 0:
-                refresh_refs()
+                Gitkcli.refresh_refs()
             else:
                 log_error(f"Error during {reset_type} reset:" + result.stderr)
 
@@ -746,8 +772,9 @@ class GitLogView(ListView):
             commit_id = selected_item.get_id()
             result = subprocess.run(['git', 'cherry-pick', '-m', '1', commit_id], capture_output=True, text=True)
             if result.returncode == 0:
-                refresh_head()
-                refresh_refs()
+                Gitkcli.refresh_head()
+                Gitkcli.refresh_refs()
+                log_success(f'Commit {commit_id} cherry picked successfully')
             else:
                 log_error(f"Error during cherry-pick: " + result.stderr)
 
@@ -940,7 +967,8 @@ class NewBranchDialogPopup(UserInputDialogPopup):
         args += [self.query, self.commit_id]
         result = subprocess.run(args, capture_output=True, text=True)
         if result.returncode == 0:
-            refresh_refs()
+            Gitkcli.refresh_refs()
+            log_success(f'Branch {self.query} created successfully')
         else:
             log_error(f"Error creating branch: " + result.stderr)
 
@@ -1067,7 +1095,6 @@ def launch_curses(stdscr, cmd_args):
     curses.init_pair(4, curses.COLOR_YELLOW, -1) # Git ID
     curses.init_pair(5, curses.COLOR_BLUE, -1)   # Data
     curses.init_pair(6, curses.COLOR_GREEN, -1)  # Author
-    curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_BLUE) # Header Footer
     curses.init_pair(8, curses.COLOR_RED, -1)    # diff -
     curses.init_pair(9, curses.COLOR_GREEN, -1)  # diff +
     curses.init_pair(10, curses.COLOR_CYAN, -1)  # diff ranges
@@ -1078,6 +1105,10 @@ def launch_curses(stdscr, cmd_args):
     curses.init_pair(15, curses.COLOR_RED, -1) # remote ref
     curses.init_pair(16, curses.COLOR_MAGENTA, -1) # search match
     curses.init_pair(17, curses.COLOR_BLUE, -1) # diff info lines
+
+    curses.init_pair(200, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Header Footer
+    curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Status bar success
+    curses.init_pair(202, curses.COLOR_WHITE, curses.COLOR_RED)   # Status bar error
 
     # selected colors have offset 100
     curses.init_pair(101, curses.COLOR_WHITE, 235)
@@ -1148,6 +1179,8 @@ def launch_curses(stdscr, cmd_args):
 
     Gitkcli.show_view('git-log')
 
+    log_info('Application started')
+
     while Gitkcli.running:
         Gitkcli.process_all_jobs()
 
@@ -1176,13 +1209,15 @@ def launch_curses(stdscr, cmd_args):
             elif key == curses.KEY_F4:
                 Gitkcli.show_view('log')
             elif key == curses.KEY_F5:
-                refresh_head()
-                refresh_refs()
+                Gitkcli.refresh_head()
+                Gitkcli.refresh_refs()
             elif key == ord('~'): # Shift + F5
-                refresh_refs()
+                Gitkcli.refresh_refs()
                 Gitkcli.get_job('git-log').start_job()
 
     Gitkcli.exit_program()
+
+    log_info('Application ended')
 
 def main():
     parser = argparse.ArgumentParser(description='')
