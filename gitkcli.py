@@ -108,6 +108,14 @@ class Gitkcli:
             job.process_items()
 
     @classmethod
+    def resize_all_views(cls, lines, cols):
+        for job in cls.jobs.values():
+            if job.view:
+                job.view.resize(lines, cols)
+        for view in cls.views.values():
+            view.resize(lines, cols)
+
+    @classmethod
     def get_job(cls, id = None):
         if len(cls.showed_views) > 0:
             id = cls.showed_views[-1] if not id else id
@@ -147,6 +155,27 @@ class Gitkcli:
     def hide_current_and_show_view(cls, id):
         cls.hide_view()
         cls.show_view(id)
+
+    @classmethod
+    def draw_visible_views(cls, stdscr):
+        positions = {}
+        for view_id in cls.showed_views:
+            view = cls.get_view(view_id)
+            positions.pop('center', None)
+            if view.view_position == 'fullscreen':
+                positions.clear()
+            positions[view.view_position] = view
+            if 'top' in positions and 'bottom' in positions:
+                positions.pop('fullscreen', None)
+
+        if 'fullscreen' in positions:
+            positions['fullscreen'].draw()
+        if 'top' in positions:
+            positions['top'].draw()
+        if 'bottom' in positions:
+            positions['bottom'].draw()
+        if 'center' in positions:
+            positions['center'].draw()
 
     @classmethod
     def draw_title_bar(cls, stdscr):
@@ -566,23 +595,63 @@ class CommitListItem:
             return False
         return True
 
-class ListView:
-    def __init__(self, win, search_dialog = None):
+class View:
+    def __init__(self, parent_win, view_position='fullscreen'):
+        self.parent_win = parent_win
+        self.view_position = view_position
         self.title = ''
-        self.win = win
+        
+        parent_lines, parent_cols = parent_win.getmaxyx()
+        
+        self._calculate_dimensions(parent_lines, parent_cols)
+        self.win = curses.newwin(self.height, self.width, self.y, self.x)
+        
+    def _calculate_dimensions(self, lines, cols):
+        """Calculate dimensions based on view position"""
+        if self.view_position == 'fullscreen':
+            self.height = lines - 2
+            self.width = cols
+            self.y = 1
+            self.x = 0
+        elif self.view_position == 'center':
+            self.height = 7
+            self.width = 80
+            self.y = int((lines - self.height) / 2)
+            self.x = int((cols - self.width) / 2)
+        elif self.view_position == 'top':
+            self.height = int(lines / 2) - 1
+            self.width = cols
+            self.y = 1
+            self.x = 0
+        elif self.view_position == 'bottom':
+            self.height = int(lines / 2) - 1
+            self.width = cols
+            self.y = int(lines / 2) + 1
+            self.x = 0
+            
+    def resize(self, lines, cols):
+        self._calculate_dimensions(lines, cols)
+        self.win.resize(self.height, self.width)
+        self.win.mvwin(self.y, self.x)
+        
+    def draw(self):
+        pass
+
+class ListView(View):
+    def __init__(self, parent_win, view_position='fullscreen', search_dialog = None):
+        super().__init__(parent_win, view_position)
         self.items = []
         self.selected = 0
         self.offset_y = 0
         self.offset_x = 0
         self.search_dialog = search_dialog
-        
+
     def append(self, item):
         """Add item to end of list"""
         self.items.append(item)
         
     def prepend(self, item):
         """Add item to beginning of list"""
-        height, _ = self.win.getmaxyx()
         self.items.insert(0, item)
         self.selected += 1
         if self.offset_y > 0:
@@ -606,17 +675,16 @@ class ListView:
         self.offset_x = 0
 
     def ensure_selection_is_visible(self):
-        height, _ = self.win.getmaxyx()
         if self.selected < self.offset_y:
             if self.offset_y - self.selected > 1:
-                self.offset_y = max(0, self.selected - int(height / 2))
+                self.offset_y = max(0, self.selected - int(self.height / 2))
             else:
                 self.offset_y = self.selected
-        elif self.selected >= self.offset_y + height:
-            if self.selected - self.offset_y - height > 1:
-                self.offset_y = min(max(0, len(self.items) - height), self.selected - int(height / 2))
+        elif self.selected >= self.offset_y + self.height:
+            if self.selected - self.offset_y - self.height > 1:
+                self.offset_y = min(max(0, len(self.items) - self.height), self.selected - int(self.height / 2))
             else:
-                self.offset_y = self.selected - height + 1
+                self.offset_y = self.selected - self.height + 1
 
     def execute_search(self, search_dialog_view):
         for i in range(self.selected, len(self.items)):
@@ -634,8 +702,7 @@ class ListView:
         if not self.items:
             return False
 
-        height, width = self.win.getmaxyx()
-        offset_jump = int(width / 4)
+        offset_jump = int(self.width / 4)
 
         if key == curses.KEY_UP or key == ord('k'):
             if self.selected > 0:
@@ -653,20 +720,20 @@ class ListView:
         elif key == curses.KEY_RIGHT or key == ord('l'):
             self.offset_x += offset_jump
         elif key == curses.KEY_PPAGE or key == curses_ctrl('b'):
-            self.selected -= height
-            self.offset_y -= height
+            self.selected -= self.height
+            self.offset_y -= self.height
             if self.selected < 0:
                 self.selected = 0
             if self.offset_y < 0:
                 self.offset_y = 0
             self.ensure_selection_is_visible()
         elif key == curses.KEY_NPAGE or key == curses_ctrl('f'):
-            self.selected += height
-            self.offset_y += height
+            self.selected += self.height
+            self.offset_y += self.height
             if self.selected >= len(self.items):
                 self.selected = max(0, len(self.items) - 1)
-            if self.offset_y >= len(self.items) - height:
-                self.offset_y = max(0, len(self.items) - height)
+            if self.offset_y >= len(self.items) - self.height:
+                self.offset_y = max(0, len(self.items) - self.height)
             self.ensure_selection_is_visible()
         elif key == curses.KEY_HOME or key == ord('g'):
             self.selected = 0
@@ -679,7 +746,7 @@ class ListView:
             begin_y, begin_x = self.win.getbegyx()
             click_x = mouse_x - begin_x
             click_y = mouse_y - begin_y
-            if 0 <= click_y < height and 0 <= click_x < width:
+            if 0 <= click_y < self.height and 0 <= click_x < self.width:
                 if mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_DOUBLE_CLICKED:
                     new_selected = self.offset_y + click_y
                     if 0 <= new_selected < len(self.items):
@@ -692,8 +759,8 @@ class ListView:
                         self.offset_y = 0
                 elif mouse_state == curses.BUTTON5_PRESSED: # wheel down
                     self.offset_y += 5
-                    if self.offset_y >= len(self.items) - height:
-                        self.offset_y = max(0, len(self.items) - height)
+                    if self.offset_y >= len(self.items) - self.height:
+                        self.offset_y = max(0, len(self.items) - self.height)
         elif key == ord('/'):
             if self.search_dialog:
                 Gitkcli.clear_and_show_view(self.search_dialog)
@@ -717,21 +784,19 @@ class ListView:
         return True
 
     def draw(self):
-        height, width = self.win.getmaxyx()
-        
-        for i in range(0, min(height, len(self.items) - self.offset_y)):
+        for i in range(0, min(self.height, len(self.items) - self.offset_y)):
             idx = i + self.offset_y
             item = self.items[idx]
             selected = idx == self.selected
             matched = Gitkcli.get_view(self.search_dialog).matches(item) if self.search_dialog else False
-            item.draw_line(self.win, i, self.offset_x, width - 1, selected, matched)
+            item.draw_line(self.win, i, self.offset_x, self.width - 1, selected, matched)
 
         self.win.clrtobot()
         self.win.refresh()
 
 class GitLogView(ListView):
-    def __init__(self, win, search_dialog = None):
-        super().__init__(win, search_dialog) 
+    def __init__(self, parent_win, view_position='fullscreen', search_dialog = None):
+        super().__init__(parent_win, view_position, search_dialog) 
         self.title = "Git commit log"
         self.marked = ''
 
@@ -740,9 +805,8 @@ class GitLogView(ListView):
         for item in self.items:
             if id == item.get_id():
                 self.selected = idx
-                height, _ = self.win.getmaxyx()
-                if self.selected < self.offset_y or self.selected >= self.offset_y + height:
-                    self.offset_y = max(0, self.selected - int(height / 2))
+                if self.selected < self.offset_y or self.selected >= self.offset_y + self.height:
+                    self.offset_y = max(0, self.selected - int(self.height / 2))
                 return True
             idx += 1
         log_error(f'Commit with hash {id} not found')
@@ -791,8 +855,8 @@ class GitLogView(ListView):
         return True
 
 class GitDiffView(ListView):
-    def __init__(self, win, search_dialog = None):
-        super().__init__(win, search_dialog) 
+    def __init__(self, parent_win, view_position='fullscreen', search_dialog = None):
+        super().__init__(parent_win, view_position, search_dialog) 
         self.title = "Git commit diff"
 
     def handle_input(self, key):
@@ -837,20 +901,13 @@ class GitDiffView(ListView):
             return super().handle_input(key)
         return True
 
-class UserInputDialogPopup:
+class UserInputDialogPopup(View):
     def __init__(self, parent_win):
-        self.title = ''
+        super().__init__(parent_win, 'center') 
         self.query = ""
         self.cursor_pos = 0
-        self.height = 7
-        self.width = 80
-        self.title_text = "Title"
-        self.help_text = "Enter: Execute | Esc: Cancel"
-
-        parent_height, parent_width = parent_win.getmaxyx()
-        start_y = parent_height // 2 - self.height // 2
-        start_x = parent_width // 2 - self.width // 2
-        self.win = curses.newwin(self.height, self.width, start_y, start_x)
+        self.top_text = "Title"
+        self.bottom_text = "Enter: Execute | Esc: Cancel"
 
     def draw_top_panel(self):
         pass
@@ -880,10 +937,10 @@ class UserInputDialogPopup:
         self.win.clrtoeol()
         
         # Draw help text
-        self.win.addstr(5, (self.width - len(self.help_text)) // 2, self.help_text, curses.A_DIM)
+        self.win.addstr(5, (self.width - len(self.bottom_text)) // 2, self.bottom_text, curses.A_DIM)
         
         self.win.box()
-        self.win.addstr(0, (self.width - len(self.title_text)) // 2, self.title_text)
+        self.win.addstr(0, (self.width - len(self.top_text)) // 2, self.top_text)
         
         # Move cursor to its position
         self.win.move(3, 2 + len(prompt) + adjusted_cursor_pos)
@@ -943,8 +1000,8 @@ class NewBranchDialogPopup(UserInputDialogPopup):
     def __init__(self, parent_win):
         super().__init__(parent_win) 
         self.force = False
-        self.title_text = " New Branch "
-        self.help_text = "Enter: Execute | Esc: Cancel | F1: Force"
+        self.top_text = " New Branch "
+        self.bottom_text = "Enter: Execute | Esc: Cancel | F1: Force"
         self.commit_id = ''
 
     def draw_top_panel(self):
@@ -978,8 +1035,8 @@ class SearchDialogPopup(UserInputDialogPopup):
         self.list_view = list_view
         self.case_sensitive = True
         self.use_regexp = False
-        self.title_text = " Search "
-        self.help_text = "Enter: Search | Esc: Cancel | F1: Case | F2: Regexp"
+        self.top_text = " Search "
+        self.bottom_text = "Enter: Search | Esc: Cancel | F1: Case | F2: Regexp"
 
     def matches(self, item):
         if self.query:
@@ -1018,7 +1075,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
     def __init__(self, parent_win, list_view):
         super().__init__(parent_win, list_view) 
         self.search_type = "txt"
-        self.help_text = "Enter: Search | Esc: Cancel | Tab: Change type | F1: Case | F2: Regexp"
+        self.bottom_text = "Enter: Search | Esc: Cancel | Tab: Change type | F1: Case | F2: Regexp"
 
     def matches(self, item):
         if self.search_type == "txt":
@@ -1135,14 +1192,14 @@ def launch_curses(stdscr, cmd_args):
 
     lines, cols = stdscr.getmaxyx()
 
-    log_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'log-search')
+    log_view = ListView(stdscr, 'fullscreen', 'log-search')
     log_view.title = "Logs"
     Gitkcli.add_view('log', log_view)
 
     log_search_dialog = SearchDialogPopup(stdscr, log_view)
     Gitkcli.add_view('log-search', log_search_dialog)
 
-    git_log_view = GitLogView(curses.newwin(lines-2, cols, 1, 0), 'git-log-search')
+    git_log_view = GitLogView(stdscr, 'fullscreen', 'git-log-search')
     git_log_job = GitLogJob(git_log_view)
     git_log_job.args = cmd_args
     Gitkcli.add_job('git-log', git_log_job)
@@ -1162,14 +1219,14 @@ def launch_curses(stdscr, cmd_args):
     log_branch_dialog = NewBranchDialogPopup(stdscr)
     Gitkcli.add_view('git-log-branch', log_branch_dialog)
 
-    git_diff_view = GitDiffView(curses.newwin(lines-2, cols, 1, 0), 'git-diff-search')
+    git_diff_view = GitDiffView(stdscr, 'fullscreen', 'git-diff-search')
     git_diff_job = GitShowJob(git_diff_view)
     Gitkcli.add_job('git-diff', git_diff_job)
 
     git_diff_search_dialog = SearchDialogPopup(stdscr, git_diff_view)
     Gitkcli.add_view('git-diff-search', git_diff_search_dialog)
 
-    git_refs_view = ListView(curses.newwin(lines-2, cols, 1, 0), 'git-refs-search')
+    git_refs_view = ListView(stdscr, 'fullscreen', 'git-refs-search')
     git_refs_view.title = 'Git references'
     git_refs_job = GitRefsJob(git_refs_view)
     Gitkcli.add_job('git-refs', git_refs_job)
@@ -1187,18 +1244,20 @@ def launch_curses(stdscr, cmd_args):
 
         Gitkcli.draw_title_bar(stdscr)
         Gitkcli.draw_status_bar(stdscr)
+        Gitkcli.draw_visible_views(stdscr)
         stdscr.refresh()
 
         active_view = Gitkcli.get_view()
         if not active_view:
             break;
-
-        active_view.draw()
         
         key = stdscr.getch()
         handled = False
 
-        if not active_view.handle_input(key):
+        if key == curses.KEY_RESIZE:
+            lines, cols = stdscr.getmaxyx()
+            Gitkcli.resize_all_views(lines, cols)
+        elif not active_view.handle_input(key):
             if key == ord('q'):
                 Gitkcli.hide_view()
             elif key == curses.KEY_F1:
