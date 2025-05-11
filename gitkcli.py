@@ -293,13 +293,12 @@ class SubprocessJob:
         stderr_thread.start()
 
     def get_exit_code(self):
-        exit_code = None
         if self.job:
-            exit_code = self.job.poll()
-        return exit_code
+            return self.job.poll()
+        return None
 
     def job_running(self):
-        return self.get_exit_code() != None
+        return self.running
 
     def _reader_thread(self, stream, is_stderr=False):
         self.messages.put({'type': 'started'})
