@@ -439,11 +439,14 @@ class Item:
         return False
 
     def handle_left_click(self, offset, mouse_x, mouse_y):
+        return True
+
+    def handle_double_click(self, offset, mouse_x, mouse_y):
         self.handle_input(curses.KEY_ENTER)
         return True
 
     def handle_right_click(self, offset, mouse_x, mouse_y):
-        return False
+        return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, self)
 
 class RefListItem(Item):
     def __init__(self, data):
@@ -612,9 +615,6 @@ class CommitListItem(Item):
         else:
             return False
         return True
-
-    def handle_right_click(self, offset, mouse_x, mouse_y):
-        return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y)
 
 class View:
     def __init__(self, parent_win, view_position='fullscreen', x=None, y=None, height=None, width=None):
@@ -822,13 +822,16 @@ class ListView(View):
             click_y = mouse_y - begin_y - self.y
             if 0 <= click_y < self.height and 0 <= click_x < self.width:
                 if mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_DOUBLE_CLICKED or mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED:
-                    new_selected = self.offset_y + click_y
-                    if 0 <= new_selected < len(self.items):
-                        self.selected = new_selected
-                    if mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED:
-                        return self.items[self.selected].handle_right_click(self.offset_x, mouse_x, mouse_y)
-                    if mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_PRESSED:
-                        return self.items[self.selected].handle_left_click(self.offset_x, mouse_x, mouse_y)
+                    clicked_idx = self.offset_y + click_y
+                    if 0 <= clicked_idx < len(self.items):
+                        if mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_PRESSED:
+                            self.selected = clicked_idx
+                            return self.items[clicked_idx].handle_left_click(self.offset_x, mouse_x, mouse_y)
+                        if mouse_state == curses.BUTTON1_DOUBLE_CLICKED:
+                            self.selected = clicked_idx
+                            return self.items[clicked_idx].handle_double_click(self.offset_x, mouse_x, mouse_y)
+                        if mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED:
+                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y)
                 elif mouse_state == curses.BUTTON4_PRESSED: # wheel up
                     self.offset_y -= 5
                     if self.offset_y < 0:
@@ -902,8 +905,8 @@ class GitLogView(ListView):
             return selected_item.get_id()
         return ''
 
-    def cherry_pick(self):
-        commit_id = self.get_selected_commit_id()
+    def cherry_pick(self, commit_id = None):
+        commit_id = commit_id or self.get_selected_commit_id()
         result = subprocess.run(['git', 'cherry-pick', '-m', '1', commit_id], capture_output=True, text=True)
         if result.returncode == 0:
             Gitkcli.refresh_head()
@@ -912,8 +915,8 @@ class GitLogView(ListView):
         else:
             log_error(f"Error during cherry-pick: " + result.stderr)
 
-    def revert(self):
-        commit_id = self.get_selected_commit_id()
+    def revert(self, commit_id = None):
+        commit_id = commit_id or self.get_selected_commit_id()
         result = subprocess.run(['git', 'revert', '--no-edit', '-m', '1', commit_id], capture_output=True, text=True)
         if result.returncode == 0:
             Gitkcli.refresh_head()
@@ -922,12 +925,13 @@ class GitLogView(ListView):
         else:
             log_error(f"Error during revert: " + result.stderr)
     
-    def create_branch(self):
-        Gitkcli.get_view('git-log-branch').commit_id = self.get_selected_commit_id()
+    def create_branch(self, commit_id = None):
+        commit_id = commit_id or self.get_selected_commit_id()
+        Gitkcli.get_view('git-log-branch').commit_id = commit_id
         Gitkcli.clear_and_show_view('git-log-branch')
     
-    def reset(self, hard):
-        commit_id = self.get_selected_commit_id()
+    def reset(self, hard, commit_id = None):
+        commit_id = commit_id or self.get_selected_commit_id()
         reset_type = '--hard' if hard else '--soft'
         result = subprocess.run(['git', 'reset', reset_type, commit_id], capture_output=True, text=True)
         if result.returncode == 0:
@@ -935,8 +939,9 @@ class GitLogView(ListView):
         else:
             log_error(f"Error during {reset_type} reset:" + result.stderr)
     
-    def mark_commit(self):
-        self.marked = self.get_selected_commit_id()
+    def mark_commit(self, commit_id = None):
+        commit_id = commit_id or self.get_selected_commit_id()
+        self.marked = commit_id
 
     def handle_input(self, key):
         if key == ord('q'):
@@ -1021,21 +1026,25 @@ class ContextMenuItem(TextListItem):
             return False
         return True
 
+    def handle_left_click(self, offset, mouse_x, mouse_y):
+        self.handle_input(curses.KEY_ENTER)
+        return True
+
 class ContextMenu(ListView):
     def __init__(self, parent_win):
         super().__init__(parent_win, 'window', height=10, width=30)
         
-    def show_context_menu(self, mouse_x, mouse_y):
+    def show_context_menu(self, mouse_x, mouse_y, item):
         self.clear()
         view_id = Gitkcli.showed_views[-1]
         if view_id == 'git-log':
             view = Gitkcli.get_view()
-            self.append(ContextMenuItem("Cherry pick commit", view.cherry_pick))
-            self.append(ContextMenuItem("Revert commit", view.revert))
-            self.append(ContextMenuItem("Create branch", view.create_branch))
-            self.append(ContextMenuItem("Reset soft", view.reset, [False]))
-            self.append(ContextMenuItem("Reset hard", view.reset, [True]))
-            self.append(ContextMenuItem("Mark commit", view.mark_commit))
+            self.append(ContextMenuItem("Cherry pick commit", view.cherry_pick, [item.get_id()]))
+            self.append(ContextMenuItem("Revert commit", view.revert, [item.get_id()]))
+            self.append(ContextMenuItem("Create branch", view.create_branch, [item.get_id()]))
+            self.append(ContextMenuItem("Reset soft", view.reset, [item.get_id(), False]))
+            self.append(ContextMenuItem("Reset hard", view.reset, [item.get_id(), True]))
+            self.append(ContextMenuItem("Mark commit", view.mark_commit, [item.get_id()]))
         else:
             return False
         self.resize(len(self.items) + 2, 30)
