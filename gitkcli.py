@@ -725,7 +725,16 @@ class ListView(View):
         self.search_dialog = search_dialog
 
     def copy_text_to_clipboard(self):
-        pass
+        text = "\n".join(item.get_text() for item in self.items)
+        if not text:
+            return
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+        except ImportError:
+            log_error("pyperclip module not found. Install with: pip install pyperclip")
+        except Exception as e:
+            log_error(f"Error copying to clipboard: {str(e)}")
 
     def append(self, item):
         """Add item to end of list"""
@@ -1074,9 +1083,9 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Revert this commit", view.revert, [item.get_id()]))
         elif view_id == 'git-diff':
             self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [index]))
-            self.append(ContextMenuItem("Copy to clipboard", view.copy_text_to_clipboard))
+            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         elif view_id == 'log':
-            self.append(ContextMenuItem("Copy to clipboard", view.copy_text_to_clipboard))
+            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         else:
             return False
         self.resize(len(self.items) + 2, 30)
