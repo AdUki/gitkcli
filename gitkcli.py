@@ -304,15 +304,14 @@ class SubprocessJob:
                 # curses automatically converts tab to spaces, so we will replace it here and cut off newline
                 line = bytearr.decode('utf-8', errors='replace').replace('\t', ' ' * curses.get_tabsize())[:-1]
                 if is_stderr:
-                    self.messages.put({'type': 'error', 'message' :line})
+                    self.messages.put({'type': 'error', 'message': line})
                 else:
                     item = self.process_line(line)
                     if item:
                         self.items.put(item)
 
             except Exception as e:
-                self.messages.put(f"Error processing line: {line}")
-                self.messages.put(str(e))
+                self.messages.put({'type': 'error', 'message': f"Error processing line: {line}\n{str(e)}"})
         stream.close()
         self.messages.put({'type': 'finished'})
 
