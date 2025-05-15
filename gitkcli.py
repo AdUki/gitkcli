@@ -146,6 +146,7 @@ class Gitkcli:
         if id in cls.showed_views:
             cls.showed_views.remove(id)
         cls.showed_views.append(id)
+        cls.get_view().dirty = True
 
     @classmethod
     def clear_and_show_view(cls, id):
@@ -158,6 +159,7 @@ class Gitkcli:
             view_id = cls.showed_views.pop(-1)
             cls.get_view(view_id).win.erase()
             cls.get_view(view_id).win.refresh()
+            cls.get_view().dirty = True
 
     @classmethod
     def hide_current_and_show_view(cls, id):
@@ -176,14 +178,15 @@ class Gitkcli:
             if 'top' in positions and 'bottom' in positions:
                 positions.pop('fullscreen', None)
 
+        force_redraw = False
         if 'fullscreen' in positions:
-            positions['fullscreen'].draw()
+            force_redraw = force_redraw or positions['fullscreen'].redraw()
         if 'top' in positions:
-            positions['top'].draw()
+            force_redraw = force_redraw or positions['top'].redraw()
         if 'bottom' in positions:
-            positions['bottom'].draw()
+            force_redraw = force_redraw or positions['bottom'].redraw()
         if 'window' in positions:
-            positions['window'].draw()
+            positions['window'].redraw(force_redraw)
 
     @classmethod
     def draw_status_bar(cls, stdscr):
@@ -250,11 +253,11 @@ class SubprocessJob:
             pass
         try:
             while True:
-                line = self.messages.get_nowait()
+                message = self.messages.get_nowait()
                 self.messages.task_done()
-                if not line:
+                if not message:
                     return
-                self.process_message(line)
+                self.process_message(message)
         except queue.Empty:
             pass
 
@@ -367,6 +370,7 @@ class GitSearchJob(SubprocessJob):
 
     def process_line(self, line):
         self.items.put(line)
+        Gitkcli.get_view('git-log').dirty = True
 
     def process_item(self, item):
         self.ids.add(item)
@@ -418,6 +422,11 @@ class GitRefsJob(SubprocessJob):
             self.refs[id] = [item]
         if item['type'] == 'head':
             self.head_id = item['id']
+
+    def process_message(self, message):
+        if message['type'] == 'finished':
+            Gitkcli.get_view('git-log').dirty = True
+        super().process_message(message)
 
 class Item:
     def get_text(self):
@@ -616,6 +625,7 @@ class View:
         self.win_y = y
         self.win_height = height
         self.win_width = width
+        self.dirty = True
         
         parent_lines, parent_cols = parent_win.getmaxyx()
         height, width, y, x = self._calculate_dimensions(parent_lines, parent_cols)
@@ -658,21 +668,32 @@ class View:
         return win_height, win_width, win_y, win_x
 
     def move(self, x, y):
+        self.dirty = True
         self.win_x = min(x, self.parent_width - self.win_width)
         self.win_y = min(y, self.parent_height - self.win_height)
         self.win.mvwin(self.win_y, self.win_x)
 
     def resize(self, height, width):
+        self.dirty = True
         self.win_height = height
         self.win_width = width
         self.win.resize(height, width)
             
     def parent_resize(self, lines, cols):
+        self.dirty = True
         self.parent_width = cols
         self.parent_height = lines
         height, width, y, x = self._calculate_dimensions(lines, cols)
         self.win.resize(height, width)
         self.win.mvwin(y, x)
+
+    def redraw(self, force=False):
+        if self.dirty or force:
+            self.dirty = False
+            self.draw()
+            return True
+        else:
+            return False
 
     def draw(self):
         if self.view_position == 'window':
@@ -697,6 +718,8 @@ class ListView(View):
     def append(self, item):
         """Add item to end of list"""
         self.items.append(item)
+        if len(self.items) - self.offset_y < self.height:
+            self.dirty = True
         
     def prepend(self, item):
         """Add item to beginning of list"""
@@ -715,14 +738,17 @@ class ListView(View):
             self.selected += 1
         if pos <= self.offset_y:
             self.offset_y += 1
+        self.dirty = True
 
     def clear(self):
         self.items = []
         self.selected = 0
         self.offset_y = 0
         self.offset_x = 0
+        self.dirty = True
 
     def ensure_selection_is_visible(self):
+        self.dirty = True
         if self.selected < self.offset_y:
             if self.offset_y - self.selected > 1:
                 self.offset_y = max(0, self.selected - int(self.height / 2))
@@ -1168,6 +1194,9 @@ class SearchDialogPopup(UserInputDialogPopup):
         self.win.addstr("<Regexp>", curses_color(1, self.use_regexp))
 
     def handle_input(self, key):
+        if key == curses.KEY_DC or key == curses.KEY_BACKSPACE or key == 127 or 32 <= key <= 126:
+            self.list_view.dirty = True
+
         if key == curses.KEY_F1:
             self.case_sensitive = not self.case_sensitive
         elif key == curses.KEY_F2:
@@ -1238,6 +1267,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
             Gitkcli.get_job('git-search-results').start_job(args)
 
         elif key == 9:  # Tab key - cycle through search types
+            self.list_view.dirty = True
             if self.search_type == "txt":
                 self.search_type = "id"
             elif self.search_type == "id":
@@ -1302,7 +1332,7 @@ def launch_curses(stdscr, cmd_args):
     curses.init_pair(117, curses.COLOR_BLUE, 235)
 
     curses.curs_set(0)  # Hide cursor
-    stdscr.timeout(100)
+    stdscr.timeout(5)
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
 
     lines, cols = stdscr.getmaxyx()
@@ -1355,7 +1385,9 @@ def launch_curses(stdscr, cmd_args):
         if key == curses.KEY_RESIZE:
             lines, cols = stdscr.getmaxyx()
             Gitkcli.resize_all_views(lines, cols)
-        elif not active_view.handle_input(key):
+        elif active_view.handle_input(key):
+            active_view.dirty = True
+        else:
             if key == ord('q') or key == curses.KEY_MOUSE:
                 Gitkcli.hide_view()
             elif key == curses.KEY_F1:
