@@ -94,6 +94,11 @@ class Gitkcli:
         cls.jobs[id] = job
 
     @classmethod
+    def run_job(cls, args):
+        log_info(' '.join(args))
+        return subprocess.run(args, capture_output=True, text=True)
+
+    @classmethod
     def add_and_start_job(cls, id, job):
         cls.add_job(id, job)
         job.start_job()
@@ -346,8 +351,15 @@ class GitRefreshHeadJob(GitLogJob):
 class GitShowJob(SubprocessJob):
     def __init__(self, view = None):
         super().__init__() 
-        self.cmd = 'git show -m --no-color --parents'
         self.view = view
+
+    def start_diff_job(self, old_commit_id, new_commit_id):
+        self.cmd = 'git diff --no-color'
+        self.start_job([old_commit_id, new_commit_id])
+
+    def start_show_job(self, commit_id):
+        self.cmd = 'git show -m --no-color --parents'
+        self.start_job([commit_id])
 
     def process_line(self, line):
         self.items.put(line)
@@ -387,7 +399,7 @@ class GitRefsJob(SubprocessJob):
     def start_job(self, args = []):
         self.refs = {} # map: git_id --> { 'type':<ref-type>, 'name':<ref-name> }
 
-        self.head_branch = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True, text=True).stdout.rstrip()
+        self.head_branch = Gitkcli.run_job(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).stdout.rstrip()
         if self.head_branch == 'HEAD': self.head_branch = ''
 
         super().start_job(args) 
@@ -445,8 +457,8 @@ class Item:
         self.handle_input(curses.KEY_ENTER)
         return True
 
-    def handle_right_click(self, offset, mouse_x, mouse_y):
-        return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, self)
+    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx):
+        return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, self, clicked_idx)
 
 class RefListItem(Item):
     def __init__(self, data):
@@ -495,9 +507,6 @@ class TextListItem(Item):
         win.addstr(line, curses_color(16 if matched else self.color, selected))
         win.clrtoeol()
 
-    def handle_input(self, key):
-        return False
-
 class DiffListItem(Item):
     def __init__(self, line):
         self.line = line
@@ -529,9 +538,6 @@ class DiffListItem(Item):
         
         win.clrtoeol()
 
-    def handle_input(self, key):
-        return False
-
 class CommitListItem(Item):
     def __init__(self, data):
         self.data = data
@@ -556,7 +562,7 @@ class CommitListItem(Item):
         return text
 
     def draw_line(self, win, offset, width, selected, matched):
-        marked = Gitkcli.get_job('git-log').view.marked == self.data['id']
+        marked = Gitkcli.get_job('git-log').view.marked_commit_id == self.data['id']
 
         segments = [
             (self.data['id'][:7] + ' ', curses_color(4, selected, underline=marked)),
@@ -610,7 +616,8 @@ class CommitListItem(Item):
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:
-            Gitkcli.get_job('git-diff').start_job([self.data['id']])
+            Gitkcli.get_job('git-diff').start_show_job(self.data['id'])
+            Gitkcli.get_view('git-diff').commit_id = self.data['id']
             Gitkcli.clear_and_show_view('git-diff')
         else:
             return False
@@ -677,7 +684,9 @@ class View:
         self.dirty = True
         self.win_height = height
         self.win_width = width
+        height, width, y, x = self._calculate_dimensions(self.parent_height, self.parent_width)
         self.win.resize(height, width)
+        self.win.mvwin(y, x)
             
     def parent_resize(self, lines, cols):
         self.dirty = True
@@ -714,6 +723,9 @@ class ListView(View):
         self.offset_y = 0
         self.offset_x = 0
         self.search_dialog = search_dialog
+
+    def copy_text_to_clipboard(self):
+        pass
 
     def append(self, item):
         """Add item to end of list"""
@@ -821,17 +833,17 @@ class ListView(View):
             click_x = mouse_x - begin_x - self.x
             click_y = mouse_y - begin_y - self.y
             if 0 <= click_y < self.height and 0 <= click_x < self.width:
-                if mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_DOUBLE_CLICKED or mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED:
+                if mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_DOUBLE_CLICKED or mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
                     clicked_idx = self.offset_y + click_y
                     if 0 <= clicked_idx < len(self.items):
-                        if mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_PRESSED:
+                        if mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
                             self.selected = clicked_idx
                             return self.items[clicked_idx].handle_left_click(self.offset_x, mouse_x, mouse_y)
                         if mouse_state == curses.BUTTON1_DOUBLE_CLICKED:
                             self.selected = clicked_idx
                             return self.items[clicked_idx].handle_double_click(self.offset_x, mouse_x, mouse_y)
                         if mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED:
-                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y)
+                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y, clicked_idx)
                 elif mouse_state == curses.BUTTON4_PRESSED: # wheel up
                     self.offset_y -= 5
                     if self.offset_y < 0:
@@ -885,7 +897,7 @@ class GitLogView(ListView):
     def __init__(self, parent_win):
         super().__init__(parent_win, 'fullscreen', 'git-log-search') 
         self.title = "Git commit log"
-        self.marked = ''
+        self.marked_commit_id = ''
 
     def jump_to_id(self, id):
         idx = 0
@@ -907,7 +919,7 @@ class GitLogView(ListView):
 
     def cherry_pick(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
-        result = subprocess.run(['git', 'cherry-pick', '-m', '1', commit_id], capture_output=True, text=True)
+        result = Gitkcli.run_job(['git', 'cherry-pick', '-m', '1', commit_id])
         if result.returncode == 0:
             Gitkcli.refresh_head()
             Gitkcli.refresh_refs()
@@ -917,7 +929,7 @@ class GitLogView(ListView):
 
     def revert(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
-        result = subprocess.run(['git', 'revert', '--no-edit', '-m', '1', commit_id], capture_output=True, text=True)
+        result = Gitkcli.run_job(['git', 'revert', '--no-edit', '-m', '1', commit_id])
         if result.returncode == 0:
             Gitkcli.refresh_head()
             Gitkcli.refresh_refs()
@@ -933,7 +945,7 @@ class GitLogView(ListView):
     def reset(self, hard, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
         reset_type = '--hard' if hard else '--soft'
-        result = subprocess.run(['git', 'reset', reset_type, commit_id], capture_output=True, text=True)
+        result = Gitkcli.run_job(['git', 'reset', reset_type, commit_id])
         if result.returncode == 0:
             Gitkcli.refresh_refs()
         else:
@@ -941,7 +953,12 @@ class GitLogView(ListView):
     
     def mark_commit(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
-        self.marked = commit_id
+        self.marked_commit_id = commit_id
+    
+    def diff_commits(self, old_commit_id, new_commit_id):
+        Gitkcli.get_job('git-diff').start_diff_job(old_commit_id, new_commit_id)
+        Gitkcli.get_view('git-diff').commit_id = old_commit_id
+        Gitkcli.clear_and_show_view('git-diff')
 
     def handle_input(self, key):
         if key == ord('q'):
@@ -959,7 +976,7 @@ class GitLogView(ListView):
         elif key == ord('m'):
             self.mark_commit()
         elif key == ord('M'):
-            self.jump_to_id(self.marked)
+            self.jump_to_id(self.marked_commit_id)
         else:
             return super().handle_input(key)
         return True
@@ -969,43 +986,48 @@ class GitDiffView(ListView):
         super().__init__(parent_win, 'fullscreen', 'git-diff-search') 
         self.title = "Git commit diff"
 
+    def show_origin_of_line(self, line_index = None):
+        if line_index is None:
+            line_index = self.selected
+
+        if line_index >= len(self.items) or self.items[line_index].get_text().startswith('+'):
+            return
+
+        file_path = None
+        line_number = None
+        line_offset = 0
+        
+        for i in range(line_index - 1, -1, -1):
+            text = self.items[i].get_text()
+            
+            if text.startswith('---'):
+                file_path = text[6:]  # Remove the "--- b/" prefix
+                break
+            
+            if line_number is None:
+                if text.startswith(' ') or text.startswith('-'):
+                    line_offset += 1
+                else:
+                    match = re.search(r'@@ -(\d+),\d+ \+\d+,\d+ @@', text)
+                    if match:
+                        line_number = int(match.group(1)) + line_offset
+        
+        if file_path:
+            args = ['git', 'blame', '-l', '-s', '-L',
+                    f'{line_number},{line_number}', self.commit_id,
+                    '--', file_path]
+
+            result = Gitkcli.run_job(args)
+            if result.returncode == 0:
+                id = result.stdout.split(' ')[0]
+                Gitkcli.get_view('git-log').jump_to_id(id)
+                Gitkcli.hide_view()
+            else:
+                log_error(f"Failed to show origin: " + result.stderr)
+
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
-            if not self.selected or self.items[self.selected].line.startswith('+'):
-                return True
-
-            parent_id = self.items[0].line.split(' ')[2]
-            file_path = None
-            line_number = None
-            line_offset = 0
-            
-            for i in range(self.selected - 1, -1, -1):
-                text = self.items[i].get_text()
-                
-                if text.startswith('---'):
-                    file_path = text[6:]  # Remove the "--- b/" prefix
-                    break
-                
-                if line_number is None:
-                    if text.startswith(' ') or text.startswith('-'):
-                        line_offset += 1
-                    else:
-                        match = re.search(r'@@ -(\d+),\d+ \+\d+,\d+ @@', text)
-                        if match:
-                            line_number = int(match.group(1)) + line_offset
-            
-            if file_path:
-                args = ['git', 'blame', '-l', '-s', '-L',
-                        f'{line_number},{line_number}', parent_id,
-                        '--', file_path]
-
-                result = subprocess.run(args, capture_output=True, text=True)
-                if result.returncode == 0:
-                    id = result.stdout.split(' ')[0]
-                    Gitkcli.get_view('git-log').jump_to_id(id)
-                    Gitkcli.hide_view()
-                else:
-                    log_error({' '.join(args)} + f' - exited with code {result.returncode}' + result.stderr)
+            self.show_origin_of_line()
             return True
         else:
             return super().handle_input(key)
@@ -1032,19 +1054,29 @@ class ContextMenuItem(TextListItem):
 
 class ContextMenu(ListView):
     def __init__(self, parent_win):
-        super().__init__(parent_win, 'window', height=10, width=30)
+        super().__init__(parent_win, 'window')
         
-    def show_context_menu(self, mouse_x, mouse_y, item):
+    def show_context_menu(self, mouse_x, mouse_y, item, index):
         self.clear()
         view_id = Gitkcli.showed_views[-1]
+        view = Gitkcli.get_view()
         if view_id == 'git-log':
-            view = Gitkcli.get_view()
-            self.append(ContextMenuItem("Cherry pick commit", view.cherry_pick, [item.get_id()]))
-            self.append(ContextMenuItem("Revert commit", view.revert, [item.get_id()]))
-            self.append(ContextMenuItem("Create branch", view.create_branch, [item.get_id()]))
-            self.append(ContextMenuItem("Reset soft", view.reset, [item.get_id(), False]))
-            self.append(ContextMenuItem("Reset hard", view.reset, [item.get_id(), True]))
-            self.append(ContextMenuItem("Mark commit", view.mark_commit, [item.get_id()]))
+            self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.get_id(), view.get_selected_commit_id()]))
+            self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.get_id()]))
+            self.append(ContextMenuItem("Create new branch", view.create_branch, [item.get_id()]))
+            self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.get_id()]))
+            self.append(ContextMenuItem("Reset here", view.reset, [item.get_id(), False]))
+            self.append(ContextMenuItem("Hard reset here", view.reset, [item.get_id(), True]))
+            self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.get_id()]))
+            self.append(ContextMenuItem("Return to mark", view.jump_to_id, [view.marked_commit_id]))
+            self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.get_id(), view.marked_commit_id]))
+            self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.get_id()]))
+            self.append(ContextMenuItem("Revert this commit", view.revert, [item.get_id()]))
+        elif view_id == 'git-diff':
+            self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [index]))
+            self.append(ContextMenuItem("Copy to clipboard", view.copy_text_to_clipboard))
+        elif view_id == 'log':
+            self.append(ContextMenuItem("Copy to clipboard", view.copy_text_to_clipboard))
         else:
             return False
         self.resize(len(self.items) + 2, 30)
@@ -1165,7 +1197,7 @@ class NewBranchDialogPopup(UserInputDialogPopup):
         if self.force:
             args += ['-f']
         args += [self.query, self.commit_id]
-        result = subprocess.run(args, capture_output=True, text=True)
+        result = Gitkcli.run_job(args)
         if result.returncode == 0:
             Gitkcli.refresh_refs()
             log_success(f'Branch {self.query} created successfully')
