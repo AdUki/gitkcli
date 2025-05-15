@@ -1239,7 +1239,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
-            if self.search_type == "message":
+            if self.search_type == "txt":
                 return super().handle_input(key)
 
             Gitkcli.hide_view()
@@ -1247,13 +1247,13 @@ class GitSearchDialogPopup(SearchDialogPopup):
             args = []
             if not self.case_sensitive:
                 args.append('-i')
-            elif self.search_type == "id":
-                args.append(f"{self.query}^!")
             if self.search_type == "message":
                 if not self.use_regexp:
                     args.append('-F')
                 args.append("--grep")
                 args.append(self.query)
+            elif self.search_type == "id":
+                args.append(f"{self.query}^!")
             elif self.search_type == "diff":
                 if self.use_regexp:
                     args.append("-G")
