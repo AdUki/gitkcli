@@ -615,10 +615,13 @@ class CommitListItem(Item):
             win.clrtoeol()
 
     def handle_input(self, key):
-        if key == curses.KEY_ENTER or key == 10 or key == 13:
-            Gitkcli.get_job('git-diff').start_show_job(self.data['id'])
-            Gitkcli.get_view('git-diff').commit_id = self.data['id']
-            Gitkcli.clear_and_show_view('git-diff')
+        if key == curses.KEY_ENTER or key == 10 or key == 13 or key == 9:
+            if Gitkcli.get_view('git-diff').commit_id == self.data['id']:
+                Gitkcli.show_view('git-diff')
+            else:
+                Gitkcli.get_view('git-diff').commit_id = self.data['id']
+                Gitkcli.get_job('git-diff').start_show_job(self.data['id'])
+                Gitkcli.clear_and_show_view('git-diff')
         else:
             return False
         return True
@@ -994,6 +997,7 @@ class GitDiffView(ListView):
     def __init__(self, parent_win):
         super().__init__(parent_win, 'fullscreen', 'git-diff-search') 
         self.title = "Git commit diff"
+        self.commit_id = ''
 
     def show_origin_of_line(self, line_index = None):
         if line_index is None:
@@ -1440,7 +1444,7 @@ def launch_curses(stdscr, cmd_args):
         else:
             if key == ord('q') or key == curses.KEY_MOUSE:
                 Gitkcli.hide_view()
-            elif key == curses.KEY_F1:
+            elif key == curses.KEY_F1 or key == 9:
                 Gitkcli.show_view('git-log')
             elif key == curses.KEY_F2:
                 Gitkcli.show_view('git-refs')
