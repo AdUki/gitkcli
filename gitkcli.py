@@ -38,7 +38,7 @@ def get_ref_color_and_title(ref):
     color = 11
     if ref['type'] == 'head':
         color = 13
-        if Gitkcli.get_job('git-refs').head_branch:
+        if Gitkcli.head_branch:
             title += ' ->'
     elif ref['type'] == 'heads':
         title = f"[{ref['name']}]"
@@ -53,6 +53,13 @@ def get_ref_color_and_title(ref):
     return color, title
 
 class Gitkcli:
+
+    head_branch = ''
+    head_id = ''
+    refs = {} # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
+    commits = {} # map: git_id --> { parents, date, author, title }
+    found_ids = set()
+
     showed_views = []
     jobs = {}
     views = {}
@@ -83,7 +90,7 @@ class Gitkcli:
 
     @classmethod
     def refresh_head(cls):
-        commit_id = cls.get_job('git-refs').head_id
+        commit_id = cls.head_id
         if commit_id:
             cls.get_job('git-refresh-head').start_job(['--reverse', f'{commit_id}..HEAD'], clear_view = False)
 
@@ -330,23 +337,35 @@ class GitLogJob(SubprocessJob):
         self.view = view
         self.args = args
 
+    def start_job(self, args = [], clear_view = True):
+        if clear_view:
+            Gitkcli.commits.clear()
+            Gitkcli.get_view('git-log').dirty = True
+        super().start_job(args, clear_view) 
+
     def process_line(self, line):
         id, parents_str, date_str, author, title = line.split('|', 4)
-        self.items.put({
-            'id':id,
+        self.items.put((id, {
             'parents': parents_str.split(' '),
             'date': datetime.datetime.fromisoformat(date_str),
             'author': author,
             'title': title,
-        })
+        }))
+
     def process_item(self, item):
-        if self.view:
-            self.view.append(CommitListItem(item))
+        id, commit = item
+        if not id in Gitkcli.commits:
+            Gitkcli.commits[id] = commit
+            if self.view:
+                self.view.append(CommitListItem(id))
 
 class GitRefreshHeadJob(GitLogJob):
     def process_item(self, item):
-        if self.view:
-            self.view.prepend(CommitListItem(item))
+        (id, commit) = item
+        if not id in Gitkcli.commits:
+            Gitkcli.commits[id] = commit
+            if self.view:
+                self.view.prepend(CommitListItem(id))
 
 class GitShowJob(SubprocessJob):
     def __init__(self, view = None):
@@ -373,19 +392,19 @@ class GitSearchJob(SubprocessJob):
         super().__init__() 
         self.cmd = 'git log --format=%H'
         self.view = view
-        self.ids = set()
         self.args = args
 
-    def start_job(self, args = []):
-        self.ids = set()
-        super().start_job(args) 
+    def start_job(self, args = [], clear_view = True):
+        Gitkcli.found_ids.clear()
+        Gitkcli.get_view('git-log').dirty = True
+        super().start_job(args, clear_view) 
 
     def process_line(self, line):
         self.items.put(line)
-        Gitkcli.get_view('git-log').dirty = True
 
     def process_item(self, item):
-        self.ids.add(item)
+        Gitkcli.found_ids.add(item)
+        Gitkcli.get_view('git-log').dirty = True
         if self.view:
             self.view.append(TextListItem(item))
 
@@ -394,15 +413,14 @@ class GitRefsJob(SubprocessJob):
         super().__init__() 
         self.cmd = 'git show-ref --head'
         self.view = view
-        self.head_id = ''
 
-    def start_job(self, args = []):
-        self.refs = {} # map: git_id --> { 'type':<ref-type>, 'name':<ref-name> }
+    def start_job(self, args = [], clear_view = True):
+        Gitkcli.refs.clear()
 
-        self.head_branch = Gitkcli.run_job(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).stdout.rstrip()
-        if self.head_branch == 'HEAD': self.head_branch = ''
+        Gitkcli.head_branch = Gitkcli.run_job(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).stdout.rstrip()
+        if Gitkcli.head_branch == 'HEAD': Gitkcli.head_branch = ''
 
-        super().start_job(args) 
+        super().start_job(args, clear_view) 
 
     def process_line(self, line):
         id, value = tuple(line.split(' '))
@@ -428,12 +446,12 @@ class GitRefsJob(SubprocessJob):
             self.view.append(RefListItem(item))
 
         id = item['id']
-        if id in self.refs:
-            self.refs[id].append(item)
+        if id in Gitkcli.refs:
+            Gitkcli.refs[id].append(item)
         else:
-            self.refs[id] = [item]
+            Gitkcli.refs[id] = [item]
         if item['type'] == 'head':
-            self.head_id = item['id']
+            Gitkcli.head_id = id
 
     def process_message(self, message):
         if message['type'] == 'finished':
@@ -539,21 +557,20 @@ class DiffListItem(Item):
         win.clrtoeol()
 
 class CommitListItem(Item):
-    def __init__(self, data):
-        self.data = data
+    def __init__(self, id):
+        self.id = id
 
     def get_id(self):
-        return self.data['id']
+        return self.id
 
     def get_text(self):
         text = ''
-        text += self.data['id'][:7] + ' '
-        text += self.data['date'].strftime("%Y-%m-%d %H:%M") + ' '
-        text += self.data['author'].ljust(22) + ' '
-        text += self.data['title']
+        text += self.id[:7] + ' '
+        text += Gitkcli.commits[self.id]['date'].strftime("%Y-%m-%d %H:%M") + ' '
+        text += Gitkcli.commits[self.id]['author'].ljust(22) + ' '
+        text += Gitkcli.commits[self.id]['title']
 
-        refs_map = Gitkcli.get_job('git-refs').refs
-        refs = refs_map.get(self.data['id'], [])
+        refs = Gitkcli.refs.get(self.id, [])
         for ref in refs:
             text += ' '
             _, title = get_ref_color_and_title(ref)
@@ -562,19 +579,18 @@ class CommitListItem(Item):
         return text
 
     def draw_line(self, win, offset, width, selected, matched):
-        marked = Gitkcli.get_job('git-log').view.marked_commit_id == self.data['id']
+        marked = Gitkcli.get_job('git-log').view.marked_commit_id == self.id
 
         segments = [
-            (self.data['id'][:7] + ' ', curses_color(4, selected, underline=marked)),
-            (self.data['date'].strftime("%Y-%m-%d %H:%M") + ' ', curses_color(5, selected, underline=marked)),
-            (self.data['author'].ljust(22) + ' ', curses_color(6, selected, underline=marked)),
-            (self.data['title'], curses_color(16 if matched else 1, selected, underline=marked))
+            (self.id[:7] + ' ', curses_color(4, selected, underline=marked)),
+            (Gitkcli.commits[self.id]['date'].strftime("%Y-%m-%d %H:%M") + ' ', curses_color(5, selected, underline=marked)),
+            (Gitkcli.commits[self.id]['author'].ljust(22) + ' ', curses_color(6, selected, underline=marked)),
+            (Gitkcli.commits[self.id]['title'], curses_color(16 if matched else 1, selected, underline=marked))
         ]
 
-        head_branch = Gitkcli.get_job('git-refs').head_branch
+        head_branch = Gitkcli.head_branch
         head_position = 0
-        refs_map = Gitkcli.get_job('git-refs').refs
-        refs = refs_map.get(self.data['id'], [])
+        refs = Gitkcli.refs.get(self.id, [])
         for ref in refs:
             if ref['name'] == head_branch:
                 position = head_position + 2
@@ -616,11 +632,11 @@ class CommitListItem(Item):
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13 or key == 9:
-            if Gitkcli.get_view('git-diff').commit_id == self.data['id']:
+            if Gitkcli.get_view('git-diff').commit_id == self.id:
                 Gitkcli.show_view('git-diff')
             else:
-                Gitkcli.get_view('git-diff').commit_id = self.data['id']
-                Gitkcli.get_job('git-diff').start_show_job(self.data['id'])
+                Gitkcli.get_view('git-diff').commit_id = self.id
+                Gitkcli.get_job('git-diff').start_show_job(self.id)
                 Gitkcli.clear_and_show_view('git-diff')
         else:
             return False
@@ -1272,7 +1288,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
         if self.search_type == "txt":
             return super().matches(item)
         else:
-            return item.get_id() in Gitkcli.get_job('git-search-results').ids
+            return item.get_id() in Gitkcli.found_ids
 
     def draw_top_panel(self):
         self.win.move(1, 2)
