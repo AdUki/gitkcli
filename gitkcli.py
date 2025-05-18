@@ -560,9 +560,6 @@ class CommitListItem(Item):
     def __init__(self, id):
         self.id = id
 
-    def get_id(self):
-        return self.id
-
     def get_text(self):
         text = ''
         text += self.id[:7] + ' '
@@ -930,7 +927,7 @@ class GitLogView(ListView):
     def jump_to_id(self, id):
         idx = 0
         for item in self.items:
-            if id == item.get_id():
+            if id == item.id:
                 self.selected = idx
                 if self.selected < self.offset_y or self.selected >= self.offset_y + self.height:
                     self.offset_y = max(0, self.selected - int(self.height / 2))
@@ -942,7 +939,7 @@ class GitLogView(ListView):
     def get_selected_commit_id(self):
         if len(self.items) > 0:
             selected_item = self.items[self.selected]
-            return selected_item.get_id()
+            return selected_item.id
         return ''
 
     def cherry_pick(self, commit_id = None):
@@ -1090,17 +1087,17 @@ class ContextMenu(ListView):
         view_id = Gitkcli.showed_views[-1]
         view = Gitkcli.get_view()
         if view_id == 'git-log':
-            self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.get_id(), view.get_selected_commit_id()]))
-            self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.get_id()]))
-            self.append(ContextMenuItem("Create new branch", view.create_branch, [item.get_id()]))
-            self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.get_id()]))
-            self.append(ContextMenuItem("Reset here", view.reset, [item.get_id(), False]))
-            self.append(ContextMenuItem("Hard reset here", view.reset, [item.get_id(), True]))
-            self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.get_id()]))
+            self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()]))
+            self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id]))
+            self.append(ContextMenuItem("Create new branch", view.create_branch, [item.id]))
+            self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
+            self.append(ContextMenuItem("Reset here", view.reset, [item.id, False]))
+            self.append(ContextMenuItem("Hard reset here", view.reset, [item.id, True]))
+            self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
             self.append(ContextMenuItem("Return to mark", view.jump_to_id, [view.marked_commit_id]))
-            self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.get_id(), view.marked_commit_id]))
-            self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.get_id()]))
-            self.append(ContextMenuItem("Revert this commit", view.revert, [item.get_id()]))
+            self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.id, view.marked_commit_id]))
+            self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.id]))
+            self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
         elif view_id == 'git-diff':
             self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [index]))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
@@ -1288,7 +1285,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
         if self.search_type == "txt":
             return super().matches(item)
         else:
-            return item.get_id() in Gitkcli.found_ids
+            return item.id in Gitkcli.found_ids
 
     def draw_top_panel(self):
         self.win.move(1, 2)
