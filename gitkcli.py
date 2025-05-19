@@ -1430,6 +1430,7 @@ def launch_curses(stdscr, cmd_args):
 
     curses.curs_set(0)  # Hide cursor
     stdscr.timeout(5)
+    curses.set_escdelay(200)
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
 
     Gitkcli.create_views_and_jobs(stdscr, cmd_args)
