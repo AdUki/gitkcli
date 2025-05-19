@@ -60,6 +60,8 @@ class Gitkcli:
     commits = {} # map: git_id --> { parents, date, author, title }
     found_ids = set()
 
+    unlinked_parent_ids = {}
+
     showed_views = []
     jobs = {}
     views = {}
@@ -93,6 +95,19 @@ class Gitkcli:
         commit_id = cls.head_id
         if commit_id:
             cls.get_job('git-refresh-head').start_job(['--reverse', f'{commit_id}..HEAD'], clear_view = False)
+
+    @classmethod
+    def add_commit(cls, id, commit):
+        if id in cls.commits:
+            return False
+        commit['children'] = cls.unlinked_parent_ids.pop(id, [])
+        cls.commits[id] = commit
+        for parent_id in commit['parents']:
+            if parent_id in cls.commits:
+                cls.commits[parent_id]['children'].append(id)
+            else:
+                cls.unlinked_parent_ids.setdefault(parent_id,[]).append(id)
+        return True
 
     @classmethod
     def add_job(cls, id, job):
@@ -354,16 +369,14 @@ class GitLogJob(SubprocessJob):
 
     def process_item(self, item):
         id, commit = item
-        if not id in Gitkcli.commits:
-            Gitkcli.commits[id] = commit
+        if Gitkcli.add_commit(id, commit):
             if self.view:
                 self.view.append(CommitListItem(id))
 
 class GitRefreshHeadJob(GitLogJob):
     def process_item(self, item):
         (id, commit) = item
-        if not id in Gitkcli.commits:
-            Gitkcli.commits[id] = commit
+        if Gitkcli.add_commit(id, commit):
             if self.view:
                 self.view.prepend(CommitListItem(id))
 
@@ -446,10 +459,7 @@ class GitRefsJob(SubprocessJob):
             self.view.append(RefListItem(item))
 
         id = item['id']
-        if id in Gitkcli.refs:
-            Gitkcli.refs[id].append(item)
-        else:
-            Gitkcli.refs[id] = [item]
+        Gitkcli.refs.setdefault(id,[]).append(item)
         if item['type'] == 'head':
             Gitkcli.head_id = id
 
