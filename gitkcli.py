@@ -378,33 +378,55 @@ class DiffListItem(Item):
         
         win.clrtoeol()
 
-class CommitListItem(Item):
-    def __init__(self, id):
-        self.id = id
+class SegmentedListItem(Item):
+    def get_segments(self, selected = False, matched = False):
+        return []
 
     def get_text(self):
         text = ''
-        text += self.id[:7] + ' '
-        text += Gitkcli.commits[self.id]['date'].strftime("%Y-%m-%d %H:%M") + ' '
-        text += Gitkcli.commits[self.id]['author'].ljust(22) + ' '
-        text += Gitkcli.commits[self.id]['title']
-
-        refs = Gitkcli.refs.get(self.id, [])
-        for ref in refs:
-            text += ' '
-            _, title = get_ref_color_and_title(ref)
-            text += title
+        for segment_text, _ in self.get_segments():
+            text += segment_text
 
         return text
 
     def draw_line(self, win, offset, width, selected, matched):
-        marked = Gitkcli.get_view('git-log').marked_commit_id == self.id
+        current_pos = 0
+        for text, attr in self.get_segments(selected, matched):
+            if offset <= current_pos + len(text):
+                # This segment is partially or fully visible
+                seg_offset = max(0, offset - current_pos)
+                visible_text = text[seg_offset:]
+  
+                # Truncate if it exceeds remaining width
+                if len(visible_text) > width:
+                    visible_text = visible_text[:width]
+  
+                if visible_text:
+                    win.addstr(visible_text, attr)
+                    width -= len(visible_text)
+  
+                if width <= 0:
+                    break
+  
+            current_pos += len(text)
 
+        if selected:
+            win.addstr(' ' * width, curses_color(1, selected))
+        else:
+            win.clrtoeol()
+
+class CommitListItem(SegmentedListItem):
+    def __init__(self, id):
+        self.id = id
+
+    def get_segments(self, selected = False, matched = False):
+        marked = Gitkcli.get_view('git-log').marked_commit_id == self.id
+        commit = Gitkcli.commits[self.id]
         segments = [
             (self.id[:7] + ' ', curses_color(4, selected, underline=marked)),
-            (Gitkcli.commits[self.id]['date'].strftime("%Y-%m-%d %H:%M") + ' ', curses_color(5, selected, underline=marked)),
-            (Gitkcli.commits[self.id]['author'].ljust(22) + ' ', curses_color(6, selected, underline=marked)),
-            (Gitkcli.commits[self.id]['title'], curses_color(16 if matched else 1, selected, underline=marked))
+            (commit['date'].strftime("%Y-%m-%d %H:%M") + ' ', curses_color(5, selected, underline=marked)),
+            (commit['author'].ljust(22) + ' ', curses_color(6, selected, underline=marked)),
+            (commit['title'], curses_color(16 if matched else 1, selected, underline=marked))
         ]
 
         head_branch = Gitkcli.head_branch
@@ -421,33 +443,7 @@ class CommitListItem(Item):
             color, title = get_ref_color_and_title(ref)
             segments.insert(position + 1, (title, curses_color(color, selected, True)))
 
-        current_pos = 0
-        for text, attr in segments:
-            if offset <= current_pos + len(text):
-                # This segment is partially or fully visible
-                seg_offset = max(0, offset - current_pos)
-                visible_text = text[seg_offset:]
-  
-                # Truncate if it exceeds remaining width
-                if len(visible_text) > width:
-                    visible_text = visible_text[:width]
-  
-                if visible_text:
-                    try:
-                        win.addstr(visible_text, attr)
-                    except curses.error as e:
-                        log_error(f"Curses exception: len_text={len(visible_text)} width={width}")
-                    width -= len(visible_text)
-  
-                if width <= 0:
-                    break
-  
-            current_pos += len(text)
-
-        if selected:
-            win.addstr(' ' * width, curses_color(1, selected))
-        else:
-            win.clrtoeol()
+        return segments
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13 or key == 9:
