@@ -281,6 +281,10 @@ class GitRefsJob(SubprocessJob):
         super().process_message(message)
 
 class Item:
+    def __init__(self):
+        self.selectable = True
+        self.separator = False
+
     def get_text(self) -> str:
         return ''
 
@@ -299,6 +303,12 @@ class Item:
 
     def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx) -> bool:
         return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, self, clicked_idx)
+
+class SeparatorItem(Item):
+    def __init__(self):
+        super().__init__()
+        self.selectable = False
+        self.separator = True
 
 class RefListItem(Item):
     def __init__(self, data):
@@ -331,6 +341,7 @@ class RefListItem(Item):
 
 class TextListItem(Item):
     def __init__(self, txt, color = 1):
+        super().__init__()
         self.txt = txt
         self.color = color
 
@@ -349,6 +360,7 @@ class TextListItem(Item):
 
 class DiffListItem(Item):
     def __init__(self, line):
+        super().__init__()
         self.line = line
 
     def get_text(self):
@@ -417,6 +429,7 @@ class SegmentedListItem(Item):
 
 class CommitListItem(SegmentedListItem):
     def __init__(self, id):
+        super().__init__()
         self.id = id
 
     def get_segments(self, selected = False, matched = False):
@@ -585,7 +598,7 @@ class ListView(View):
         if self.offset_y > 0:
             self.offset_y += 1
         else:
-            self.ensure_selection_is_visible()
+            self._ensure_selection_is_visible()
         
     def insert(self, item, position=None):
         """Insert item at position or selected position"""
@@ -604,7 +617,7 @@ class ListView(View):
         self.offset_x = 0
         self.dirty = True
 
-    def ensure_selection_is_visible(self):
+    def _ensure_selection_is_visible(self):
         self.dirty = True
         if self.selected < self.offset_y:
             if self.offset_y - self.selected > 1:
@@ -617,16 +630,29 @@ class ListView(View):
             else:
                 self.offset_y = self.selected - self.height + 1
 
-    def execute_search(self, search_dialog_view):
+    def _skip_non_selectable_items(self, direction):
+        if not self.items:
+            return
+        new_selected = self.selected
+        while True:
+            if self.items[new_selected].selectable:
+                break
+            new_selected += direction
+            self.dirty = True
+            if new_selected < 0 or new_selected >= len(self.items):
+                return
+        self.selected = new_selected
+
+    def search_requested(self, search_dialog_view):
         for i in range(self.selected, len(self.items)):
             if search_dialog_view.matches(self.items[i]):
                 self.selected = i
-                self.ensure_selection_is_visible()
+                self._ensure_selection_is_visible()
                 return
         for i in range(0, self.selected):
             if search_dialog_view.matches(self.items[i]):
                 self.selected = i
-                self.ensure_selection_is_visible()
+                self._ensure_selection_is_visible()
                 return
 
     def handle_input(self, key):
@@ -638,11 +664,13 @@ class ListView(View):
         if key == curses.KEY_UP or key == ord('k'):
             if self.selected > 0:
                 self.selected -= 1
-            self.ensure_selection_is_visible()
+            self._skip_non_selectable_items(-1)
+            self._ensure_selection_is_visible()
         elif key == curses.KEY_DOWN or key == ord('j'):
             if self.selected < len(self.items) - 1:
                 self.selected += 1
-            self.ensure_selection_is_visible()
+            self._skip_non_selectable_items(1)
+            self._ensure_selection_is_visible()
         elif key == curses.KEY_LEFT or key == ord('h'):
             if self.offset_x - offset_jump >= 0:
                 self.offset_x -= offset_jump
@@ -657,7 +685,8 @@ class ListView(View):
                 self.selected = 0
             if self.offset_y < 0:
                 self.offset_y = 0
-            self.ensure_selection_is_visible()
+            self._skip_non_selectable_items(-1)
+            self._ensure_selection_is_visible()
         elif key == curses.KEY_NPAGE or key == curses_ctrl('f'):
             self.selected += self.height
             self.offset_y += self.height
@@ -665,13 +694,16 @@ class ListView(View):
                 self.selected = max(0, len(self.items) - 1)
             if self.offset_y >= len(self.items) - self.height:
                 self.offset_y = max(0, len(self.items) - self.height)
-            self.ensure_selection_is_visible()
+            self._skip_non_selectable_items(1)
+            self._ensure_selection_is_visible()
         elif key == curses.KEY_HOME or key == ord('g'):
             self.selected = 0
-            self.ensure_selection_is_visible()
+            self._skip_non_selectable_items(-1)
+            self._ensure_selection_is_visible()
         elif key == curses.KEY_END or key == ord('G'):
             self.selected = max(0, len(self.items) - 1)
-            self.ensure_selection_is_visible()
+            self._skip_non_selectable_items(1)
+            self._ensure_selection_is_visible()
         elif key == curses.KEY_MOUSE:
             _, mouse_x, mouse_y, _, mouse_state = curses.getmouse()
             begin_y, begin_x = self.win.getbegyx()
@@ -680,7 +712,7 @@ class ListView(View):
             if 0 <= click_y < self.height and 0 <= click_x < self.width:
                 if mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_DOUBLE_CLICKED or mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
                     clicked_idx = self.offset_y + click_y
-                    if 0 <= clicked_idx < len(self.items):
+                    if 0 <= clicked_idx < len(self.items) and self.items[clicked_idx].selectable:
                         if mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
                             self.selected = clicked_idx
                             return self.items[clicked_idx].handle_left_click(self.offset_x, mouse_x, mouse_y)
@@ -709,7 +741,7 @@ class ListView(View):
                 for i in range(self.selected + 1, len(self.items)):
                     if search_dialog.matches(self.items[i]):
                         self.selected = i
-                        self.ensure_selection_is_visible()
+                        self._ensure_selection_is_visible()
                         break
         elif key == ord('N'):
             search_dialog = Gitkcli.get_search_dialog(self.id)
@@ -717,7 +749,7 @@ class ListView(View):
                 for i in reversed(range(0, self.selected)):
                     if search_dialog.matches(self.items[i]):
                         self.selected = i
-                        self.ensure_selection_is_visible()
+                        self._ensure_selection_is_visible()
                         break
         else: 
             return self.items[self.selected].handle_input(key)
@@ -726,6 +758,7 @@ class ListView(View):
 
     def draw(self):
         search_dialog = Gitkcli.get_search_dialog(self.id)
+        separator_items = []
         for i in range(0, min(self.height, len(self.items) - self.offset_y)):
             idx = i + self.offset_y
             item = self.items[idx]
@@ -736,11 +769,26 @@ class ListView(View):
             width = self.width
             if i == self.height - 1: width -= 1
 
-            self.win.move(self.y + i, self.x)
-            item.draw_line(self.win, self.offset_x, width, selected, matched)
+            if item.separator:
+                separator_items.append(i)
+            else:
+                self.win.move(self.y + i, self.x)
+                item.draw_line(self.win, self.offset_x, width, selected, matched)
 
         self.win.clrtobot()
         super().draw()
+
+        if separator_items:
+            for i in separator_items:
+                if self.view_position == 'window':
+                    self.win.move(self.y + i, self.x-1)
+                    self.win.addstr('├', curses_color(1))
+                    self.win.addstr('─' * self.width, curses_color(1))
+                    self.win.addstr('┤', curses_color(1))
+                else:
+                    self.win.move(self.y + i, self.x)
+                    self.win.addstr('─' * self.width, curses_color(1))
+            self.win.refresh()
 
 class GitLogView(ListView):
     def __init__(self, id, parent_win):
@@ -809,7 +857,7 @@ class GitLogView(ListView):
         Gitkcli.clear_and_show_view('git-diff')
 
     def handle_input(self, key):
-        if key == ord('q'):
+        if key == ord('q') or key == curses.KEY_EXIT or key == 27:
             Gitkcli.exit_program()
         elif key == ord('b'):
             self.create_branch()
@@ -909,17 +957,20 @@ class ContextMenu(ListView):
         view_id = Gitkcli.showed_views[-1]
         view = Gitkcli.get_view()
         if view_id == 'git-log':
-            self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()]))
-            self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id]))
             self.append(ContextMenuItem("Create new branch", view.create_branch, [item.id]))
             self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
-            self.append(ContextMenuItem("Reset here", view.reset, [item.id, False]))
-            self.append(ContextMenuItem("Hard reset here", view.reset, [item.id, True]))
-            self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
-            self.append(ContextMenuItem("Return to mark", view.jump_to_id, [view.marked_commit_id]))
+            self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
+            self.append(SeparatorItem())
+            self.append(ContextMenuItem("Reset here", view.reset, [False, item.id]))
+            self.append(ContextMenuItem("Hard reset here", view.reset, [True, item.id]))
+            self.append(SeparatorItem())
+            self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()]))
+            self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id]))
             self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.id, view.marked_commit_id]))
             self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.id]))
-            self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
+            self.append(SeparatorItem())
+            self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
+            self.append(ContextMenuItem("Return to mark", view.jump_to_id, [view.marked_commit_id]))
         elif view_id == 'git-diff':
             self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [index]))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
@@ -1092,7 +1143,7 @@ class SearchDialogPopup(UserInputDialogPopup):
         return True
 
     def execute(self):
-        Gitkcli.get_parent_view(self.id).execute_search(self)
+        Gitkcli.get_parent_view(self.id).search_requested(self)
 
 class GitSearchDialogPopup(SearchDialogPopup):
     def __init__(self, id, parent_win):
@@ -1461,7 +1512,7 @@ def launch_curses(stdscr, cmd_args):
         elif active_view.handle_input(key):
             active_view.dirty = True
         else:
-            if key == ord('q') or key == curses.KEY_MOUSE:
+            if key == ord('q') or key == curses.KEY_EXIT or key == 27 or key == curses.KEY_MOUSE:
                 Gitkcli.hide_view()
             elif key == curses.KEY_F1 or key == 9:
                 Gitkcli.show_view('git-log')
