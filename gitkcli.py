@@ -4,7 +4,7 @@ import argparse
 import curses
 import datetime
 import time
-import pprint
+import typing
 import queue
 import re
 import subprocess
@@ -52,198 +52,10 @@ def get_ref_color_and_title(ref):
         color = 14
     return color, title
 
-class Gitkcli:
-
-    head_branch = ''
-    head_id = ''
-    refs = {} # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
-    commits = {} # map: git_id --> { parents, date, author, title }
-    found_ids = set()
-
-    unlinked_parent_ids = {}
-
-    showed_views = []
-    jobs = {}
-    views = {}
-    running = True
-
-    status_bar_message = ''
-    status_bar_color = None
-    status_bar_time = None
-
-    @classmethod
-    def log(cls, color, txt, status_color = None):
-        now = datetime.datetime.now()
-        view = Gitkcli.get_view('log')
-        first_line = ''
-        if view:
-            for line in txt.splitlines():
-                view.append(TextListItem(f'{now} {line}', color))
-                if not first_line:
-                    first_line = line
-        if status_color:
-            cls.status_bar_message = first_line
-            cls.status_bar_time = time.time()
-            cls.status_bar_color = status_color
-
-    @classmethod
-    def refresh_refs(cls):
-        cls.get_job('git-refs').start_job()
-
-    @classmethod
-    def refresh_head(cls):
-        commit_id = cls.head_id
-        if commit_id:
-            cls.get_job('git-refresh-head').start_job(['--reverse', f'{commit_id}..HEAD'], clear_view = False)
-
-    @classmethod
-    def add_commit(cls, id, commit):
-        if id in cls.commits:
-            return False
-        commit['children'] = cls.unlinked_parent_ids.pop(id, [])
-        cls.commits[id] = commit
-        for parent_id in commit['parents']:
-            if parent_id in cls.commits:
-                cls.commits[parent_id]['children'].append(id)
-            else:
-                cls.unlinked_parent_ids.setdefault(parent_id,[]).append(id)
-        return True
-
-    @classmethod
-    def add_job(cls, id, job):
-        if id in cls.jobs:
-            cls.jobs[id].stop_job()
-        cls.jobs[id] = job
-
-    @classmethod
-    def run_job(cls, args):
-        log_info(' '.join(args))
-        return subprocess.run(args, capture_output=True, text=True)
-
-    @classmethod
-    def add_and_start_job(cls, id, job):
-        cls.add_job(id, job)
-        job.start_job()
-
-    @classmethod
-    def add_view(cls, id, view):
-        cls.views[id] = view
-
-    @classmethod
-    def exit_program(cls):
-        cls.running = False
-        for job in cls.jobs.values():
-            job.stop_job()
-
-    @classmethod
-    def process_all_jobs(cls):
-        for job in cls.jobs.values():
-            job.process_items()
-
-    @classmethod
-    def resize_all_views(cls, lines, cols):
-        for job in cls.jobs.values():
-            if job.view:
-                job.view.parent_resize(lines, cols)
-        for view in cls.views.values():
-            view.parent_resize(lines, cols)
-
-    @classmethod
-    def get_job(cls, id = None):
-        if len(cls.showed_views) > 0:
-            id = cls.showed_views[-1] if not id else id
-            if id in cls.jobs:
-                return cls.jobs[id]
-        return None
-
-    @classmethod
-    def get_view(cls, id = None):
-        if id is None and len(cls.showed_views) > 0:
-            id = cls.showed_views[-1]
-        if id in cls.views:
-            return cls.views[id]
-        if id in cls.jobs:
-            return cls.jobs[id].view
-        return None
-
-    @classmethod
-    def show_view(cls, id):
-        if len(cls.showed_views) > 0 and cls.showed_views[-1] == id:
-            return
-        if id in cls.showed_views:
-            cls.showed_views.remove(id)
-        cls.showed_views.append(id)
-        cls.get_view().dirty = True
-
-    @classmethod
-    def clear_and_show_view(cls, id):
-        cls.get_view(id).clear()
-        cls.show_view(id)
-
-    @classmethod
-    def hide_view(cls):
-        if len(cls.showed_views) > 0:
-            view_id = cls.showed_views.pop(-1)
-            cls.get_view(view_id).win.erase()
-            cls.get_view(view_id).win.refresh()
-            cls.get_view().dirty = True
-
-    @classmethod
-    def hide_current_and_show_view(cls, id):
-        cls.hide_view()
-        cls.show_view(id)
-
-    @classmethod
-    def draw_visible_views(cls, stdscr):
-        positions = {}
-        for view_id in cls.showed_views:
-            view = cls.get_view(view_id)
-            positions.pop('window', None)
-            if view.view_position == 'fullscreen':
-                positions.clear()
-            positions[view.view_position] = view
-            if 'top' in positions and 'bottom' in positions:
-                positions.pop('fullscreen', None)
-
-        force_redraw = False
-        if 'fullscreen' in positions:
-            force_redraw = force_redraw or positions['fullscreen'].redraw()
-        if 'top' in positions:
-            force_redraw = force_redraw or positions['top'].redraw()
-        if 'bottom' in positions:
-            force_redraw = force_redraw or positions['bottom'].redraw()
-        if 'window' in positions:
-            positions['window'].redraw(force_redraw)
-
-    @classmethod
-    def draw_status_bar(cls, stdscr):
-        lines, cols = stdscr.getmaxyx()
-
-        if cls.status_bar_message:
-            # show status bar message for 2 seconds
-            if time.time() - cls.status_bar_time < 2:
-                stdscr.addstr(lines-1, 0, cls.status_bar_message.ljust(cols - 1), curses_color(cls.status_bar_color))
-                return
-            else:
-                cls.status_bar_message = ''
-
-        job = cls.get_job()
-        if not job or not job.view:
-            return
-
-        job_status = ''
-        if job.job_running():
-            job_status = 'Running'
-        elif job.get_exit_code() == None:
-            job_status = f"Not started"
-        else:
-            job_status = f"Exited with code {job.get_exit_code()}"
-
-        stdscr.addstr(lines-1, 0, f"Line {job.view.selected+1}/{len(job.view.items)} - Offset {job.view.offset_x} - Process '{cls.showed_views[-1]}' {job_status}".ljust(cols - 1), curses_color(7, True))
-
 class SubprocessJob:
 
-    def __init__(self):
+    def __init__(self, id):
+        self.id = id
         self.cmd = ''
         self.args = []
         self.job = None
@@ -251,6 +63,7 @@ class SubprocessJob:
         self.stop = False
         self.items = queue.Queue()
         self.messages = queue.Queue()
+        Gitkcli.add_job(id, self)
 
     def process_line(self, line):
         # This should be implemented by derived classes
@@ -302,8 +115,10 @@ class SubprocessJob:
         self.stop_job()
         self.stop = False
 
-        if clear_view and self.view:
-            self.view.clear()
+        if clear_view:
+            view = Gitkcli.get_view(self.id)
+            if view:
+                view.clear()
 
         log_info(' '.join([self.cmd] + args + self.args))
 
@@ -341,16 +156,16 @@ class SubprocessJob:
                         self.items.put(item)
 
             except Exception as e:
-                self.messages.put({'type': 'error', 'message': f"Error processing line: {line}\n{str(e)}"})
+                self.messages.put({'type': 'error', 'message': f"Error processing line: {bytearr}\n{str(e)}"})
         stream.close()
         self.messages.put({'type': 'finished'})
 
 class GitLogJob(SubprocessJob):
-    def __init__(self, view = None, args = []):
-        super().__init__() 
+    def __init__(self, id, args = []):
+        super().__init__(id) 
         self.cmd = 'git log --format=%H|%P|%aI|%an|%s'
-        self.view = view
         self.args = args
+        self.start_job()
 
     def start_job(self, args = [], clear_view = True):
         if clear_view:
@@ -370,21 +185,19 @@ class GitLogJob(SubprocessJob):
     def process_item(self, item):
         id, commit = item
         if Gitkcli.add_commit(id, commit):
-            if self.view:
-                self.view.append(CommitListItem(id))
+            view = Gitkcli.get_view(self.id)
+            if view:
+                view.append(CommitListItem(id))
 
 class GitRefreshHeadJob(GitLogJob):
     def process_item(self, item):
         (id, commit) = item
         if Gitkcli.add_commit(id, commit):
-            if self.view:
-                self.view.prepend(CommitListItem(id))
+            view = Gitkcli.get_view(self.id)
+            if view:
+                view.prepend(CommitListItem(id))
 
-class GitShowJob(SubprocessJob):
-    def __init__(self, view = None):
-        super().__init__() 
-        self.view = view
-
+class GitDiffJob(SubprocessJob):
     def start_diff_job(self, old_commit_id, new_commit_id):
         self.cmd = 'git diff --no-color'
         self.start_job([old_commit_id, new_commit_id])
@@ -397,14 +210,14 @@ class GitShowJob(SubprocessJob):
         self.items.put(line)
 
     def process_item(self, item):
-        if self.view:
-            self.view.append(DiffListItem(item))
+        view = Gitkcli.get_view(self.id)
+        if view:
+            view.append(DiffListItem(item))
 
 class GitSearchJob(SubprocessJob):
-    def __init__(self, view = None, args = []):
-        super().__init__() 
+    def __init__(self, id, args = []):
+        super().__init__(id) 
         self.cmd = 'git log --format=%H'
-        self.view = view
         self.args = args
 
     def start_job(self, args = [], clear_view = True):
@@ -418,14 +231,12 @@ class GitSearchJob(SubprocessJob):
     def process_item(self, item):
         Gitkcli.found_ids.add(item)
         Gitkcli.get_view('git-log').dirty = True
-        if self.view:
-            self.view.append(TextListItem(item))
 
 class GitRefsJob(SubprocessJob):
-    def __init__(self, view = None):
-        super().__init__() 
+    def __init__(self, id):
+        super().__init__(id) 
         self.cmd = 'git show-ref --head'
-        self.view = view
+        self.start_job()
 
     def start_job(self, args = [], clear_view = True):
         Gitkcli.refs.clear()
@@ -455,8 +266,9 @@ class GitRefsJob(SubprocessJob):
         self.items.put(ref)
 
     def process_item(self, item):
-        if self.view:
-            self.view.append(RefListItem(item))
+        view = Gitkcli.get_view(self.id)
+        if view:
+            view.append(RefListItem(item))
 
         id = item['id']
         Gitkcli.refs.setdefault(id,[]).append(item)
@@ -469,23 +281,23 @@ class GitRefsJob(SubprocessJob):
         super().process_message(message)
 
 class Item:
-    def get_text(self):
+    def get_text(self) -> str:
         return ''
 
     def draw_line(self, win, offset, width, selected, matched):
         pass
 
-    def handle_input(self, key):
+    def handle_input(self, key) -> bool:
         return False
 
-    def handle_left_click(self, offset, mouse_x, mouse_y):
+    def handle_left_click(self, offset, mouse_x, mouse_y) -> bool:
         return True
 
-    def handle_double_click(self, offset, mouse_x, mouse_y):
+    def handle_double_click(self, offset, mouse_x, mouse_y) -> bool:
         self.handle_input(curses.KEY_ENTER)
         return True
 
-    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx):
+    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx) -> bool:
         return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, self, clicked_idx)
 
 class RefListItem(Item):
@@ -586,7 +398,7 @@ class CommitListItem(Item):
         return text
 
     def draw_line(self, win, offset, width, selected, matched):
-        marked = Gitkcli.get_job('git-log').view.marked_commit_id == self.id
+        marked = Gitkcli.get_view('git-log').marked_commit_id == self.id
 
         segments = [
             (self.id[:7] + ' ', curses_color(4, selected, underline=marked)),
@@ -650,10 +462,11 @@ class CommitListItem(Item):
         return True
 
 class View:
-    def __init__(self, parent_win, view_position='fullscreen', x=None, y=None, height=None, width=None):
+    def __init__(self, id, parent_win, title = '', view_position='fullscreen', x=None, y=None, height=None, width=None):
+        self.id = id
         self.parent_win = parent_win
         self.view_position = view_position
-        self.title = ''
+        self.title = title
         self.win_x = x
         self.win_y = y
         self.win_height = height
@@ -663,6 +476,8 @@ class View:
         parent_lines, parent_cols = parent_win.getmaxyx()
         height, width, y, x = self._calculate_dimensions(parent_lines, parent_cols)
         self.win = curses.newwin(height, width, y, x)
+
+        Gitkcli.add_view(id, self)
         
     def _calculate_dimensions(self, lines, cols):
         self.parent_height = lines
@@ -683,8 +498,8 @@ class View:
         elif self.view_position == 'window':
             win_height = min(lines, self.win_height if self.win_height else int(lines / 2))
             win_width = min(cols, self.win_width if self.win_width else int(cols / 2))
-            win_y = min(lines - win_height, int((lines - win_height) / 2) if self.win_x is None else self.win_y)
-            win_x = min(cols - win_width, int((cols - win_width) / 2) if self.win_y is None else self.win_x)
+            win_y = min(lines - win_height, int((lines - win_height) / 2) if self.win_y is None else self.win_y)
+            win_x = min(cols - win_width, int((cols - win_width) / 2) if self.win_x is None else self.win_x)
 
         # substract title bar
         self.height = win_height - 1
@@ -742,13 +557,12 @@ class View:
         self.win.refresh()
 
 class ListView(View):
-    def __init__(self, parent_win, view_position='fullscreen', search_dialog=None, context_menu=None, x=None, y=None, height=None, width=None):
-        super().__init__(parent_win, view_position, x, y, height, width)
+    def __init__(self, id, parent_win, view_position='fullscreen', title = '', x=None, y=None, height=None, width=None):
+        super().__init__(id, parent_win, title, view_position, x, y, height, width)
         self.items = []
         self.selected = 0
         self.offset_y = 0
         self.offset_x = 0
-        self.search_dialog = search_dialog
 
     def copy_text_to_clipboard(self):
         text = "\n".join(item.get_text() for item in self.items)
@@ -890,19 +704,22 @@ class ListView(View):
             else:
                 return self.view_position == 'fullscreen'
         elif key == ord('/'):
-            if self.search_dialog:
-                Gitkcli.clear_and_show_view(self.search_dialog)
+            search_dialog = Gitkcli.get_search_dialog(self.id)
+            if search_dialog:
+                Gitkcli.clear_and_show_view(search_dialog.id)
         elif key == ord('n'):
-            if self.search_dialog:
+            search_dialog = Gitkcli.get_search_dialog(self.id)
+            if search_dialog:
                 for i in range(self.selected + 1, len(self.items)):
-                    if Gitkcli.get_view(self.search_dialog).matches(self.items[i]):
+                    if search_dialog.matches(self.items[i]):
                         self.selected = i
                         self.ensure_selection_is_visible()
                         break
         elif key == ord('N'):
-            if self.search_dialog:
+            search_dialog = Gitkcli.get_search_dialog(self.id)
+            if search_dialog:
                 for i in reversed(range(0, self.selected)):
-                    if Gitkcli.get_view(self.search_dialog).matches(self.items[i]):
+                    if search_dialog.matches(self.items[i]):
                         self.selected = i
                         self.ensure_selection_is_visible()
                         break
@@ -912,11 +729,12 @@ class ListView(View):
         return True
 
     def draw(self):
+        search_dialog = Gitkcli.get_search_dialog(self.id)
         for i in range(0, min(self.height, len(self.items) - self.offset_y)):
             idx = i + self.offset_y
             item = self.items[idx]
             selected = idx == self.selected
-            matched = Gitkcli.get_view(self.search_dialog).matches(item) if self.search_dialog else False
+            matched = search_dialog.matches(item) if search_dialog else False
 
             # curses throws exception if you want to write a character in bottom left corner
             width = self.width
@@ -929,9 +747,8 @@ class ListView(View):
         super().draw()
 
 class GitLogView(ListView):
-    def __init__(self, parent_win):
-        super().__init__(parent_win, 'fullscreen', 'git-log-search') 
-        self.title = "Git commit log"
+    def __init__(self, id, parent_win):
+        super().__init__(id, parent_win, 'fullscreen', 'Git commit log') 
         self.marked_commit_id = ''
 
     def jump_to_id(self, id):
@@ -1017,9 +834,8 @@ class GitLogView(ListView):
         return True
 
 class GitDiffView(ListView):
-    def __init__(self, parent_win):
-        super().__init__(parent_win, 'fullscreen', 'git-diff-search') 
-        self.title = "Git commit diff"
+    def __init__(self, id, parent_win):
+        super().__init__(id, parent_win, 'fullscreen', 'Git commit diff') 
         self.commit_id = ''
 
     def show_origin_of_line(self, line_index = None):
@@ -1089,8 +905,8 @@ class ContextMenuItem(TextListItem):
         return True
 
 class ContextMenu(ListView):
-    def __init__(self, parent_win):
-        super().__init__(parent_win, 'window')
+    def __init__(self, id, parent_win):
+        super().__init__(id, parent_win, 'window')
         
     def show_context_menu(self, mouse_x, mouse_y, item, index):
         self.clear()
@@ -1121,8 +937,8 @@ class ContextMenu(ListView):
         return True
 
 class UserInputDialogPopup(View):
-    def __init__(self, parent_win):
-        super().__init__(parent_win, 'window', height=7, width=80) 
+    def __init__(self, id, parent_win, title):
+        super().__init__(id, parent_win, title, 'window', height=7, width=80) 
         self.query = ""
         self.cursor_pos = 0
         self.bottom_text = "Enter: Execute | Esc: Cancel"
@@ -1208,10 +1024,9 @@ class UserInputDialogPopup(View):
         return True
 
 class NewBranchDialogPopup(UserInputDialogPopup):
-    def __init__(self, parent_win):
-        super().__init__(parent_win) 
+    def __init__(self, id, parent_win):
+        super().__init__(id, parent_win, ' New Branch') 
         self.force = False
-        self.title = " New Branch "
         self.bottom_text = "Enter: Execute | Esc: Cancel | F1: Force"
         self.commit_id = ''
 
@@ -1241,12 +1056,10 @@ class NewBranchDialogPopup(UserInputDialogPopup):
             log_error(f"Error creating branch: " + result.stderr)
 
 class SearchDialogPopup(UserInputDialogPopup):
-    def __init__(self, parent_win, list_view):
-        super().__init__(parent_win) 
-        self.list_view = list_view
+    def __init__(self, id, parent_win):
+        super().__init__(id, parent_win, ' Search') 
         self.case_sensitive = True
         self.use_regexp = False
-        self.title = " Search "
         self.bottom_text = "Enter: Search | Esc: Cancel | F1: Case | F2: Regexp"
 
     def matches(self, item):
@@ -1272,7 +1085,7 @@ class SearchDialogPopup(UserInputDialogPopup):
 
     def handle_input(self, key):
         if key == curses.KEY_DC or key == curses.KEY_BACKSPACE or key == 127 or 32 <= key <= 126:
-            self.list_view.dirty = True
+            Gitkcli.get_parent_view(self.id).dirty = True
 
         if key == curses.KEY_F1:
             self.case_sensitive = not self.case_sensitive
@@ -1283,11 +1096,11 @@ class SearchDialogPopup(UserInputDialogPopup):
         return True
 
     def execute(self):
-        self.list_view.execute_search(self)
+        Gitkcli.get_parent_view(self.id).execute_search(self)
 
 class GitSearchDialogPopup(SearchDialogPopup):
-    def __init__(self, parent_win, list_view):
-        super().__init__(parent_win, list_view) 
+    def __init__(self, id, parent_win):
+        super().__init__(id, parent_win) 
         self.search_type = "txt"
         self.bottom_text = "Enter: Search | Esc: Cancel | Tab: Change type | F1: Case | F2: Regexp"
 
@@ -1341,10 +1154,10 @@ class GitSearchDialogPopup(SearchDialogPopup):
                 args.append('--')
                 args.append(f"*{self.query}*")
 
-            Gitkcli.get_job('git-search-results').start_job(args)
+            Gitkcli.get_job('git-search').start_job(args)
 
         elif key == 9:  # Tab key - cycle through search types
-            self.list_view.dirty = True
+            Gitkcli.get_parent_view(self.id).dirty = True
             if self.search_type == "txt":
                 self.search_type = "id"
             elif self.search_type == "id":
@@ -1361,6 +1174,217 @@ class GitSearchDialogPopup(SearchDialogPopup):
             
         return True
 
+
+class Gitkcli:
+
+    head_branch = ''
+    head_id = ''
+    refs = {} # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
+    commits = {} # map: git_id --> { parents, date, author, title }
+    found_ids = set()
+
+    unlinked_parent_ids = {}
+
+    showed_views = []
+    jobs = {}
+    views = {}
+    running = True
+
+    status_bar_message = ''
+    status_bar_color = None
+    status_bar_time = time.time()
+
+    @classmethod
+    def create_views_and_jobs(cls, stdscr, cmd_args):
+        ListView('log', stdscr, title = 'Logs')
+        SearchDialogPopup('log-search', stdscr)
+
+        GitLogView('git-log', stdscr)
+        GitSearchDialogPopup('git-log-search', stdscr)
+        NewBranchDialogPopup('git-log-branch', stdscr)
+
+        GitDiffView('git-diff', stdscr)
+        SearchDialogPopup('git-diff-search', stdscr)
+
+        ListView('git-refs', stdscr, title = 'Git references')
+        SearchDialogPopup('git-refs-search', stdscr)
+
+        ContextMenu('context-menu', stdscr)
+
+        GitLogJob('git-log', cmd_args)
+        GitRefreshHeadJob('git-refresh-head') # NOTE: This job will be no longer needed when we will have implemented graph with topology order
+        GitSearchJob('git-search', cmd_args)
+        GitDiffJob('git-diff')
+        GitRefsJob('git-refs')
+
+    @classmethod
+    def log(cls, color, txt, status_color = None):
+        now = datetime.datetime.now()
+        view = Gitkcli.get_view('log')
+        first_line = ''
+        if view:
+            for line in txt.splitlines():
+                view.append(TextListItem(f'{now} {line}', color))
+                if not first_line:
+                    first_line = line
+        if status_color:
+            cls.status_bar_message = first_line
+            cls.status_bar_time = time.time()
+            cls.status_bar_color = status_color
+
+    @classmethod
+    def refresh_refs(cls):
+        cls.get_job('git-refs').start_job()
+
+    @classmethod
+    def refresh_head(cls):
+        commit_id = cls.head_id
+        if commit_id:
+            cls.get_job('git-refresh-head').start_job(['--reverse', f'{commit_id}..HEAD'], clear_view = False)
+
+    @classmethod
+    def add_commit(cls, id, commit):
+        if id in cls.commits:
+            return False
+        commit['children'] = cls.unlinked_parent_ids.pop(id, [])
+        cls.commits[id] = commit
+        for parent_id in commit['parents']:
+            if parent_id in cls.commits:
+                cls.commits[parent_id]['children'].append(id)
+            else:
+                cls.unlinked_parent_ids.setdefault(parent_id,[]).append(id)
+        return True
+
+    @classmethod
+    def add_job(cls, id, job):
+        if id in cls.jobs:
+            cls.jobs[id].stop_job()
+        cls.jobs[id] = job
+
+    @classmethod
+    def run_job(cls, args):
+        log_info(' '.join(args))
+        return subprocess.run(args, capture_output=True, text=True)
+
+    @classmethod
+    def add_view(cls, id, view):
+        cls.views[id] = view
+
+    @classmethod
+    def exit_program(cls):
+        cls.running = False
+        for job in cls.jobs.values():
+            job.stop_job()
+
+    @classmethod
+    def process_all_jobs(cls):
+        for job in cls.jobs.values():
+            job.process_items()
+
+    @classmethod
+    def resize_all_views(cls, lines, cols):
+        for view in cls.views.values():
+            view.parent_resize(lines, cols)
+
+    @classmethod
+    def get_job(cls, id = None) -> typing.Any:
+        if len(cls.showed_views) > 0:
+            id = cls.showed_views[-1] if not id else id
+            if id in cls.jobs:
+                return cls.jobs[id]
+        return None
+
+    @classmethod
+    def get_view(cls, id = None) -> typing.Any:
+        if id is None and len(cls.showed_views) > 0:
+            id = cls.showed_views[-1]
+        if id in cls.views:
+            return cls.views[id]
+        return None
+
+    @classmethod
+    def get_parent_view(cls, id) -> ListView:
+        return cls.get_view(id[:id.rfind('-')])
+
+    @classmethod
+    def get_search_dialog(cls, parent_id) -> SearchDialogPopup:
+        return cls.get_view(parent_id + '-search')
+
+    @classmethod
+    def show_view(cls, id):
+        if len(cls.showed_views) > 0 and cls.showed_views[-1] == id:
+            return
+        if id in cls.showed_views:
+            cls.showed_views.remove(id)
+        cls.showed_views.append(id)
+        cls.get_view().dirty = True
+
+    @classmethod
+    def clear_and_show_view(cls, id):
+        cls.get_view(id).clear()
+        cls.show_view(id)
+
+    @classmethod
+    def hide_view(cls):
+        if len(cls.showed_views) > 0:
+            view_id = cls.showed_views.pop(-1)
+            cls.get_view(view_id).win.erase()
+            cls.get_view(view_id).win.refresh()
+            cls.get_view().dirty = True
+
+    @classmethod
+    def hide_current_and_show_view(cls, id):
+        cls.hide_view()
+        cls.show_view(id)
+
+    @classmethod
+    def draw_visible_views(cls):
+        positions = {}
+        for view_id in cls.showed_views:
+            view = cls.get_view(view_id)
+            positions.pop('window', None)
+            if view.view_position == 'fullscreen':
+                positions.clear()
+            positions[view.view_position] = view
+            if 'top' in positions and 'bottom' in positions:
+                positions.pop('fullscreen', None)
+
+        force_redraw = False
+        if 'fullscreen' in positions:
+            force_redraw = force_redraw or positions['fullscreen'].redraw()
+        if 'top' in positions:
+            force_redraw = force_redraw or positions['top'].redraw()
+        if 'bottom' in positions:
+            force_redraw = force_redraw or positions['bottom'].redraw()
+        if 'window' in positions:
+            positions['window'].redraw(force_redraw)
+
+    @classmethod
+    def draw_status_bar(cls, stdscr):
+        lines, cols = stdscr.getmaxyx()
+
+        if cls.status_bar_message:
+            # show status bar message for 2 seconds
+            if time.time() - cls.status_bar_time < 2:
+                stdscr.addstr(lines-1, 0, cls.status_bar_message.ljust(cols - 1), curses_color(cls.status_bar_color))
+                return
+            else:
+                cls.status_bar_message = ''
+
+        job = cls.get_job()
+        view = cls.get_view()
+        if not job or not view:
+            return
+
+        job_status = ''
+        if job.job_running():
+            job_status = 'Running'
+        elif job.get_exit_code() == None:
+            job_status = f"Not started"
+        else:
+            job_status = f"Exited with code {job.get_exit_code()}"
+
+        stdscr.addstr(lines-1, 0, f"Line {view.selected+1}/{len(view.items)} - Offset {view.offset_x} - Process '{cls.showed_views[-1]}' {job_status}".ljust(cols - 1), curses_color(7, True))
 
 def launch_curses(stdscr, cmd_args):
     # Run with curses
@@ -1412,31 +1436,7 @@ def launch_curses(stdscr, cmd_args):
     stdscr.timeout(5)
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
 
-    lines, cols = stdscr.getmaxyx()
-
-    log_view = ListView(stdscr, search_dialog='log-search')
-    log_view.title = "Logs"
-    Gitkcli.add_view('log', log_view)
-    Gitkcli.add_view(log_view.search_dialog, SearchDialogPopup(stdscr, log_view))
-
-    git_log_view = GitLogView(stdscr)
-    Gitkcli.add_and_start_job('git-log', GitLogJob(git_log_view, cmd_args))
-    Gitkcli.add_job('git-refresh-head', GitRefreshHeadJob(git_log_view)) # NOTE: This job will be no longer needed when we will have implemented graph with topology order
-    Gitkcli.add_job('git-search-results', GitSearchJob(args=cmd_args))
-    Gitkcli.add_view(git_log_view.search_dialog, GitSearchDialogPopup(stdscr, git_log_view))
-    Gitkcli.add_view('git-log-branch', NewBranchDialogPopup(stdscr))
-
-    git_diff_view = GitDiffView(stdscr)
-    Gitkcli.add_job('git-diff', GitShowJob(git_diff_view))
-    Gitkcli.add_view('git-diff-search', SearchDialogPopup(stdscr, git_diff_view))
-
-    git_refs_view = ListView(stdscr, search_dialog='git-refs-search')
-    git_refs_view.title = 'Git references'
-    Gitkcli.add_and_start_job('git-refs', GitRefsJob(git_refs_view))
-    Gitkcli.add_view(git_refs_view.search_dialog, SearchDialogPopup(stdscr, git_refs_view))
-
-    Gitkcli.add_view('context-menu', ContextMenu(stdscr))
-
+    Gitkcli.create_views_and_jobs(stdscr, cmd_args)
     Gitkcli.show_view('git-log')
 
     log_info('Application started')
@@ -1446,7 +1446,7 @@ def launch_curses(stdscr, cmd_args):
 
         try:
             Gitkcli.draw_status_bar(stdscr)
-            Gitkcli.draw_visible_views(stdscr)
+            Gitkcli.draw_visible_views()
         except curses.error as e:
             log_error(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
 
@@ -1457,7 +1457,6 @@ def launch_curses(stdscr, cmd_args):
             break;
         
         key = stdscr.getch()
-        handled = False
 
         if key == curses.KEY_RESIZE:
             lines, cols = stdscr.getmaxyx()
