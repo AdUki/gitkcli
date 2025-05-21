@@ -301,7 +301,7 @@ class Item:
         self.handle_input(curses.KEY_ENTER)
         return True
 
-    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx) -> bool:
+    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
         return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, self, clicked_idx)
 
 class SeparatorItem(Item):
@@ -331,9 +331,6 @@ class RefListItem(Item):
 
         win.addstr(line, curses_color(color, selected))
         win.clrtoeol()
-
-    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx) -> bool:
-        return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, self, clicked_idx)
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:
@@ -445,6 +442,31 @@ class CommitListItem(SegmentedListItem):
             segments.insert(position + 1, (title, curses_color(color, selected, True)))
 
         return segments
+
+    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
+        segment_pos = 0
+        clicked_branch_name = ''
+        
+        for text, attr in self.get_segments():
+            if segment_pos <= click_x + offset < segment_pos + len(text):
+                # Remove brackets to get branch name
+                if text.startswith('[') and text.endswith(']'):
+                    clicked_branch_name = text[1:-1]
+                break
+            segment_pos += len(text)
+        
+        ref_item = None
+        if clicked_branch_name:
+            refs = Gitkcli.refs.get(self.id, [])
+            for ref in refs:
+                if ref['name'] == clicked_branch_name and ref['type'] == 'heads':
+                    ref_item = RefListItem(ref)
+                    break
+        
+        if ref_item:
+            return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, ref_item, clicked_idx, 'git-refs')
+        else:
+            return super().handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x)
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13 or key == 9:
@@ -708,7 +730,7 @@ class ListView(View):
                             self.selected = clicked_idx
                             return self.items[clicked_idx].handle_double_click(self.offset_x, mouse_x, mouse_y)
                         if mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED:
-                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y, clicked_idx)
+                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y, clicked_idx, click_x)
                 elif mouse_state == curses.BUTTON4_PRESSED: # wheel up
                     self.offset_y -= 5
                     if self.offset_y < 0:
@@ -940,9 +962,10 @@ class ContextMenu(ListView):
     def __init__(self, id, parent_win):
         super().__init__(id, parent_win, 'window')
         
-    def show_context_menu(self, mouse_x, mouse_y, item, index):
+    def show_context_menu(self, mouse_x, mouse_y, item, index, view_id = None):
         self.clear()
-        view_id = Gitkcli.showed_views[-1]
+        if not view_id:
+            view_id = Gitkcli.showed_views[-1]
         view = Gitkcli.get_view()
         if view_id == 'git-log':
             self.append(ContextMenuItem("Create new branch", view.create_branch, [item.id]))
