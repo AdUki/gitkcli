@@ -332,6 +332,9 @@ class RefListItem(Item):
         win.addstr(line, curses_color(color, selected))
         win.clrtoeol()
 
+    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx) -> bool:
+        return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, self, clicked_idx)
+
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:
             if Gitkcli.get_view('git-log').jump_to_id(self.data['id']):
@@ -959,6 +962,11 @@ class ContextMenu(ListView):
         elif view_id == 'git-diff':
             self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [index]))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
+        elif view_id == 'git-refs':
+            self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
+            self.append(ContextMenuItem("Rename this branch", self.rename_branch, [item.data['name']]))
+            self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
+            self.append(ContextMenuItem("Copy branch name", self.copy_branch_name, [item.data['name']]))
         elif view_id == 'log':
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         else:
@@ -967,6 +975,37 @@ class ContextMenu(ListView):
         self.move(mouse_x, mouse_y)
         Gitkcli.show_view('context-menu')
         return True
+
+    def checkout_branch(self, branch_name):
+        result = Gitkcli.run_job(['git', 'checkout', branch_name])
+        if result.returncode == 0:
+            Gitkcli.refresh_head()
+            Gitkcli.refresh_refs()
+            log_success(f'Switched to branch {branch_name}')
+        else:
+            log_error(f"Error checking out branch: {result.stderr}")
+    
+    def rename_branch(self, branch_name):
+        Gitkcli.get_view('git-branch-rename').old_branch_name = branch_name
+        Gitkcli.clear_and_show_view('git-branch-rename')
+    
+    def remove_branch(self, branch_name):
+        result = Gitkcli.run_job(['git', 'branch', '-d', branch_name])
+        if result.returncode == 0:
+            Gitkcli.refresh_refs()
+            log_success(f'Deleted branch {branch_name}')
+        else:
+            log_error(f"Error deleting branch: {result.stderr}")
+    
+    def copy_branch_name(self, branch_name):
+        try:
+            import pyperclip
+            pyperclip.copy(branch_name)
+            log_success(f'Branch name "{branch_name}" copied to clipboard')
+        except ImportError:
+            log_error("pyperclip module not found. Install with: pip install pyperclip")
+        except Exception as e:
+            log_error(f"Error copying to clipboard: {str(e)}")
 
 class UserInputDialogPopup(View):
     def __init__(self, id, parent_win, title):
@@ -1054,6 +1093,28 @@ class UserInputDialogPopup(View):
             return False
             
         return True
+
+class BranchRenameDialogPopup(UserInputDialogPopup):
+    def __init__(self, id, parent_win):
+        super().__init__(id, parent_win, ' Rename Branch') 
+        self.old_branch_name = ''
+
+    def draw_top_panel(self):
+        self.win.move(1, 2)
+        self.win.addstr(f"Rename branch '{self.old_branch_name}' to:")
+
+    def execute(self):
+        if not self.query:
+            log_error("New branch name cannot be empty")
+            return
+            
+        args = ['git', 'branch', '-m', self.old_branch_name, self.query]
+        result = Gitkcli.run_job(args)
+        if result.returncode == 0:
+            Gitkcli.refresh_refs()
+            log_success(f'Branch renamed from {self.old_branch_name} to {self.query}')
+        else:
+            log_error(f"Error renaming branch: {result.stderr}")
 
 class NewBranchDialogPopup(UserInputDialogPopup):
     def __init__(self, id, parent_win):
@@ -1240,6 +1301,7 @@ class Gitkcli:
 
         ListView('git-refs', stdscr, title = 'Git references')
         SearchDialogPopup('git-refs-search', stdscr)
+        BranchRenameDialogPopup('git-branch-rename', stdscr)
 
         ContextMenu('context-menu', stdscr)
 
