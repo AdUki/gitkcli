@@ -312,6 +312,7 @@ class SeparatorItem(Item):
 
 class RefListItem(Item):
     def __init__(self, data):
+        super().__init__()
         self.data = data
 
     def get_text(self):
@@ -358,37 +359,21 @@ class TextListItem(Item):
         win.addstr(line, curses_color(16 if matched else self.color, selected))
         win.clrtoeol()
 
-class DiffListItem(Item):
-    def __init__(self, line):
-        super().__init__()
-        self.line = line
-
-    def get_text(self):
-        return self.line
-
-    def draw_line(self, win, offset, width, selected, matched):
-        line = self.line[offset:]
-        if selected:
-            line += ' ' * (width - len(line))
-        if len(line) > width:
-            line = line[:width]
-        
-        if matched:
-            win.addstr(line, curses_color(16, selected))
-        elif self.line.startswith('commit '):
-            win.addstr('commit ' + line.split()[1], curses_color(4, selected))
-        elif self.line.startswith(('diff', 'new', 'index', '+++', '---')):
-            win.addstr(line, curses_color(17, selected))
-        elif self.line.startswith('-'):
-            win.addstr(line, curses_color(8, selected))
-        elif self.line.startswith('+'):
-            win.addstr(line, curses_color(9, selected))
-        elif self.line.startswith('@@'):
-            win.addstr(line, curses_color(10, selected))
+class DiffListItem(TextListItem):
+    def __init__(self, txt):
+        if txt.startswith('commit '):
+            color = 4
+        elif txt.startswith(('diff', 'new', 'index', '+++', '---')):
+            color = 17
+        elif txt.startswith('-'):
+            color = 8
+        elif txt.startswith('+'):
+            color = 9
+        elif txt.startswith('@@'):
+            color = 10
         else:
-            win.addstr(line, curses_color(1, selected))
-        
-        win.clrtoeol()
+            color = 1
+        super().__init__(txt, color)
 
 class SegmentedListItem(Item):
     def get_segments(self, selected = False, matched = False):
