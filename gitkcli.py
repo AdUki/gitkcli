@@ -141,7 +141,8 @@ class SubprocessJob:
         return self.running
 
     def _reader_thread(self, stream, is_stderr=False):
-        self.messages.put({'type': 'started'})
+        if not is_stderr:
+            self.messages.put({'type': 'started'})
         for bytearr in iter(stream.readline, b''):
             if self.stop:
                 break
@@ -158,19 +159,21 @@ class SubprocessJob:
             except Exception as e:
                 self.messages.put({'type': 'error', 'message': f"Error processing line: {bytearr}\n{str(e)}"})
         stream.close()
-        self.messages.put({'type': 'finished'})
+        if not is_stderr:
+            self.messages.put({'type': 'finished'})
 
 class GitLogJob(SubprocessJob):
-    def __init__(self, id, args = []):
+    def __init__(self, id, args = [], start_job = True):
         super().__init__(id) 
         self.cmd = 'git log --format=%H|%P|%aI|%an|%s'
         self.args = args
-        self.start_job()
+        if start_job:
+            self.start_job()
 
     def start_job(self, args = [], clear_view = True):
         if clear_view:
             Gitkcli.commits.clear()
-            Gitkcli.get_view(self.id).dirty = True
+            Gitkcli.get_view('git-log').dirty = True
         super().start_job(args, clear_view) 
 
     def process_line(self, line):
@@ -190,6 +193,9 @@ class GitLogJob(SubprocessJob):
                 view.append(CommitListItem(id))
 
 class GitRefreshHeadJob(GitLogJob):
+    def __init__(self, id):
+        super().__init__(id, [], False) 
+
     def process_item(self, item):
         (id, commit) = item
         if Gitkcli.add_commit(id, commit):
@@ -272,13 +278,9 @@ class GitRefsJob(SubprocessJob):
 
         id = item['id']
         Gitkcli.refs.setdefault(id,[]).append(item)
+        Gitkcli.get_view('git-log').dirty = True
         if item['type'] == 'head':
             Gitkcli.head_id = id
-
-    def process_message(self, message):
-        if message['type'] == 'finished':
-            Gitkcli.get_view('git-log').dirty = True
-        super().process_message(message)
 
 class Item:
     def __init__(self):
