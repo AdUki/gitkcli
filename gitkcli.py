@@ -1594,13 +1594,13 @@ def launch_curses(stdscr, cmd_args):
     while Gitkcli.running:
         Gitkcli.process_all_jobs()
 
+        stdscr.refresh()
+
         try:
             Gitkcli.draw_status_bar(stdscr)
             Gitkcli.draw_visible_views()
         except curses.error as e:
             log_error(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
-
-        stdscr.refresh()
 
         active_view = Gitkcli.get_view()
         if not active_view:
