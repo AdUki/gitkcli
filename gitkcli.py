@@ -386,6 +386,14 @@ class SegmentedListItem(Item):
 
         return text
 
+    def get_segment_on_offset(self, offset) -> str:
+        segment_pos = 0
+        for text, _ in self.get_segments():
+            if segment_pos <= offset < segment_pos + len(text):
+                return text
+            segment_pos += len(text)
+        return ''
+
     def draw_line(self, win, offset, width, selected, matched):
         current_pos = 0
         for text, attr in self.get_segments(selected, matched):
@@ -444,16 +452,12 @@ class CommitListItem(SegmentedListItem):
         return segments
 
     def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
-        segment_pos = 0
         clicked_branch_name = ''
-        
-        for text, attr in self.get_segments():
-            if segment_pos <= click_x + offset < segment_pos + len(text):
-                # Remove brackets to get branch name
-                if text.startswith('[') and text.endswith(']'):
-                    clicked_branch_name = text[1:-1]
-                break
-            segment_pos += len(text)
+
+        segment_text = self.get_segment_on_offset(click_x + offset)
+        # Remove brackets to get branch name
+        if segment_text.startswith('[') and segment_text.endswith(']'):
+            clicked_branch_name = segment_text[1:-1]
         
         ref_item = None
         if clicked_branch_name:
