@@ -11,6 +11,7 @@ import subprocess
 import threading
 import traceback
 
+def log_debug(txt): Gitkcli.log(18, txt)
 def log_info(txt): Gitkcli.log(1, txt)
 def log_success(txt): Gitkcli.log(1, txt, 201)
 def log_error(txt): Gitkcli.log(2, txt, 202)
@@ -18,9 +19,13 @@ def log_error(txt): Gitkcli.log(2, txt, 202)
 def curses_ctrl(key):
     return ord(key) & 0x1F
 
-def curses_color(number, selected = False, bold = False, reverse = False, dim = False, underline = False):
-    if selected:
+def curses_color(number, selected = False, highlighted = False, bold = False, reverse = False, dim = False, underline = False):
+    if selected and highlighted:
+        color = curses.color_pair(150 + number)
+    elif selected:
         color = curses.color_pair(100 + number)
+    elif highlighted:
+        color = curses.color_pair(50 + number)
     else:
         color = curses.color_pair(number)
     if reverse:
@@ -80,6 +85,7 @@ class SubprocessJob:
             self.running = True
         elif message['type'] == 'finished':
             self.running = False
+            log_debug(f'Job finished {self.id}')
 
     def process_items(self):
         try:
@@ -120,7 +126,7 @@ class SubprocessJob:
             if view:
                 view.clear()
 
-        log_info(' '.join([self.cmd] + args + self.args))
+        log_info(' '.join(['Job started', self.id + ':', self.cmd] + args + self.args))
 
         self.job = subprocess.Popen(
                 self.cmd.split(' ') + args + self.args,
@@ -326,12 +332,12 @@ class RefListItem(Item):
         color, _ = get_ref_color_and_title(self.data)
         if matched:
             color = 16
-        if selected:
+        if selected or marked:
             line += ' ' * (width - len(line))
         if len(line) > width:
             line = line[:width]
 
-        win.addstr(line, curses_color(color, selected, underline = marked))
+        win.addstr(line, curses_color(color, selected, marked))
         win.clrtoeol()
 
     def handle_input(self, key):
@@ -353,12 +359,12 @@ class TextListItem(Item):
 
     def draw_line(self, win, offset, width, selected, matched, marked):
         line = self.txt[offset:]
-        if selected:
+        if selected or marked:
             line += ' ' * (width - len(line))
         if len(line) > width:
             line = line[:width]
 
-        win.addstr(line, curses_color(16 if matched else self.color, selected, underline = marked))
+        win.addstr(line, curses_color(16 if matched else self.color, selected, marked))
         win.clrtoeol()
 
 class DiffListItem(TextListItem):
@@ -407,7 +413,7 @@ class TextSegment(Segment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.txt[offset:width]
-        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, underline = marked))
+        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked))
         return len(visible_txt)
 
 class RefSegment(TextSegment):
@@ -451,15 +457,15 @@ class SegmentedListItem(Item):
                 first = False
             else:
                 width -= 1
-                win.addstr(' ', curses_color(1, selected, underline = marked))
+                win.addstr(' ', curses_color(1, selected, marked))
             length = segment.draw(win, offset, width, selected, matched, marked)
             width -= length
             if width <= 0:
                 return
             offset -= len(segment.get_text()) - length
 
-        if selected:
-            win.addstr(' ' * width, curses_color(1, selected))
+        if selected or marked:
+            win.addstr(' ' * width, curses_color(1, selected, marked))
         else:
             win.clrtoeol()
 
@@ -595,9 +601,11 @@ class View:
         # draw title bar
         if self.title:
             _, cols = self.win.getmaxyx()
-            self.win.addstr(0, 0, self.title.ljust(cols), curses_color(7, Gitkcli.get_view() == self))
+            self.win.addstr(0, 0, self.title.ljust(cols), curses_color(203 if Gitkcli.get_view() == self else 204))
 
         self.win.refresh()
+        if self.id != 'log':
+            log_debug(f'Draw view {self.id}')
 
 class ListView(View):
     def __init__(self, id, parent_win, view_position='fullscreen', title = '', x=None, y=None, height=None, width=None):
@@ -1078,28 +1086,21 @@ class UserInputDialogPopup(View):
     def draw(self):
         self.draw_top_panel()
         
-        # Draw query with cursor
+        # Draw query
         max_display = self.width - 5
-        display_text = self.query
-        
-        # Adjust scroll position if needed
         start_pos = max(0, self.cursor_pos - max_display)
+        self.win.move(3, 2)
         if start_pos > 0:
-            display_text = "..." + self.query[start_pos:]
-            adjusted_cursor_pos = self.cursor_pos - start_pos
-        else:
-            display_text = self.query
-            adjusted_cursor_pos = self.cursor_pos
-        
-        # Display query
-        self.win.addstr(3, 2, display_text[:max_display])
+            self.win.addch(curses.ACS_LARROW)
+            max_display -= 1
+        self.win.addstr(self.query[start_pos:start_pos+max_display])
         self.win.clrtoeol()
-        
+
         # Draw help text
         self.win.addstr(5, (self.width - len(self.bottom_text)) // 2, self.bottom_text, curses.A_DIM)
         
-        # Draw cursor
-        self.win.insch(3, 2 + adjusted_cursor_pos, ' ', curses.A_REVERSE | curses.A_BLINK)
+        # Draw query cursor
+        self.win.insch(3, 2 + self.cursor_pos - start_pos, ' ', curses.A_REVERSE | curses.A_BLINK)
 
         super().draw()
 
@@ -1533,7 +1534,16 @@ class Gitkcli:
         else:
             job_status = f"Exited with code {job.get_exit_code()}"
 
-        stdscr.addstr(lines-1, 0, f"Line {view.selected+1}/{len(view.items)} - Offset {view.offset_x} - Process '{cls.showed_views[-1]}' {job_status}".ljust(cols - 1), curses_color(7, True))
+        stdscr.addstr(lines-1, 0, f"Line {view.selected+1}/{len(view.items)} - Offset {view.offset_x} - Process '{cls.showed_views[-1]}' {job_status}".ljust(cols - 1), curses_color(203))
+
+def init_color(pair_number: int, fg: int, bg: int) -> None:
+    curses.init_pair(pair_number, fg, bg)
+    # highlighted offset
+    curses.init_pair(50 + pair_number, fg, 20)
+    # selected offset
+    curses.init_pair(100 + pair_number, fg, 235)
+    # selected+highlighted offset
+    curses.init_pair(150 + pair_number, fg, 21)
 
 def launch_curses(stdscr, cmd_args):
     # Run with curses
@@ -1541,45 +1551,28 @@ def launch_curses(stdscr, cmd_args):
 
     curses.start_color()
 
-    curses.init_pair(1, curses.COLOR_WHITE, -1)  # Normal text
-    curses.init_pair(2, curses.COLOR_RED, -1)    # Error text
-    curses.init_pair(3, curses.COLOR_GREEN, -1)  # Status text
-    curses.init_pair(4, curses.COLOR_YELLOW, -1) # Git ID
-    curses.init_pair(5, curses.COLOR_BLUE, -1)   # Data
-    curses.init_pair(6, curses.COLOR_GREEN, -1)  # Author
-    curses.init_pair(7, curses.COLOR_BLACK, 245)  # Header Footer
-    curses.init_pair(8, curses.COLOR_RED, -1)    # diff -
-    curses.init_pair(9, curses.COLOR_GREEN, -1)  # diff +
-    curses.init_pair(10, curses.COLOR_CYAN, -1)  # diff ranges
-    curses.init_pair(11, curses.COLOR_GREEN, -1) # local ref
-    curses.init_pair(12, curses.COLOR_YELLOW, -1) # tag
-    curses.init_pair(13, curses.COLOR_BLUE, -1) # head
-    curses.init_pair(14, curses.COLOR_CYAN, -1) # stash
-    curses.init_pair(15, curses.COLOR_RED, -1) # remote ref
-    curses.init_pair(16, curses.COLOR_MAGENTA, -1) # search match
-    curses.init_pair(17, curses.COLOR_BLUE, -1) # diff info lines
+    init_color(1, curses.COLOR_WHITE, -1)    # Normal text
+    init_color(2, curses.COLOR_RED, -1)      # Error text
+    init_color(3, curses.COLOR_GREEN, -1)    # Status text
+    init_color(4, curses.COLOR_YELLOW, -1)   # Git ID
+    init_color(5, curses.COLOR_BLUE, -1)     # Data
+    init_color(6, curses.COLOR_GREEN, -1)    # Author
+    init_color(8, curses.COLOR_RED, -1)      # diff -
+    init_color(9, curses.COLOR_GREEN, -1)    # diff +
+    init_color(10, curses.COLOR_CYAN, -1)    # diff ranges
+    init_color(11, curses.COLOR_GREEN, -1)   # local ref
+    init_color(12, curses.COLOR_YELLOW, -1)  # tag
+    init_color(13, curses.COLOR_BLUE, -1)    # head
+    init_color(14, curses.COLOR_CYAN, -1)    # stash
+    init_color(15, curses.COLOR_RED, -1)     # remote ref
+    init_color(16, curses.COLOR_MAGENTA, -1) # search match
+    init_color(17, curses.COLOR_BLUE, -1)    # diff info lines
+    init_color(18, 245, -1)                  # debug text
 
     curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Status bar success
     curses.init_pair(202, curses.COLOR_WHITE, curses.COLOR_RED)   # Status bar error
-
-    # selected colors have offset 100
-    curses.init_pair(101, curses.COLOR_WHITE, 235)
-    curses.init_pair(102, curses.COLOR_RED, 235)
-    curses.init_pair(103, curses.COLOR_GREEN, 235)
-    curses.init_pair(104, curses.COLOR_YELLOW, 235)
-    curses.init_pair(105, curses.COLOR_BLUE, 235)
-    curses.init_pair(106, curses.COLOR_GREEN, 235)
-    curses.init_pair(107, curses.COLOR_WHITE, curses.COLOR_BLUE)
-    curses.init_pair(108, curses.COLOR_RED, 235)
-    curses.init_pair(109, curses.COLOR_GREEN, 235)
-    curses.init_pair(110, curses.COLOR_CYAN, 235)
-    curses.init_pair(111, curses.COLOR_GREEN, 235)
-    curses.init_pair(112, curses.COLOR_YELLOW, 235)
-    curses.init_pair(113, curses.COLOR_BLUE, 235)
-    curses.init_pair(114, curses.COLOR_CYAN, 235)
-    curses.init_pair(115, curses.COLOR_RED, 235)
-    curses.init_pair(116, curses.COLOR_MAGENTA, 235)
-    curses.init_pair(117, curses.COLOR_BLUE, 235)
+    curses.init_pair(203, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Active window title
+    curses.init_pair(204, curses.COLOR_BLACK, 245)                # Inactive window title
 
     curses.curs_set(0)  # Hide cursor
     stdscr.timeout(5)
