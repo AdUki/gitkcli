@@ -170,7 +170,7 @@ class GitLogJob(SubprocessJob):
     def start_job(self, args = [], clear_view = True):
         if clear_view:
             Gitkcli.commits.clear()
-            Gitkcli.get_view('git-log').dirty = True
+            Gitkcli.get_view(self.id).dirty = True
         super().start_job(args, clear_view) 
 
     def process_line(self, line):
@@ -203,7 +203,7 @@ class GitDiffJob(SubprocessJob):
         self.start_job([old_commit_id, new_commit_id])
 
     def start_show_job(self, commit_id):
-        self.cmd = 'git show -m --no-color --parents'
+        self.cmd = 'git show -m --no-color'
         self.start_job([commit_id])
 
     def process_line(self, line):
@@ -1497,13 +1497,13 @@ class Gitkcli:
 
         force_redraw = False
         if 'fullscreen' in positions:
-            force_redraw = force_redraw or positions['fullscreen'].redraw()
+            force_redraw = positions['fullscreen'].redraw(force_redraw)
         if 'top' in positions:
-            force_redraw = force_redraw or positions['top'].redraw()
+            force_redraw = positions['top'].redraw(force_redraw)
         if 'bottom' in positions:
-            force_redraw = force_redraw or positions['bottom'].redraw()
+            force_redraw = positions['bottom'].redraw(force_redraw)
         if 'window' in positions:
-            positions['window'].redraw(force_redraw)
+            force_redraw = positions['window'].redraw(force_redraw)
 
     @classmethod
     def draw_status_bar(cls, stdscr):
