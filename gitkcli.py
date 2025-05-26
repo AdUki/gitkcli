@@ -698,13 +698,13 @@ class ListView(View):
         if key == curses.KEY_UP or key == ord('k'):
             if self.selected > 0:
                 self.selected -= 1
-            self._skip_non_selectable_items(-1)
-            self._ensure_selection_is_visible()
+                self._skip_non_selectable_items(-1)
+                self._ensure_selection_is_visible()
         elif key == curses.KEY_DOWN or key == ord('j'):
             if self.selected < len(self.items) - 1:
                 self.selected += 1
-            self._skip_non_selectable_items(1)
-            self._ensure_selection_is_visible()
+                self._skip_non_selectable_items(1)
+                self._ensure_selection_is_visible()
         elif key == curses.KEY_LEFT or key == ord('h'):
             if self.offset_x - offset_jump >= 0:
                 self.offset_x -= offset_jump
@@ -995,6 +995,7 @@ class ContextMenu(ListView):
         
     def show_context_menu(self, mouse_x, mouse_y, item, index, view_id = None):
         self.clear()
+        self.selected = -1
         if not view_id:
             view_id = Gitkcli.showed_views[-1]
         view = Gitkcli.get_view()
