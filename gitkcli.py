@@ -691,7 +691,13 @@ class ListView(View):
             else:
                 self.offset_x = 0
         elif key == curses.KEY_RIGHT or key == ord('l'):
-            self.offset_x += offset_jump
+            max_length = 0
+            for i in range(self.offset_y, min(self.offset_y + self.height, len(self.items))):
+                length = len(self.items[i].get_text())
+                if length > max_length:
+                    max_length = length
+            if self.offset_x + self.width < max_length:
+                self.offset_x += offset_jump
         elif key == curses.KEY_PPAGE or key == curses_ctrl('b'):
             self.selected -= self.height
             self.offset_y -= self.height
