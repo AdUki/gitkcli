@@ -288,7 +288,7 @@ class Item:
     def get_text(self) -> str:
         return ''
 
-    def draw_line(self, win, offset, width, selected, matched):
+    def draw_line(self, win, offset, width, selected, matched, marked):
         pass
 
     def handle_input(self, key) -> bool:
@@ -318,7 +318,7 @@ class RefListItem(Item):
     def get_text(self):
         return self.data['name']
 
-    def draw_line(self, win, offset, width, selected, matched):
+    def draw_line(self, win, offset, width, selected, matched, marked):
         line = self.get_text()
         line = line[offset:]
         color, _ = get_ref_color_and_title(self.data)
@@ -329,7 +329,7 @@ class RefListItem(Item):
         if len(line) > width:
             line = line[:width]
 
-        win.addstr(line, curses_color(color, selected))
+        win.addstr(line, curses_color(color, selected, underline = marked))
         win.clrtoeol()
 
     def handle_input(self, key):
@@ -349,14 +349,14 @@ class TextListItem(Item):
     def get_text(self):
         return self.txt
 
-    def draw_line(self, win, offset, width, selected, matched):
+    def draw_line(self, win, offset, width, selected, matched, marked):
         line = self.txt[offset:]
         if selected:
             line += ' ' * (width - len(line))
         if len(line) > width:
             line = line[:width]
 
-        win.addstr(line, curses_color(16 if matched else self.color, selected))
+        win.addstr(line, curses_color(16 if matched else self.color, selected, underline = marked))
         win.clrtoeol()
 
 class DiffListItem(TextListItem):
@@ -375,45 +375,86 @@ class DiffListItem(TextListItem):
             color = 1
         super().__init__(txt, color)
 
+class Segment:
+    def __init__(self):
+        pass
+
+    def get_text(self) -> str:
+        return ''
+
+    def draw(self, win, offset, width, selected, matched, marked) -> int:
+        return 0
+
+    def handle_left_click(self, offset, mouse_x, mouse_y) -> bool:
+        return False
+
+    def handle_double_click(self, offset, mouse_x, mouse_y) -> bool:
+        return False
+
+    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
+        return False
+
+class TextSegment(Segment):
+    def __init__(self, txt, color = 1):
+        super().__init__()
+        self.txt = txt
+        self.color = color
+
+    def get_text(self):
+        return self.txt
+
+    def draw(self, win, offset, width, selected, matched, marked) -> int:
+        visible_txt = self.txt[offset:width]
+        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, underline = marked))
+        return len(visible_txt)
+
+class RefSegment(TextSegment):
+    def __init__(self, ref):
+        self.ref = ref
+        color, txt = get_ref_color_and_title(ref)
+        super().__init__(txt, color)
+
+    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
+        if self.ref['type'] == 'heads':
+            return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, RefListItem(self.ref), clicked_idx, 'git-refs')
+        return False
+
 class SegmentedListItem(Item):
-    def get_segments(self, selected = False, matched = False):
+    def __init__(self):
+        super().__init__()
+
+    def get_segments(self):
         return []
 
     def get_text(self):
         text = ''
-        for segment_text, _ in self.get_segments():
-            text += segment_text
+        for segment in self.get_segments():
+            text += segment.get_text()
 
         return text
 
-    def get_segment_on_offset(self, offset) -> str:
+    def get_segment_on_offset(self, offset) -> Segment:
         segment_pos = 0
-        for text, _ in self.get_segments():
-            if segment_pos <= offset < segment_pos + len(text):
-                return text
-            segment_pos += len(text)
-        return ''
+        for segment in self.get_segments():
+            length = len(segment.get_text())
+            if segment_pos <= offset < segment_pos + length:
+                return segment
+            segment_pos += length + 1
+        return Segment()
 
-    def draw_line(self, win, offset, width, selected, matched):
-        current_pos = 0
-        for text, attr in self.get_segments(selected, matched):
-            if offset <= current_pos + len(text):
-                # This segment is partially or fully visible
-                seg_offset = max(0, offset - current_pos)
-                visible_text = text[seg_offset:]
-  
-                # Truncate if it exceeds remaining width
-                if len(visible_text) > width:
-                    visible_text = visible_text[:width]
-  
-                if visible_text:
-                    win.addstr(visible_text, attr)
-                    width -= len(visible_text)
-  
-                if width <= 0:
-                    break
-  
-            current_pos += len(text)
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        first = True
+        for segment in self.get_segments():
+            if first:
+                first = False
+            else:
+                width -= 1
+                win.addstr(' ', curses_color(1, selected, underline = marked))
+            length = segment.draw(win, offset, width, selected, matched, marked)
+            width -= length
+            if width <= 0:
+                return
+            offset -= len(segment.get_text()) - length
 
         if selected:
             win.addstr(' ' * width, curses_color(1, selected))
@@ -425,52 +466,29 @@ class CommitListItem(SegmentedListItem):
         super().__init__()
         self.id = id
 
-    def get_segments(self, selected = False, matched = False):
-        marked = Gitkcli.get_view('git-log').marked_commit_id == self.id
+    def get_segments(self):
         commit = Gitkcli.commits[self.id]
         segments = [
-            (self.id[:7] + ' ', curses_color(4, selected, underline=marked)),
-            (commit['date'].strftime("%Y-%m-%d %H:%M") + ' ', curses_color(5, selected, underline=marked)),
-            (commit['author'].ljust(22) + ' ', curses_color(6, selected, underline=marked)),
-            (commit['title'], curses_color(16 if matched else 1, selected, underline=marked))
+            TextSegment(self.id[:7], 4),
+            TextSegment(commit['date'].strftime("%Y-%m-%d %H:%M"), 5),
+            TextSegment(commit['author'].ljust(22), 6),
+            TextSegment(commit['title'])
         ]
 
-        head_branch = Gitkcli.head_branch
-        head_position = 0
-        refs = Gitkcli.refs.get(self.id, [])
-        for ref in refs:
-            if ref['name'] == head_branch:
-                position = head_position + 2
-            else:
-                position = len(segments)
-            if ref['type'] == 'head':
-                head_position = position
-            segments.insert(position, (' ', curses_color(1, selected)))
-            color, title = get_ref_color_and_title(ref)
-            segments.insert(position + 1, (title, curses_color(color, selected, True)))
+        head_position = len(segments) + 1 # +1, because we want to skip 'HEAD ->' segment
+        for ref in Gitkcli.refs.get(self.id, []):
+            segments.insert(head_position if ref['name'] == Gitkcli.head_branch else len(segments), RefSegment(ref))
 
         return segments
 
-    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
-        clicked_branch_name = ''
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        super().draw_line(win, offset, width, selected, matched, Gitkcli.get_view('git-log').marked_commit_id == self.id)
 
-        segment_text = self.get_segment_on_offset(click_x + offset)
-        # Remove brackets to get branch name
-        if segment_text.startswith('[') and segment_text.endswith(']'):
-            clicked_branch_name = segment_text[1:-1]
-        
-        ref_item = None
-        if clicked_branch_name:
-            refs = Gitkcli.refs.get(self.id, [])
-            for ref in refs:
-                if ref['name'] == clicked_branch_name and ref['type'] == 'heads':
-                    ref_item = RefListItem(ref)
-                    break
-        
-        if ref_item:
-            return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, ref_item, clicked_idx, 'git-refs')
-        else:
-            return super().handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x)
+    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
+        segment = self.get_segment_on_offset(click_x + offset)
+        if segment and segment.handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x):
+            return True
+        return super().handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x)
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13 or key == 9:
@@ -787,13 +805,14 @@ class ListView(View):
 
             # curses throws exception if you want to write a character in bottom left corner
             width = self.width
-            if i == self.height - 1: width -= 1
+            if i == self.height - 1:
+                width -= 1
 
             if item.separator:
                 separator_items.append(i)
             else:
                 self.win.move(self.y + i, self.x)
-                item.draw_line(self.win, self.offset_x, width, selected, matched)
+                item.draw_line(self.win, self.offset_x, width, selected, matched, False)
 
         self.win.clrtobot()
         super().draw()
