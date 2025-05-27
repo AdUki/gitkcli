@@ -290,8 +290,8 @@ class GitRefsJob(SubprocessJob):
 
 class Item:
     def __init__(self):
-        self.selectable = True
-        self.separator = False
+        self.is_selectable = True
+        self.is_separator = False
 
     def get_text(self) -> str:
         return ''
@@ -302,7 +302,7 @@ class Item:
     def handle_input(self, key) -> bool:
         return False
 
-    def handle_left_click(self, offset, mouse_x, mouse_y) -> bool:
+    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
         return True
 
     def handle_double_click(self, offset, mouse_x, mouse_y) -> bool:
@@ -315,8 +315,8 @@ class Item:
 class SeparatorItem(Item):
     def __init__(self):
         super().__init__()
-        self.selectable = False
-        self.separator = True
+        self.is_selectable = False
+        self.is_separator = True
 
 class RefListItem(Item):
     def __init__(self, data):
@@ -358,13 +358,21 @@ class TextListItem(Item):
         return self.txt
 
     def draw_line(self, win, offset, width, selected, matched, marked):
-        line = self.txt[offset:]
+        line = self.get_text()[offset:]
         if selected or marked:
             line += ' ' * (width - len(line))
         if len(line) > width:
             line = line[:width]
 
         win.addstr(line, curses_color(16 if matched else self.color, selected, marked))
+        win.clrtoeol()
+
+class SpacerListItem(Item):
+    def __init__(self):
+        super().__init__()
+        self.is_selectable = False
+
+    def draw_line(self, win, offset, width, selected, matched, marked):
         win.clrtoeol()
 
 class DiffListItem(TextListItem):
@@ -393,7 +401,7 @@ class Segment:
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         return 0
 
-    def handle_left_click(self, offset, mouse_x, mouse_y) -> bool:
+    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
         return False
 
     def handle_double_click(self, offset, mouse_x, mouse_y) -> bool:
@@ -401,6 +409,10 @@ class Segment:
 
     def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
         return False
+
+class FillerSegment(Segment):
+    def __init__(self):
+        super().__init__()
 
 class TextSegment(Segment):
     def __init__(self, txt, color = 1):
@@ -427,16 +439,47 @@ class RefSegment(TextSegment):
             return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, RefListItem(self.ref), clicked_idx, 'git-refs')
         return False
 
+class ToggleSegment(TextSegment):
+    def __init__(self, txt, toggled = False, callback = lambda val: None, color = 1):
+        super().__init__(txt, color)
+        self.callback = callback
+        self.toggled = toggled
+        self.enabled = True
+
+    def toggle(self):
+        if self.toggled:
+            self.toggled = False
+        else:
+            self.toggled = True
+
+    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
+        self.toggle()
+        self.callback(self.toggled)
+        return True
+
+    def draw(self, win, offset, width, selected, matched, marked) -> int:
+        visible_txt = self.txt[offset:width]
+        win.addstr(visible_txt, curses_color(self.color, dim = not self.enabled, highlighted = self.toggled))
+        return len(visible_txt)
+
 class SegmentedListItem(Item):
-    def __init__(self):
+    def __init__(self, segments = []):
         super().__init__()
+        self.segment_separator = ' '
+        self.segments = segments
+        self.filler_width = 0
 
     def get_segments(self):
-        return []
+        return self.segments
 
     def get_text(self):
         text = ''
+        first = True
         for segment in self.get_segments():
+            if first:
+                first = False
+            elif self.segment_separator:
+                text += self.segment_separator
             text += segment.get_text()
 
         return text
@@ -444,28 +487,60 @@ class SegmentedListItem(Item):
     def get_segment_on_offset(self, offset) -> Segment:
         segment_pos = 0
         for segment in self.get_segments():
-            length = len(segment.get_text())
+            if isinstance(segment, FillerSegment):
+                length = self.fill_width
+            else:
+                length = len(segment.get_text())
             if segment_pos <= offset < segment_pos + length:
                 return segment
-            segment_pos += length + 1
+            segment_pos += length + len(self.segment_separator)
         return Segment()
+
+    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
+        segment = self.get_segment_on_offset(click_x + offset)
+        if segment and segment.handle_left_click(offset, mouse_x, mouse_y, click_x):
+            return True
+        return super().handle_left_click(offset, mouse_x, mouse_y, click_x)
+
+    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
+        segment = self.get_segment_on_offset(click_x + offset)
+        if segment and segment.handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x):
+            return True
+        return super().handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x)
+
+    def get_fill_txt(self, width):
+        fillers_count = 0
+        for segment in self.get_segments():
+            if isinstance(segment, FillerSegment):
+                fillers_count += 1
+        if fillers_count:
+            self.fill_width = int((width - len(self.get_text())) / fillers_count)
+            return self.fill_width * ' '
+        return ''
 
     def draw_line(self, win, offset, width, selected, matched, marked):
         first = True
+        remaining_width = width
         for segment in self.get_segments():
             if first:
                 first = False
+            elif self.segment_separator:
+                remaining_width -= len(self.segment_separator)
+                win.addstr(self.segment_separator, curses_color(1, selected, marked))
+            if isinstance(segment, FillerSegment):
+                txt = self.get_fill_txt(width)
+                win.addstr(txt, curses_color(16 if matched else 1, selected, marked))
+                length = len(txt)
             else:
-                width -= 1
-                win.addstr(' ', curses_color(1, selected, marked))
-            length = segment.draw(win, offset, width, selected, matched, marked)
-            width -= length
-            if width <= 0:
+                length = segment.draw(win, offset, remaining_width, selected, matched, marked)
+                txt = segment.get_text()
+            remaining_width -= length
+            if remaining_width <= 0:
                 return
-            offset -= len(segment.get_text()) - length
+            offset -= len(txt) - length
 
         if selected or marked:
-            win.addstr(' ' * width, curses_color(1, selected, marked))
+            win.addstr(' ' * remaining_width, curses_color(1, selected, marked))
         else:
             win.clrtoeol()
 
@@ -480,7 +555,7 @@ class CommitListItem(SegmentedListItem):
             TextSegment(self.id[:7], 4),
             TextSegment(commit['date'].strftime("%Y-%m-%d %H:%M"), 5),
             TextSegment(commit['author'].ljust(22), 6),
-            TextSegment(commit['title'])
+            TextSegment(commit['title']),
         ]
 
         head_position = len(segments) + 1 # +1, because we want to skip 'HEAD ->' segment
@@ -491,12 +566,6 @@ class CommitListItem(SegmentedListItem):
 
     def draw_line(self, win, offset, width, selected, matched, marked):
         super().draw_line(win, offset, width, selected, matched, Gitkcli.get_view('git-log').marked_commit_id == self.id)
-
-    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
-        segment = self.get_segment_on_offset(click_x + offset)
-        if segment and segment.handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x):
-            return True
-        return super().handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x)
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13 or key == 9:
@@ -604,7 +673,7 @@ class View:
             self.win.addstr(0, 0, self.title.ljust(cols), curses_color(203 if Gitkcli.get_view() == self else 204))
 
         self.win.refresh()
-        if self.id != 'log':
+        if not self.id.startswith('log'):
             log_debug(f'Draw view {self.id}')
 
 class ListView(View):
@@ -677,12 +746,13 @@ class ListView(View):
             return
         new_selected = self.selected
         while True:
-            if self.items[new_selected].selectable:
+            if self.items[new_selected].is_selectable:
                 break
             new_selected += direction
             self.dirty = True
             if new_selected < 0 or new_selected >= len(self.items):
-                return
+                new_selected = self.selected - direction
+                break
         self.selected = new_selected
 
     def search_requested(self, search_dialog_view):
@@ -702,6 +772,40 @@ class ListView(View):
             return False
 
         offset_jump = int(self.width / 4)
+
+        if key == curses.KEY_MOUSE:
+            _, mouse_x, mouse_y, _, mouse_state = curses.getmouse()
+            begin_y, begin_x = self.win.getbegyx()
+            click_x = mouse_x - begin_x - self.x
+            click_y = mouse_y - begin_y - self.y
+            if 0 <= click_y < self.height and 0 <= click_x < self.width:
+                if mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_DOUBLE_CLICKED or mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
+                    clicked_idx = self.offset_y + click_y
+                    if 0 <= clicked_idx < len(self.items):
+                        if mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
+                            if self.items[clicked_idx].is_selectable:
+                                self.selected = clicked_idx
+                            return self.items[clicked_idx].handle_left_click(self.offset_x, mouse_x, mouse_y, click_x)
+                        if mouse_state == curses.BUTTON1_DOUBLE_CLICKED:
+                            if self.items[clicked_idx].is_selectable:
+                                self.selected = clicked_idx
+                            return self.items[clicked_idx].handle_double_click(self.offset_x, mouse_x, mouse_y)
+                        if mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED:
+                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y, clicked_idx, click_x)
+                elif mouse_state == curses.BUTTON4_PRESSED: # wheel up
+                    self.offset_y -= 5
+                    if self.offset_y < 0:
+                        self.offset_y = 0
+                elif mouse_state == curses.BUTTON5_PRESSED: # wheel down
+                    self.offset_y += 5
+                    if self.offset_y >= len(self.items) - self.height:
+                        self.offset_y = max(0, len(self.items) - self.height)
+            else:
+                return self.view_position == 'fullscreen'
+            return True
+
+        if self.items[self.selected].handle_input(key):
+            return True
 
         if key == curses.KEY_UP or key == ord('k'):
             if self.selected > 0:
@@ -752,33 +856,6 @@ class ListView(View):
             self.selected = max(0, len(self.items) - 1)
             self._skip_non_selectable_items(1)
             self._ensure_selection_is_visible()
-        elif key == curses.KEY_MOUSE:
-            _, mouse_x, mouse_y, _, mouse_state = curses.getmouse()
-            begin_y, begin_x = self.win.getbegyx()
-            click_x = mouse_x - begin_x - self.x
-            click_y = mouse_y - begin_y - self.y
-            if 0 <= click_y < self.height and 0 <= click_x < self.width:
-                if mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_DOUBLE_CLICKED or mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
-                    clicked_idx = self.offset_y + click_y
-                    if 0 <= clicked_idx < len(self.items) and self.items[clicked_idx].selectable:
-                        if mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
-                            self.selected = clicked_idx
-                            return self.items[clicked_idx].handle_left_click(self.offset_x, mouse_x, mouse_y)
-                        if mouse_state == curses.BUTTON1_DOUBLE_CLICKED:
-                            self.selected = clicked_idx
-                            return self.items[clicked_idx].handle_double_click(self.offset_x, mouse_x, mouse_y)
-                        if mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED:
-                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y, clicked_idx, click_x)
-                elif mouse_state == curses.BUTTON4_PRESSED: # wheel up
-                    self.offset_y -= 5
-                    if self.offset_y < 0:
-                        self.offset_y = 0
-                elif mouse_state == curses.BUTTON5_PRESSED: # wheel down
-                    self.offset_y += 5
-                    if self.offset_y >= len(self.items) - self.height:
-                        self.offset_y = max(0, len(self.items) - self.height)
-            else:
-                return self.view_position == 'fullscreen'
         elif key == ord('/'):
             search_dialog = Gitkcli.get_search_dialog(self.id)
             if search_dialog:
@@ -800,7 +877,7 @@ class ListView(View):
                         self._ensure_selection_is_visible()
                         break
         else: 
-            return self.items[self.selected].handle_input(key)
+            return False
 
         return True
 
@@ -818,7 +895,7 @@ class ListView(View):
             if i == self.height - 1:
                 width -= 1
 
-            if item.separator:
+            if item.is_separator:
                 separator_items.append(i)
             else:
                 self.win.move(self.y + i, self.x)
@@ -993,7 +1070,7 @@ class ContextMenuItem(TextListItem):
             return False
         return True
 
-    def handle_left_click(self, offset, mouse_x, mouse_y):
+    def handle_left_click(self, offset, mouse_x, mouse_y, click_x):
         self.handle_input(curses.KEY_ENTER)
         return True
 
@@ -1049,7 +1126,7 @@ class ContextMenu(ListView):
             log_error(f"Error checking out branch: {result.stderr}")
     
     def rename_branch(self, branch_name):
-        Gitkcli.get_view('git-branch-rename').old_branch_name = branch_name
+        Gitkcli.get_view('git-branch-rename').set_old_branch_name(branch_name)
         Gitkcli.clear_and_show_view('git-branch-rename')
     
     def remove_branch(self, branch_name):
@@ -1070,43 +1147,91 @@ class ContextMenu(ListView):
         except Exception as e:
             log_error(f"Error copying to clipboard: {str(e)}")
 
-class UserInputDialogPopup(View):
-    def __init__(self, id, parent_win, title):
-        super().__init__(id, parent_win, title, 'window', height=7, width=80) 
-        self.query = ""
+class UserInputListItem(Item):
+    def __init__(self, color = 1):
+        super().__init__()
+        self.txt = ''
+        self.offset = 0
         self.cursor_pos = 0
-        self.bottom_text = "Enter: Execute | Esc: Cancel"
+        self.color = color
 
-    def draw_top_panel(self):
-        pass
+    def clear(self):
+        self.txt = ''
+        self.offset = 0
+        self.cursor_pos = 0
+
+    def get_text(self):
+        return self.txt
+                
+    def handle_input(self, key):
+        if key == curses.KEY_BACKSPACE or key == 127:  # Backspace
+            if self.cursor_pos > 0:
+                self.txt = self.txt[:self.cursor_pos-1] + self.txt[self.cursor_pos:]
+                self.cursor_pos -= 1
+                
+        elif key == curses.KEY_DC:  # Delete key
+            if self.cursor_pos < len(self.txt):
+                self.txt = self.txt[:self.cursor_pos] + self.txt[self.cursor_pos+1:]
+                
+        elif key == curses.KEY_LEFT:  # Left arrow
+            if self.cursor_pos > 0:
+                self.cursor_pos -= 1
+                
+        elif key == curses.KEY_RIGHT:  # Right arrow
+            if self.cursor_pos < len(self.txt):
+                self.cursor_pos += 1
+                
+        elif key == curses.KEY_HOME:  # Home key
+            self.cursor_pos = 0
+            
+        elif key == curses.KEY_END:  # End key
+            self.cursor_pos = len(self.txt)
+            
+        elif 32 <= key <= 126:  # Printable characters
+            self.txt = self.txt[:self.cursor_pos] + chr(key) + self.txt[self.cursor_pos:]
+            self.cursor_pos += 1
+
+        else:
+            return super().handle_input(key)
+
+        return True
+
+    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
+        new_pos = click_x + self.offset
+        self.cursor_pos = new_pos if new_pos < len(self.txt) else len(self.txt)
+        return True
+
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        left_txt = self.txt[self.offset:self.offset+self.cursor_pos]
+        right_txt = self.txt[self.offset+self.cursor_pos:self.offset+width-1]
+
+        win.addstr(left_txt, curses_color(16 if matched else self.color, selected, marked))
+        win.addch(ord(' '), curses.A_REVERSE | curses.A_BLINK)
+        win.addstr(right_txt, curses_color(16 if matched else self.color, selected, marked))
+        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(16 if matched else self.color, selected, marked))
+
+class UserInputDialogPopup(ListView):
+    def __init__(self, id, parent_win, title, header_item, help_text = ''):
+        super().__init__(id, parent_win, 'window', title, height = 7)
+        self.input = UserInputListItem()
+
+        help_item = SegmentedListItem([FillerSegment(), TextSegment(help_text or "Enter: Execute | Esc: Cancel", 18), FillerSegment()])
+
+        help_item.is_selectable = False
+        header_item.is_selectable = False
+
+        self.append(header_item)
+        self.append(SpacerListItem())
+        self.append(self.input)
+        self.append(SpacerListItem())
+        self.append(help_item)
+        self.selected = 2
 
     def execute(self):
         pass
 
-    def draw(self):
-        self.draw_top_panel()
-        
-        # Draw query
-        max_display = self.width - 5
-        start_pos = max(0, self.cursor_pos - max_display)
-        self.win.move(3, 2)
-        if start_pos > 0:
-            self.win.addch(curses.ACS_LARROW)
-            max_display -= 1
-        self.win.addstr(self.query[start_pos:start_pos+max_display])
-        self.win.clrtoeol()
-
-        # Draw help text
-        self.win.addstr(5, (self.width - len(self.bottom_text)) // 2, self.bottom_text, curses.A_DIM)
-        
-        # Draw query cursor
-        self.win.insch(3, 2 + self.cursor_pos - start_pos, ' ', curses.A_REVERSE | curses.A_BLINK)
-
-        super().draw()
-
     def clear(self):
-        self.query = ""
-        self.cursor_pos = 0
+        self.input.clear()
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
@@ -1114,132 +1239,94 @@ class UserInputDialogPopup(View):
             self.execute()
 
         elif key == curses.KEY_EXIT or key == 27:  # Escape key
-            self.query = ""
+            self.input.txt = ""
             self.cursor_pos = 0
             Gitkcli.hide_view()
-                
-        elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
-            if self.cursor_pos > 0:
-                self.query = self.query[:self.cursor_pos-1] + self.query[self.cursor_pos:]
-                self.cursor_pos -= 1
-                
-        elif key == curses.KEY_DC:  # Delete key
-            if self.cursor_pos < len(self.query):
-                self.query = self.query[:self.cursor_pos] + self.query[self.cursor_pos+1:]
-                
-        elif key == curses.KEY_LEFT:  # Left arrow
-            if self.cursor_pos > 0:
-                self.cursor_pos -= 1
-                
-        elif key == curses.KEY_RIGHT:  # Right arrow
-            if self.cursor_pos < len(self.query):
-                self.cursor_pos += 1
-                
-        elif key == curses.KEY_HOME:  # Home key
-            self.cursor_pos = 0
-            
-        elif key == curses.KEY_END:  # End key
-            self.cursor_pos = len(self.query)
-            
-        elif 32 <= key <= 126:  # Printable characters
-            self.query = self.query[:self.cursor_pos] + chr(key) + self.query[self.cursor_pos:]
-            self.cursor_pos += 1
 
         else:
-            return False
+            return super().handle_input(key)
             
         return True
 
 class BranchRenameDialogPopup(UserInputDialogPopup):
     def __init__(self, id, parent_win):
-        super().__init__(id, parent_win, ' Rename Branch') 
         self.old_branch_name = ''
+        self.header_item = TextListItem('')
+        super().__init__(id, parent_win, ' Rename Branch', self.header_item)
 
-    def draw_top_panel(self):
-        self.win.move(1, 2)
-        self.win.addstr(f"Rename branch '{self.old_branch_name}' to:")
+    def set_old_branch_name(self, name):
+        self.old_branch_name = name
+        self.header_item.txt = f"Rename branch '{self.old_branch_name}' to:"
 
     def execute(self):
-        if not self.query:
+        if not self.input.txt:
             log_error("New branch name cannot be empty")
             return
             
-        args = ['git', 'branch', '-m', self.old_branch_name, self.query]
+        args = ['git', 'branch', '-m', self.old_branch_name, self.input.txt]
         result = Gitkcli.run_job(args)
         if result.returncode == 0:
             Gitkcli.refresh_refs()
-            log_success(f'Branch renamed from {self.old_branch_name} to {self.query}')
+            log_success(f'Branch renamed from {self.old_branch_name} to {self.input.txt}')
         else:
             log_error(f"Error renaming branch: {result.stderr}")
 
 class NewBranchDialogPopup(UserInputDialogPopup):
     def __init__(self, id, parent_win):
-        super().__init__(id, parent_win, ' New Branch') 
-        self.force = False
-        self.bottom_text = "Enter: Execute | Esc: Cancel | F1: Force"
+        self.force = ToggleSegment("<Force>")
         self.commit_id = ''
-
-    def draw_top_panel(self):
-        self.win.move(1, 2)
-        self.win.addstr("Specify the new branch name")
-        self.win.addstr("    Flags: ")
-        self.win.addstr("<Force>", curses_color(1, self.force))
+        super().__init__(id, parent_win, ' New Branch',
+            SegmentedListItem([TextSegment("Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]),
+            "Enter: Execute | Esc: Cancel | F1: Force") 
 
     def handle_input(self, key):
         if key == curses.KEY_F1:
-            self.force = not self.force
+            self.force.toggle()
         else:
             return super().handle_input(key)
         return True
 
     def execute(self):
         args = ['git', 'branch']
-        if self.force:
+        if self.force.toggled:
             args += ['-f']
-        args += [self.query, self.commit_id]
+        args += [self.input.txt, self.commit_id]
         result = Gitkcli.run_job(args)
         if result.returncode == 0:
             Gitkcli.refresh_refs()
-            log_success(f'Branch {self.query} created successfully')
+            log_success(f'Branch {self.input.txt} created successfully')
         else:
             log_error(f"Error creating branch: " + result.stderr)
 
 class SearchDialogPopup(UserInputDialogPopup):
-    def __init__(self, id, parent_win):
-        super().__init__(id, parent_win, ' Search') 
-        self.case_sensitive = True
-        self.use_regexp = False
-        self.bottom_text = "Enter: Search | Esc: Cancel | F1: Case | F2: Regexp"
+    def __init__(self, id, parent_win, help_item = None):
+        self.case_sensitive = ToggleSegment("<Case>", True)
+        self.use_regexp = ToggleSegment("<Regexp>")
+        self.header = SegmentedListItem([FillerSegment(), TextSegment("Flags:"), self.case_sensitive, self.use_regexp, FillerSegment()])
+        super().__init__(id, parent_win, ' Search', self.header, "Enter: Search | Esc: Cancel | F1: Case | F2: Regexp")
 
     def matches(self, item):
-        if self.query:
-            if self.use_regexp:
-                if self.case_sensitive:
-                    return re.search(self.query, item.get_text())
+        if self.input.txt:
+            if self.use_regexp.toggled:
+                if self.case_sensitive.toggled:
+                    return re.search(self.input.txt, item.get_text())
                 else:
-                    return re.search(self.query, item.get_text(), re.IGNORECASE)
-            elif self.case_sensitive:
-                return self.query in item.get_text()
+                    return re.search(self.input.txt, item.get_text(), re.IGNORECASE)
+            elif self.case_sensitive.toggled:
+                return self.input.txt in item.get_text()
             else:
-                return self.query.lower() in item.get_text().lower()
+                return self.input.txt.lower() in item.get_text().lower()
         else:
             return False
-
-    def draw_top_panel(self):
-        self.win.move(1, 2)
-        self.win.addstr("Flags: ")
-        self.win.addstr("<Case>", curses_color(1, self.case_sensitive))
-        self.win.addstr(" ")
-        self.win.addstr("<Regexp>", curses_color(1, self.use_regexp))
 
     def handle_input(self, key):
         if key == curses.KEY_DC or key == curses.KEY_BACKSPACE or key == 127 or 32 <= key <= 126:
             Gitkcli.get_parent_view(self.id).dirty = True
 
         if key == curses.KEY_F1:
-            self.case_sensitive = not self.case_sensitive
+            self.case_sensitive.toggle()
         elif key == curses.KEY_F2:
-            self.use_regexp = not self.use_regexp
+            self.use_regexp.toggle()
         else:
             return super().handle_input(key)
         return True
@@ -1249,32 +1336,38 @@ class SearchDialogPopup(UserInputDialogPopup):
 
 class GitSearchDialogPopup(SearchDialogPopup):
     def __init__(self, id, parent_win):
-        super().__init__(id, parent_win) 
-        self.search_type = "txt"
-        self.bottom_text = "Enter: Search | Esc: Cancel | Tab: Change type | F1: Case | F2: Regexp"
+        super().__init__(id, parent_win, "Enter: Search | Esc: Cancel | Tab: Change type | F1: Case | F2: Regexp") 
+
+        self.search_type_txt_segment = ToggleSegment("[Txt]", callback = lambda val: self.change_search_type("txt"))
+        self.search_type_id_segment = ToggleSegment("[ID]", callback = lambda val: self.change_search_type("id"))
+        self.search_type_message_segment = ToggleSegment("[Message]", callback = lambda val: self.change_search_type("message"))
+        self.search_type_file_segment = ToggleSegment("[Filepaths]", callback = lambda val: self.change_search_type("path"))
+        self.search_type_diff_segment = ToggleSegment("[Diff]", callback = lambda val: self.change_search_type("diff"))
+
+        self.header.segments.insert(0, TextSegment("Type:"))
+        self.header.segments.insert(1, self.search_type_txt_segment)
+        self.header.segments.insert(2, self.search_type_id_segment)
+        self.header.segments.insert(3, self.search_type_message_segment)
+        self.header.segments.insert(4, self.search_type_file_segment)
+        self.header.segments.insert(5, self.search_type_diff_segment)
+
+        self.change_search_type('txt')
+
+    def change_search_type(self, new_type):
+        self.search_type = new_type
+        self.search_type_txt_segment.toggled = self.search_type == 'txt'
+        self.search_type_id_segment.toggled = self.search_type == 'id'
+        self.search_type_message_segment.toggled = self.search_type == 'message'
+        self.search_type_file_segment.toggled = self.search_type == 'path'
+        self.search_type_diff_segment.toggled = self.search_type == 'diff'
+        self.use_regexp.enabled = self.search_type != 'path'
+        self.case_sensitive.enabled = self.search_type != 'path'
 
     def matches(self, item):
         if self.search_type == "txt":
             return super().matches(item)
         else:
             return item.id in Gitkcli.found_ids
-
-    def draw_top_panel(self):
-        self.win.move(1, 2)
-        self.win.addstr("Type: ")
-        self.win.addstr("[Txt]", curses_color(1, self.search_type == "txt"))
-        self.win.addstr(" ")
-        self.win.addstr("[ID]", curses_color(1, self.search_type == "id"))
-        self.win.addstr(" ")
-        self.win.addstr("[Message]", curses_color(1, self.search_type == "message"))
-        self.win.addstr(" ")
-        self.win.addstr("[Filepaths]", curses_color(1, self.search_type == "path"))
-        self.win.addstr(" ")
-        self.win.addstr("[Diff]", curses_color(1, self.search_type == "diff"))
-        self.win.addstr("    Flags: ")
-        self.win.addstr("<Case>", curses_color(1, self.case_sensitive, dim = self.search_type == 'path'))
-        self.win.addstr(" ")
-        self.win.addstr("<Regexp>", curses_color(1, self.use_regexp, dim = self.search_type == 'path'))
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
@@ -1284,39 +1377,39 @@ class GitSearchDialogPopup(SearchDialogPopup):
             Gitkcli.hide_view()
 
             args = []
-            if not self.case_sensitive:
+            if not self.case_sensitive.toggled:
                 args.append('-i')
             if self.search_type == "message":
-                if not self.use_regexp:
+                if not self.use_regexp.toggled:
                     args.append('-F')
                 args.append("--grep")
-                args.append(self.query)
+                args.append(self.input.txt)
             elif self.search_type == "id":
-                args.append(f"{self.query}^!")
+                args.append(f"{self.input.txt}^!")
             elif self.search_type == "diff":
-                if self.use_regexp:
+                if self.use_regexp.toggled:
                     args.append("-G")
                 else:
                     args.append("-S")
-                args.append(self.query)
+                args.append(self.input.txt)
             elif self.search_type == "path":
                 args.append('--')
-                args.append(f"*{self.query}*")
+                args.append(f"*{self.input.txt}*")
 
             Gitkcli.get_job('git-search').start_job(args)
 
         elif key == 9:  # Tab key - cycle through search types
             Gitkcli.get_parent_view(self.id).dirty = True
             if self.search_type == "txt":
-                self.search_type = "id"
+                self.change_search_type("id")
             elif self.search_type == "id":
-                self.search_type = "message"
+                self.change_search_type("message")
             elif self.search_type == "message":
-                self.search_type = "path"
+                self.change_search_type("path")
             elif self.search_type == "path":
-                self.search_type = "diff"
+                self.change_search_type("diff")
             else:
-                self.search_type = "txt"
+                self.change_search_type("txt")
 
         else:
             return super().handle_input(key)
