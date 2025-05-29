@@ -435,9 +435,7 @@ class RefSegment(TextSegment):
         super().__init__(txt, color)
 
     def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
-        if self.ref['type'] == 'heads':
-            return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, RefListItem(self.ref), clicked_idx, 'git-refs')
-        return False
+        return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, RefListItem(self.ref), clicked_idx, 'git-refs')
 
 class ToggleSegment(TextSegment):
     def __init__(self, txt, toggled = False, callback = lambda val: None, color = 1):
@@ -961,8 +959,15 @@ class GitLogView(ListView):
     
     def create_branch(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
-        Gitkcli.get_view('git-log-branch').commit_id = commit_id
-        Gitkcli.clear_and_show_view('git-log-branch')
+        Gitkcli.get_view('git-log-ref').commit_id = commit_id
+        Gitkcli.get_view('git-log-ref').set_ref_type('branch')
+        Gitkcli.clear_and_show_view('git-log-ref')
+    
+    def create_tag(self, commit_id = None):
+        commit_id = commit_id or self.get_selected_commit_id()
+        Gitkcli.get_view('git-log-ref').commit_id = commit_id
+        Gitkcli.get_view('git-log-ref').set_ref_type('tag')
+        Gitkcli.clear_and_show_view('git-log-ref')
     
     def reset(self, hard, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
@@ -1086,6 +1091,7 @@ class ContextMenu(ListView):
         view = Gitkcli.get_view()
         if view_id == 'git-log':
             self.append(ContextMenuItem("Create new branch", view.create_branch, [item.id]))
+            self.append(ContextMenuItem("Create new tag", view.create_tag, [item.id]))
             self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
             self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
             self.append(SeparatorItem())
@@ -1103,10 +1109,16 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [index]))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         elif view_id == 'git-refs':
-            self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
-            self.append(ContextMenuItem("Rename this branch", self.rename_branch, [item.data['name']]))
-            self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
-            self.append(ContextMenuItem("Copy branch name", self.copy_branch_name, [item.data['name']]))
+            if item.data['type'] == 'heads':
+                self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
+                self.append(ContextMenuItem("Rename this branch", self.rename_branch, [item.data['name']]))
+                self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
+                self.append(ContextMenuItem("Copy branch name", self.copy_ref_name, [item.data['name']]))
+            elif item.data['type'] == 'tags':
+                self.append(ContextMenuItem("Remove this tag", self.remove_tag, [item.data['name']]))
+                self.append(ContextMenuItem("Copy tag name", self.copy_ref_name, [item.data['name']]))
+            else:
+                return False
         elif view_id == 'log':
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         else:
@@ -1137,11 +1149,18 @@ class ContextMenu(ListView):
         else:
             log_error(f"Error deleting branch: {result.stderr}")
     
-    def copy_branch_name(self, branch_name):
+    def remove_tag(self, tag_name):
+        # we are 'cheating' here little bit because we want to remove that tag from all remotes
+        # so we handle it in bash and do not check return code in case tag doesn't exist in all remotes
+        result = Gitkcli.run_job(['sh', '-c', f'git tag -d {tag_name} && git remote | xargs -I {{}} git push --delete {{}} {tag_name}', tag_name])
+        Gitkcli.refresh_refs()
+        log_success(f'Deleted branch {tag_name}')
+    
+    def copy_ref_name(self, ref_name):
         try:
             import pyperclip
-            pyperclip.copy(branch_name)
-            log_success(f'Branch name "{branch_name}" copied to clipboard')
+            pyperclip.copy(ref_name)
+            log_success(f'Name "{ref_name}" copied to clipboard')
         except ImportError:
             log_error("pyperclip module not found. Install with: pip install pyperclip")
         except Exception as e:
@@ -1271,13 +1290,20 @@ class BranchRenameDialogPopup(UserInputDialogPopup):
         else:
             log_error(f"Error renaming branch: {result.stderr}")
 
-class NewBranchDialogPopup(UserInputDialogPopup):
+class NewRefDialogPopup(UserInputDialogPopup):
     def __init__(self, id, parent_win):
         self.force = ToggleSegment("<Force>")
         self.commit_id = ''
+        self.ref_type = '' # branch or tag
+        self.title_segment = TextSegment('')
         super().__init__(id, parent_win, ' New Branch',
-            SegmentedListItem([TextSegment("Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]),
+            SegmentedListItem([TextSegment(f"Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]),
             "Enter: Execute | Esc: Cancel | F1: Force") 
+
+    def set_ref_type(self, ref_type):
+        self.title = f' New {ref_type}'
+        self.ref_type = ref_type
+        self.title_segment.txt = f"Specify the new {ref_type} name:"
 
     def handle_input(self, key):
         if key == curses.KEY_F1:
@@ -1287,16 +1313,16 @@ class NewBranchDialogPopup(UserInputDialogPopup):
         return True
 
     def execute(self):
-        args = ['git', 'branch']
+        args = ['git', self.ref_type]
         if self.force.toggled:
             args += ['-f']
         args += [self.input.txt, self.commit_id]
         result = Gitkcli.run_job(args)
         if result.returncode == 0:
             Gitkcli.refresh_refs()
-            log_success(f'Branch {self.input.txt} created successfully')
+            log_success(f'{self.ref_type} {self.input.txt} created successfully')
         else:
-            log_error(f"Error creating branch: " + result.stderr)
+            log_error(f"Error creating {self.ref_type}: " + result.stderr)
 
 class SearchDialogPopup(UserInputDialogPopup):
     def __init__(self, id, parent_win, help_item = None):
@@ -1443,7 +1469,7 @@ class Gitkcli:
 
         GitLogView('git-log', stdscr)
         GitSearchDialogPopup('git-log-search', stdscr)
-        NewBranchDialogPopup('git-log-branch', stdscr)
+        NewRefDialogPopup('git-log-ref', stdscr)
 
         GitDiffView('git-diff', stdscr)
         SearchDialogPopup('git-diff-search', stdscr)
