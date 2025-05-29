@@ -1112,14 +1112,17 @@ class ContextMenu(ListView):
             if item.data['type'] == 'heads':
                 self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
                 self.append(ContextMenuItem("Rename this branch", self.rename_branch, [item.data['name']]))
-                self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
                 self.append(ContextMenuItem("Copy branch name", self.copy_ref_name, [item.data['name']]))
+                self.append(SeparatorItem())
+                self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
             elif item.data['type'] == 'tags':
-                self.append(ContextMenuItem("Remove this tag", self.remove_tag, [item.data['name']]))
                 self.append(ContextMenuItem("Copy tag name", self.copy_ref_name, [item.data['name']]))
+                self.append(SeparatorItem())
+                self.append(ContextMenuItem("Remove this tag", self.remove_tag, [item.data['name']]))
             elif item.data['type'] == 'remotes':
-                self.append(ContextMenuItem("Remove this remote branch", self.remove_remote_ref, [item.data['name']]))
                 self.append(ContextMenuItem("Copy remote branch name", self.copy_ref_name, [item.data['name']]))
+                self.append(SeparatorItem())
+                self.append(ContextMenuItem("Remove this remote branch", self.remove_remote_ref, [item.data['name']]))
             else:
                 self.append(ContextMenuItem("Copy ref name", self.copy_ref_name, [item.data['name']]))
         elif view_id == 'log':
