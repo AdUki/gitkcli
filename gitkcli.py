@@ -1117,8 +1117,11 @@ class ContextMenu(ListView):
             elif item.data['type'] == 'tags':
                 self.append(ContextMenuItem("Remove this tag", self.remove_tag, [item.data['name']]))
                 self.append(ContextMenuItem("Copy tag name", self.copy_ref_name, [item.data['name']]))
+            elif item.data['type'] == 'remotes':
+                self.append(ContextMenuItem("Remove this remote branch", self.remove_remote_ref, [item.data['name']]))
+                self.append(ContextMenuItem("Copy remote branch name", self.copy_ref_name, [item.data['name']]))
             else:
-                return False
+                self.append(ContextMenuItem("Copy ref name", self.copy_ref_name, [item.data['name']]))
         elif view_id == 'log':
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         else:
@@ -1140,7 +1143,7 @@ class ContextMenu(ListView):
     def rename_branch(self, branch_name):
         Gitkcli.get_view('git-branch-rename').set_old_branch_name(branch_name)
         Gitkcli.clear_and_show_view('git-branch-rename')
-    
+
     def remove_branch(self, branch_name):
         result = Gitkcli.run_job(['git', 'branch', '-d', branch_name])
         if result.returncode == 0:
@@ -1150,11 +1153,32 @@ class ContextMenu(ListView):
             log_error(f"Error deleting branch: {result.stderr}")
     
     def remove_tag(self, tag_name):
-        # we are 'cheating' here little bit because we want to remove that tag from all remotes
-        # so we handle it in bash and do not check return code in case tag doesn't exist in all remotes
-        result = Gitkcli.run_job(['sh', '-c', f'git tag -d {tag_name} && git remote | xargs -I {{}} git push --delete {{}} {tag_name}', tag_name])
-        Gitkcli.refresh_refs()
-        log_success(f'Deleted branch {tag_name}')
+        remotes = Gitkcli.run_job(['git', 'remote']).stdout.splitlines()
+        removed_from_remotes = []
+
+        result = Gitkcli.run_job(['git', 'tag', '-d', tag_name])
+        if result.returncode == 0:
+            removed_from_remotes.append('<local>')
+
+        for remote in remotes:
+            result = Gitkcli.run_job(['git', 'push', '--delete', remote, tag_name])
+            if result.returncode == 0:
+                removed_from_remotes.append(remote)
+
+        if removed_from_remotes:
+            Gitkcli.refresh_refs()
+            log_success(f'Deleted tag {tag_name} from remotes: ' + ' '.join(removed_from_remotes))
+        else:
+            log_error(f"Error deleting tag: {result.stderr}")
+    
+    def remove_remote_ref(self, remote_ref):
+        remote, branch = remote_ref.split('/', 1)
+        result = Gitkcli.run_job(['git', 'push', '--delete', remote, branch])
+        if result.returncode == 0:
+            Gitkcli.refresh_refs()
+            log_success(f'Deleted remote branch {remote_ref}')
+        else:
+            log_error(f"Error deleting remote branch: {result.stderr}")
     
     def copy_ref_name(self, ref_name):
         try:
