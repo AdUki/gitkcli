@@ -3,13 +3,13 @@
 import argparse
 import curses
 import datetime
-import time
-import typing
 import queue
 import re
 import subprocess
 import threading
+import time
 import traceback
+import typing
 
 def log_debug(txt): Gitkcli.log(18, txt)
 def log_info(txt): Gitkcli.log(1, txt)
@@ -580,6 +580,7 @@ class CommitListItem(SegmentedListItem):
 class View:
     def __init__(self, id, parent_win, title = '', view_position='fullscreen', x=None, y=None, height=None, width=None):
         self.id = id
+        self.parent_id = ''
         self.parent_win = parent_win
         self.view_position = view_position
         self.title = title
@@ -671,16 +672,23 @@ class View:
             self.win.addstr(0, 0, self.title.ljust(cols), curses_color(203 if Gitkcli.get_view() == self else 204))
 
         self.win.refresh()
-        if not self.id.startswith('log'):
+        if not self.id.startswith('log') and self.parent_id != 'log':
             log_debug(f'Draw view {self.id}')
 
+    def on_show_view(self):
+        log_debug(f'Show view {self.id}')
+
+    def on_hide_view(self):
+        log_debug(f'Hide view {self.id}')
+
 class ListView(View):
-    def __init__(self, id, parent_win, view_position='fullscreen', title = '', x=None, y=None, height=None, width=None):
+    def __init__(self, id, parent_win, view_position='fullscreen', title = '', x=None, y=None, height=None, width=None, autoscroll=False):
         super().__init__(id, parent_win, title, view_position, x, y, height, width)
         self.items = []
         self.selected = 0
         self.offset_y = 0
         self.offset_x = 0
+        self.autoscroll = autoscroll
 
     def copy_text_to_clipboard(self):
         text = "\n".join(item.get_text() for item in self.items)
@@ -699,6 +707,8 @@ class ListView(View):
         self.items.append(item)
         if len(self.items) - self.offset_y < self.height:
             self.dirty = True
+        if self.autoscroll:
+            self.offset_y = max(0, len(self.items) - self.height)
         
     def prepend(self, item):
         """Add item to beginning of list"""
@@ -777,19 +787,30 @@ class ListView(View):
             click_x = mouse_x - begin_x - self.x
             click_y = mouse_y - begin_y - self.y
             if 0 <= click_y < self.height and 0 <= click_x < self.width:
-                if mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_DOUBLE_CLICKED or mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
+
+                if (mouse_state == curses.BUTTON1_PRESSED or
+                    mouse_state == curses.BUTTON3_PRESSED or
+                    mouse_state == curses.BUTTON3_RELEASED or
+                    mouse_state == curses.REPORT_MOUSE_POSITION):
+
                     clicked_idx = self.offset_y + click_y
                     if 0 <= clicked_idx < len(self.items):
-                        if mouse_state == curses.BUTTON1_CLICKED or mouse_state == curses.BUTTON1_PRESSED or mouse_state == curses.BUTTON3_RELEASED:
+                        if mouse_state == curses.BUTTON1_PRESSED:
+                            now = time.time()
+                            if now - Gitkcli.click_time < 0.3:
+                                return self.items[clicked_idx].handle_double_click(self.offset_x, mouse_x, mouse_y)
+                            Gitkcli.click_time = now
                             if self.items[clicked_idx].is_selectable:
                                 self.selected = clicked_idx
                             return self.items[clicked_idx].handle_left_click(self.offset_x, mouse_x, mouse_y, click_x)
-                        if mouse_state == curses.BUTTON1_DOUBLE_CLICKED:
+                        if mouse_state == curses.BUTTON3_RELEASED:
+                            return self.items[clicked_idx].handle_left_click(self.offset_x, mouse_x, mouse_y, click_x)
+                        if mouse_state == curses.BUTTON3_PRESSED:
+                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y, clicked_idx, click_x)
+                        if mouse_state == curses.REPORT_MOUSE_POSITION:
                             if self.items[clicked_idx].is_selectable:
                                 self.selected = clicked_idx
-                            return self.items[clicked_idx].handle_double_click(self.offset_x, mouse_x, mouse_y)
-                        if mouse_state == curses.BUTTON3_CLICKED or mouse_state == curses.BUTTON3_PRESSED:
-                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y, clicked_idx, click_x)
+
                 elif mouse_state == curses.BUTTON4_PRESSED: # wheel up
                     self.offset_y -= 5
                     if self.offset_y < 0:
@@ -799,7 +820,10 @@ class ListView(View):
                     if self.offset_y >= len(self.items) - self.height:
                         self.offset_y = max(0, len(self.items) - self.height)
             else:
-                return self.view_position == 'fullscreen'
+                return (self.view_position == 'fullscreen' or
+                        mouse_state == curses.REPORT_MOUSE_POSITION or
+                        mouse_state == curses.BUTTON3_RELEASED)
+
             return True
 
         if self.items[self.selected].handle_input(key):
@@ -1082,6 +1106,14 @@ class ContextMenuItem(TextListItem):
 class ContextMenu(ListView):
     def __init__(self, id, parent_win):
         super().__init__(id, parent_win, 'window')
+
+    def on_show_view(self):
+        super().on_show_view()
+        print("\033[?1003h", end='', flush=True) # start capturing mouse movement
+
+    def on_hide_view(self):
+        super().on_hide_view()
+        print("\033[?1000h", end='', flush=True) # end capturing mouse movement
         
     def show_context_menu(self, mouse_x, mouse_y, item, index, view_id = None):
         self.clear()
@@ -1129,6 +1161,7 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         else:
             return False
+        self.parent_id = view_id
         self.resize(len(self.items) + 2, 30)
         self.move(mouse_x, mouse_y)
         Gitkcli.show_view('context-menu')
@@ -1489,6 +1522,8 @@ class Gitkcli:
     status_bar_color = None
     status_bar_time = time.time()
 
+    click_time = time.time()
+
     @classmethod
     def create_views_and_jobs(cls, stdscr, cmd_args):
         ListView('log', stdscr, title = 'Logs')
@@ -1610,10 +1645,14 @@ class Gitkcli:
     def show_view(cls, id):
         if len(cls.showed_views) > 0 and cls.showed_views[-1] == id:
             return
+        prev_view = cls.get_view()
         if id in cls.showed_views:
             cls.showed_views.remove(id)
         cls.showed_views.append(id)
         cls.get_view().dirty = True
+        if prev_view and cls.get_view().view_position == 'fullscreen':
+            prev_view.on_hide_view()
+        cls.get_view().on_show_view()
 
     @classmethod
     def clear_and_show_view(cls, id):
@@ -1623,10 +1662,12 @@ class Gitkcli:
     @classmethod
     def hide_view(cls):
         if len(cls.showed_views) > 0:
+            cls.get_view().on_hide_view()
             view_id = cls.showed_views.pop(-1)
             cls.get_view(view_id).win.erase()
             cls.get_view(view_id).win.refresh()
-            cls.get_view().dirty = True
+            if cls.get_view():
+                cls.get_view().dirty = True
 
     @classmethod
     def hide_current_and_show_view(cls, id):
@@ -1724,6 +1765,7 @@ def launch_curses(stdscr, cmd_args):
     stdscr.timeout(5)
     curses.set_escdelay(200)
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
+    curses.mouseinterval(0)
 
     Gitkcli.create_views_and_jobs(stdscr, cmd_args)
     Gitkcli.show_view('git-log')
