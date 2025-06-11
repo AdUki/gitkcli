@@ -364,7 +364,7 @@ class TextListItem(Item):
         if len(line) > width:
             line = line[:width]
 
-        win.addstr(line, curses_color(16 if matched else self.color, selected, marked))
+        win.addstr(line, curses_color(16 if matched else self.color, selected, marked, dim = not self.is_selectable))
         win.clrtoeol()
 
 class SpacerListItem(Item):
@@ -1088,10 +1088,11 @@ class GitDiffView(ListView):
 
 
 class ContextMenuItem(TextListItem):
-    def __init__(self, text, action, args=None):
+    def __init__(self, text, action, args=None, is_selectable=True):
         super().__init__(text)
         self.action = action
         self.args = args if args else []
+        self.is_selectable = is_selectable
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:
@@ -1134,13 +1135,13 @@ class ContextMenu(ListView):
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()]))
             self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id]))
-            self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.id, view.marked_commit_id]))
-            self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.id]))
+            self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.id, view.marked_commit_id], bool(view.marked_commit_id)))
+            self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.id], bool(view.marked_commit_id)))
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
-            self.append(ContextMenuItem("Return to mark", view.jump_to_id, [view.marked_commit_id]))
+            self.append(ContextMenuItem("Return to mark", view.jump_to_id, [view.marked_commit_id], bool(view.marked_commit_id)))
         elif view_id == 'git-diff':
-            self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [index]))
+            self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [index], item.get_text().startswith((' ', '-'))))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         elif view_id == 'git-refs':
             if item.data['type'] == 'heads':
