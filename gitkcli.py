@@ -302,15 +302,15 @@ class Item:
     def handle_input(self, key) -> bool:
         return False
 
-    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
+    def handle_left_click(self, offset, click_x) -> bool:
         return True
 
-    def handle_double_click(self, offset, mouse_x, mouse_y) -> bool:
+    def handle_double_click(self, offset) -> bool:
         self.handle_input(curses.KEY_ENTER)
         return True
 
-    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
-        return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, self, clicked_idx)
+    def handle_right_click(self, offset, clicked_idx, click_x) -> bool:
+        return Gitkcli.get_view('context-menu').show_context_menu(self, clicked_idx)
 
 class SeparatorItem(Item):
     def __init__(self):
@@ -401,13 +401,13 @@ class Segment:
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         return 0
 
-    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
+    def handle_left_click(self, offset, click_x) -> bool:
         return False
 
-    def handle_double_click(self, offset, mouse_x, mouse_y) -> bool:
+    def handle_double_click(self, offset) -> bool:
         return False
 
-    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
+    def handle_right_click(self, offset, clicked_idx, click_x) -> bool:
         return False
 
 class FillerSegment(Segment):
@@ -434,8 +434,8 @@ class RefSegment(TextSegment):
         color, txt = get_ref_color_and_title(ref)
         super().__init__(txt, color)
 
-    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
-        return Gitkcli.get_view('context-menu').show_context_menu(mouse_x, mouse_y, RefListItem(self.ref), clicked_idx, 'git-refs')
+    def handle_right_click(self, offset, clicked_idx, click_x) -> bool:
+        return Gitkcli.get_view('context-menu').show_context_menu(RefListItem(self.ref), clicked_idx, 'git-refs')
 
 class ToggleSegment(TextSegment):
     def __init__(self, txt, toggled = False, callback = lambda val: None, color = 1):
@@ -450,7 +450,7 @@ class ToggleSegment(TextSegment):
         else:
             self.toggled = True
 
-    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
+    def handle_left_click(self, offset, click_x) -> bool:
         self.toggle()
         self.callback(self.toggled)
         return True
@@ -494,17 +494,17 @@ class SegmentedListItem(Item):
             segment_pos += length + len(self.segment_separator)
         return Segment()
 
-    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
+    def handle_left_click(self, offset, click_x) -> bool:
         segment = self.get_segment_on_offset(click_x + offset)
-        if segment and segment.handle_left_click(offset, mouse_x, mouse_y, click_x):
+        if segment and segment.handle_left_click(offset, click_x):
             return True
-        return super().handle_left_click(offset, mouse_x, mouse_y, click_x)
+        return super().handle_left_click(offset, click_x)
 
-    def handle_right_click(self, offset, mouse_x, mouse_y, clicked_idx, click_x) -> bool:
+    def handle_right_click(self, offset, clicked_idx, click_x) -> bool:
         segment = self.get_segment_on_offset(click_x + offset)
-        if segment and segment.handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x):
+        if segment and segment.handle_right_click(offset, clicked_idx, click_x):
             return True
-        return super().handle_right_click(offset, mouse_x, mouse_y, clicked_idx, click_x)
+        return super().handle_right_click(offset, clicked_idx, click_x)
 
     def get_fill_txt(self, width):
         fillers_count = 0
@@ -782,49 +782,51 @@ class ListView(View):
         offset_jump = int(self.width / 4)
 
         if key == curses.KEY_MOUSE:
-            _, mouse_x, mouse_y, _, mouse_state = curses.getmouse()
             begin_y, begin_x = self.win.getbegyx()
-            click_x = mouse_x - begin_x - self.x
-            click_y = mouse_y - begin_y - self.y
+            click_x = Gitkcli.mouse_x - begin_x - self.x
+            click_y = Gitkcli.mouse_y - begin_y - self.y
             if 0 <= click_y < self.height and 0 <= click_x < self.width:
 
-                if (mouse_state == curses.BUTTON1_PRESSED or
-                    mouse_state == curses.BUTTON3_PRESSED or
-                    mouse_state == curses.BUTTON3_RELEASED or
-                    mouse_state == curses.REPORT_MOUSE_POSITION):
+                if (Gitkcli.mouse_state == curses.BUTTON1_PRESSED or
+                    Gitkcli.mouse_state == curses.BUTTON3_PRESSED or
+                    Gitkcli.mouse_state == curses.BUTTON3_RELEASED or
+                    Gitkcli.mouse_state == curses.REPORT_MOUSE_POSITION):
 
                     clicked_idx = self.offset_y + click_y
                     if 0 <= clicked_idx < len(self.items):
-                        if mouse_state == curses.BUTTON1_PRESSED:
+                        if Gitkcli.mouse_state == curses.BUTTON1_PRESSED:
                             now = time.time()
-                            if now - Gitkcli.click_time < 0.3:
-                                return self.items[clicked_idx].handle_double_click(self.offset_x, mouse_x, mouse_y)
-                            Gitkcli.click_time = now
+                            if now - Gitkcli.mouse_click_time < 0.3 and Gitkcli.mouse_x == Gitkcli.mouse_click_x and Gitkcli.mouse_y == Gitkcli.mouse_click_y:
+                                return self.items[clicked_idx].handle_double_click(self.offset_x)
+                            Gitkcli.mouse_click_x = Gitkcli.mouse_x
+                            Gitkcli.mouse_click_y = Gitkcli.mouse_y
+                            Gitkcli.mouse_click_time = now
                             if self.items[clicked_idx].is_selectable:
                                 self.selected = clicked_idx
-                            return self.items[clicked_idx].handle_left_click(self.offset_x, mouse_x, mouse_y, click_x)
-                        if mouse_state == curses.BUTTON3_RELEASED:
-                            return self.items[clicked_idx].handle_left_click(self.offset_x, mouse_x, mouse_y, click_x)
-                        if mouse_state == curses.BUTTON3_PRESSED:
-                            return self.items[clicked_idx].handle_right_click(self.offset_x, mouse_x, mouse_y, clicked_idx, click_x)
-                        if mouse_state == curses.REPORT_MOUSE_POSITION:
+                            return self.items[clicked_idx].handle_left_click(self.offset_x, click_x)
+                        if Gitkcli.mouse_state == curses.BUTTON3_RELEASED:
+                            return self.items[clicked_idx].handle_left_click(self.offset_x, click_x)
+                        if Gitkcli.mouse_state == curses.BUTTON3_PRESSED:
+                            return self.items[clicked_idx].handle_right_click(self.offset_x, clicked_idx, click_x)
+                        if Gitkcli.mouse_state == curses.REPORT_MOUSE_POSITION:
+                            if self.selected == clicked_idx:
+                                return False
                             if self.items[clicked_idx].is_selectable:
                                 self.selected = clicked_idx
+                        return True
 
-                elif mouse_state == curses.BUTTON4_PRESSED: # wheel up
+                elif Gitkcli.mouse_state == curses.BUTTON4_PRESSED: # wheel up
                     self.offset_y -= 5
                     if self.offset_y < 0:
                         self.offset_y = 0
-                elif mouse_state == curses.BUTTON5_PRESSED: # wheel down
+                    return True
+                elif Gitkcli.mouse_state == curses.BUTTON5_PRESSED: # wheel down
                     self.offset_y += 5
                     if self.offset_y >= len(self.items) - self.height:
                         self.offset_y = max(0, len(self.items) - self.height)
-            else:
-                return (self.view_position == 'fullscreen' or
-                        mouse_state == curses.REPORT_MOUSE_POSITION or
-                        mouse_state == curses.BUTTON3_RELEASED)
+                    return True
 
-            return True
+            return False
 
         if self.items[self.selected].handle_input(key):
             return True
@@ -1099,7 +1101,7 @@ class ContextMenuItem(TextListItem):
             return False
         return True
 
-    def handle_left_click(self, offset, mouse_x, mouse_y, click_x):
+    def handle_left_click(self, offset, click_x):
         self.handle_input(curses.KEY_ENTER)
         return True
 
@@ -1115,7 +1117,7 @@ class ContextMenu(ListView):
         super().on_hide_view()
         print("\033[?1000h", end='', flush=True) # end capturing mouse movement
         
-    def show_context_menu(self, mouse_x, mouse_y, item, index, view_id = None):
+    def show_context_menu(self, item, index, view_id = None):
         self.clear()
         self.selected = -1
         if not view_id:
@@ -1163,7 +1165,7 @@ class ContextMenu(ListView):
             return False
         self.parent_id = view_id
         self.resize(len(self.items) + 2, 30)
-        self.move(mouse_x, mouse_y)
+        self.move(Gitkcli.mouse_x, Gitkcli.mouse_y)
         Gitkcli.show_view('context-menu')
         return True
 
@@ -1275,7 +1277,7 @@ class UserInputListItem(Item):
 
         return True
 
-    def handle_left_click(self, offset, mouse_x, mouse_y, click_x) -> bool:
+    def handle_left_click(self, offset, click_x) -> bool:
         new_pos = click_x + self.offset
         self.cursor_pos = new_pos if new_pos < len(self.txt) else len(self.txt)
         return True
@@ -1522,7 +1524,12 @@ class Gitkcli:
     status_bar_color = None
     status_bar_time = time.time()
 
-    click_time = time.time()
+    mouse_x = 0
+    mouse_y = 0
+    mouse_state = 0
+    mouse_click_x = 0
+    mouse_click_y = 0
+    mouse_click_time = time.time()
 
     @classmethod
     def create_views_and_jobs(cls, stdscr, cmd_args):
@@ -1789,14 +1796,20 @@ def launch_curses(stdscr, cmd_args):
         
         key = stdscr.getch()
 
+        if key == curses.KEY_MOUSE:
+            _, Gitkcli.mouse_x, Gitkcli.mouse_y, _, Gitkcli.mouse_state = curses.getmouse()
+
         if key == curses.KEY_RESIZE:
             lines, cols = stdscr.getmaxyx()
             Gitkcli.resize_all_views(lines, cols)
         elif active_view.handle_input(key):
             active_view.dirty = True
         else:
-            if key == ord('q') or key == curses.KEY_EXIT or key == 27 or key == curses.KEY_MOUSE:
+            if key == ord('q') or key == curses.KEY_EXIT or key == 27:
                 Gitkcli.hide_view()
+            elif key == curses.KEY_MOUSE and active_view.view_position != 'fullscreen':
+                if Gitkcli.mouse_state == curses.BUTTON1_PRESSED or Gitkcli.mouse_state == curses.BUTTON3_PRESSED:
+                    Gitkcli.hide_view()
             elif key == curses.KEY_F1 or key == 9:
                 Gitkcli.show_view('git-log')
             elif key == curses.KEY_F2:
