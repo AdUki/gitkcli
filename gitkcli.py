@@ -215,7 +215,7 @@ class GitDiffJob(SubprocessJob):
         self.start_job([old_commit_id, new_commit_id])
 
     def start_show_job(self, commit_id):
-        self.cmd = 'git show -m --no-color'
+        self.cmd = 'git show -m --patch-with-stat --no-color'
         self.start_job([commit_id])
 
     def process_line(self, line):
