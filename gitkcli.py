@@ -1067,14 +1067,21 @@ class GitDiffView(ListView):
         
         if file_path:
             args = ['git', 'blame', '-l', '-s', '-L',
-                    f'{line_number},{line_number}', self.commit_id,
+                    f'{line_number},{line_number}',
+                    f'{self.commit_id}^', # get parent commit-d
                     '--', file_path]
 
             result = Gitkcli.run_job(args)
             if result.returncode == 0:
+                # Example output:
+                # d54cd46b9a960d0a01259a164e5b598e35947b89 309)         self.handle_input(curses.KEY_ENTER)
                 id = result.stdout.split(' ')[0]
+                # When commit id starts with '^' it means this is initial git-id and is 1 char shorer
+                # ^1af87e6c2614c1aea4a81476df0deb8206d5489 451)         except Exception:
+                if id.startswith('^'):
+                    id = Gitkcli.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
                 Gitkcli.get_view('git-log').jump_to_id(id)
-                Gitkcli.hide_view()
+                Gitkcli.show_view('git-log')
             else:
                 log_error(f"Failed to show origin: " + result.stderr)
 
