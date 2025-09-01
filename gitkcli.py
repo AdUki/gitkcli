@@ -1162,17 +1162,20 @@ class ContextMenuItem(TextListItem):
         self.args = args if args else []
         self.is_selectable = is_selectable
 
+    def execute_action(self):
+        Gitkcli.hide_view()
+        self.action(*self.args)
+
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:
-            Gitkcli.hide_view()
-            self.action(*self.args)
+            self.execute_action()
         else:
             return False
         return True
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click':
-            self.handle_input(curses.KEY_ENTER)
+        if event_type == 'left-click' or event_type == 'right-release':
+            self.execute_action()
             return True
         else:
             return super().handle_mouse_input(event_type, x, y)
