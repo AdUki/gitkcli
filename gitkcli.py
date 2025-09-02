@@ -523,15 +523,9 @@ class SegmentedListItem(Item):
         return Segment()
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click':
-            segment = self.get_segment_on_offset(x)
-            if segment and segment.handle_mouse_input(event_type, x, y):
-                return True
-        elif event_type == 'right-click':
-            segment = self.get_segment_on_offset(x)
-            if segment and segment.handle_mouse_input(event_type, x, y):
-                return True
-
+        segment = self.get_segment_on_offset(x)
+        if segment and segment.handle_mouse_input(event_type, x, y):
+            return True
         return super().handle_mouse_input(event_type, x, y)
 
     def get_fill_txt(self, width):
@@ -1084,7 +1078,7 @@ class ChangeContextSegment(TextSegment):
         self.change = change
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click':
+        if event_type == 'left-click' or event_type == 'double-click':
             return Gitkcli.get_job(self.view_id).change_context(self.change)
         else:
             return super().handle_mouse_input(event_type, x, y)
