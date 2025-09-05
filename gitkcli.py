@@ -205,9 +205,7 @@ class GitRefreshHeadJob(GitLogJob):
     def process_item(self, item):
         (id, commit) = item
         if Gitkcli.add_commit(id, commit):
-            view = Gitkcli.get_view(self.id)
-            if view:
-                view.prepend(CommitListItem(id))
+            Gitkcli.get_view('git-log').prepend(CommitListItem(id))
 
 class GitDiffJob(SubprocessJob):
     def _get_args(self):
