@@ -508,6 +508,17 @@ class RefSegment(TextSegment):
         else:
             return super().handle_mouse_input(event_type, x, y)
 
+class ButtonSegment(TextSegment):
+    def __init__(self, txt, callback, color = 1):
+        super().__init__(txt, color)
+        self.callback = callback
+
+    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        if event_type == 'left-click' or event_type == 'double-click':
+            return self.callback()
+        else:
+            return super().handle_mouse_input(event_type, x, y)
+
 class ToggleSegment(TextSegment):
     def __init__(self, txt, toggled = False, callback = lambda val: None, color = 1):
         super().__init__(txt, color)
@@ -1122,26 +1133,14 @@ class ShowContextSegment(TextSegment):
     def get_text(self):
         return str(Gitkcli.context_size)
 
-class ChangeContextSegment(TextSegment):
-    def __init__(self, view_id, txt, color, change:int):
-        super().__init__(txt, color)
-        self.view_id = view_id
-        self.change = change
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click':
-            return Gitkcli.get_job(self.view_id).change_context(self.change)
-        else:
-            return super().handle_mouse_input(event_type, x, y)
-
 class GitDiffView(ListView):
     def __init__(self, id, parent_win):
         title_item = SegmentedListItem([TextSegment("Git commit diff", 19), FillerSegment(),
                                         ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.get_job(self.id).change_ignore_whitespace(val), 19),
                                         TextSegment("  Lines of context:", 19),
                                         ShowContextSegment(19),
-                                        ChangeContextSegment(id, "[ + ]", 19, +1),
-                                        ChangeContextSegment(id, "[ - ]", 19, -1)], 19)
+                                        ButtonSegment("[ + ]", lambda: Gitkcli.get_job(id).change_context(+1), 19),
+                                        ButtonSegment("[ - ]", lambda: Gitkcli.get_job(id).change_context(-1), 19)], 19)
         super().__init__(id, parent_win, 'fullscreen', title_item) 
         self.commit_id = ''
 
