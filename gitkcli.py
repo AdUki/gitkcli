@@ -68,6 +68,7 @@ class SubprocessJob:
         self.stop = False
         self.items = queue.Queue()
         self.messages = queue.Queue()
+        self.on_finished = None
         Gitkcli.add_job(id, self)
 
     def process_line(self, line):
@@ -86,6 +87,11 @@ class SubprocessJob:
         elif message['type'] == 'finished':
             self.running = False
             log_debug(f'Job finished {self.id}')
+            if self.on_finished:
+                # process remaining items
+                self.process_items()
+                self.on_finished()
+                self.on_finished = None
 
     def process_items(self):
         try:
@@ -109,6 +115,7 @@ class SubprocessJob:
 
     def stop_job(self):
         self.stop = True
+        self.on_finished = None
         if self.job and self.job.poll() is None:
             self.job.terminate()
             try:
@@ -117,9 +124,10 @@ class SubprocessJob:
                 self.job.kill()
                 self.running = False
 
-    def start_job(self, args = [], clear_view = True):
+    def start_job(self, args = [], clear_view = True, on_finished = None):
         self.stop_job()
         self.stop = False
+        self.on_finished = on_finished
 
         if clear_view:
             view = Gitkcli.get_view(self.id)
@@ -208,7 +216,18 @@ class GitRefreshHeadJob(GitLogJob):
             Gitkcli.get_view('git-log').prepend(CommitListItem(id))
 
 class GitDiffJob(SubprocessJob):
+    def __init__(self, id, args = []):
+        super().__init__(id) 
+        self.old_file_path: typing.Optional[str] = None
+        self.old_file_line: typing.Optional[int] = None
+        self.new_file_path: typing.Optional[str] = None
+        self.new_file_line: typing.Optional[int] = None
+
     def _get_args(self):
+        self.old_file_path = None
+        self.old_file_line = None
+        self.new_file_path = None
+        self.new_file_line = None
         args = [f'-U{Gitkcli.context_size}']
         if Gitkcli.ignore_whitespace:
             args.append('-w')
@@ -218,9 +237,9 @@ class GitDiffJob(SubprocessJob):
         self.cmd = f'git diff --no-color {old_commit_id} {new_commit_id}'
         self.start_job(self._get_args())
 
-    def start_show_job(self, commit_id):
+    def start_show_job(self, commit_id, on_finished = None):
         self.cmd = f'git show -m --patch-with-stat --no-color {commit_id}'
-        self.start_job(self._get_args())
+        self.start_job(self._get_args(), on_finished = on_finished)
 
     def change_context(self, size:int):
         Gitkcli.context_size = max(0, Gitkcli.context_size + size)
@@ -236,7 +255,33 @@ class GitDiffJob(SubprocessJob):
     def process_item(self, item):
         view = Gitkcli.get_view(self.id)
         if view:
-            view.append(DiffListItem(view.size(), item))
+
+            if item.startswith('---'):
+                self.old_file_path = item[6:]  # Remove the "--- b/" prefix
+            if item.startswith('+++'):
+                self.new_file_path = item[6:]  # Remove the "+++ a/" prefix
+
+            match = re.search(r'@@ -(\d+),\d+ \+(\d+),\d+ @@', item)
+            if match:
+                self.old_file_line = int(match.group(1))
+                self.new_file_line = int(match.group(2))
+                view.append(DiffListItem(view.size(), item, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line))
+
+            elif not self.old_file_line is None and not self.new_file_line is None and item.startswith(' '):
+                self.old_file_line += 1
+                self.new_file_line += 1
+                view.append(DiffListItem(view.size(), item, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line))
+
+            elif not self.old_file_line is None and item.startswith('-'):
+                self.old_file_line += 1
+                view.append(DiffListItem(view.size(), item, self.old_file_path, self.old_file_line))
+
+            elif not self.new_file_line is None and item.startswith('+'):
+                self.new_file_line += 1
+                view.append(DiffListItem(view.size(), item, None, None, self.new_file_path, self.new_file_line))
+
+            else:
+                view.append(DiffListItem(view.size(), item))
 
 class GitSearchJob(SubprocessJob):
     def __init__(self, id, args = []):
@@ -398,8 +443,14 @@ class SpacerListItem(Item):
         win.clrtoeol()
 
 class DiffListItem(TextListItem):
-    def __init__(self, line:int, txt:str):
+    def __init__(self, line:int, txt:str,
+                 old_file_path:typing.Optional[str] = None, old_file_line:typing.Optional[int] = None,
+                 new_file_path:typing.Optional[str] = None, new_file_line:typing.Optional[int] = None):
         self.line = line
+        self.old_file_line = old_file_line
+        self.old_file_path = old_file_path
+        self.new_file_line = new_file_line
+        self.new_file_path = new_file_path
         if txt.startswith('commit '):
             color = 4
         elif txt.startswith(('diff', 'new', 'index', '+++', '---')):
@@ -589,7 +640,7 @@ class CommitListItem(SegmentedListItem):
         else:
             Gitkcli.get_view('git-diff').commit_id = self.id
             Gitkcli.get_job('git-diff').start_show_job(self.id)
-            Gitkcli.clear_and_show_view('git-diff')
+            Gitkcli.show_view('git-diff')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'double-click':
@@ -783,6 +834,10 @@ class ListView(View):
         self.offset_x = 0
         self.dirty = True
 
+    def select_item(self, index):
+        self.selected = index
+        self._ensure_selection_is_visible()
+
     def _ensure_selection_is_visible(self):
         self.dirty = True
         if self.selected < self.offset_y:
@@ -971,7 +1026,7 @@ class GitLogView(ListView):
         super().__init__(id, parent_win, 'fullscreen', TextListItem('Git commit log', 19, expand = True)) 
         self.marked_commit_id = ''
 
-    def select_commit(self, id):
+    def select_commit(self, id:str):
         idx = 0
         for item in self.items:
             if id == item.id:
@@ -1090,52 +1145,46 @@ class GitDiffView(ListView):
         super().__init__(id, parent_win, 'fullscreen', title_item) 
         self.commit_id = ''
 
+    def select_line(self, file:str, line:int):
+        for item in self.items:
+            if item.new_file_path == file and item.new_file_line == line:
+                self.select_item(item.line)
+
     def show_origin_of_line(self, line_index = None):
+        log_info(f'line_index={line_index}')
         if line_index is None:
             line_index = self.selected
 
         if line_index >= len(self.items) or self.items[line_index].get_text().startswith('+'):
             return
 
-        file_path = None
-        line_number = None
-        line_offset = 0
+        old_file_path = self.items[line_index].old_file_path
+        old_file_line = self.items[line_index].old_file_line
         
-        for i in range(line_index - 1, -1, -1):
-            text = self.items[i].get_text()
-            
-            if text.startswith('---'):
-                file_path = text[6:]  # Remove the "--- b/" prefix
-                break
-            
-            if line_number is None:
-                if text.startswith(' ') or text.startswith('-'):
-                    line_offset += 1
-                else:
-                    match = re.search(r'@@ -(\d+),\d+ \+\d+,\d+ @@', text)
-                    if match:
-                        line_number = int(match.group(1)) + line_offset
-        
-        if file_path:
-            args = ['git', 'blame', '-l', '-s', '-L',
-                    f'{line_number},{line_number}',
-                    f'{self.commit_id}^', # get parent commit-d
-                    '--', file_path]
+        if old_file_path and old_file_line:
+            args = ['git', 'blame', '-lsfn', '-L',
+                    f'{old_file_line},{old_file_line}',
+                    f'{self.commit_id}^', # get parent commit-id
+                    '--', old_file_path]
 
             result = Gitkcli.run_job(args)
             if result.returncode == 0:
                 # Example output:
-                # d54cd46b9a960d0a01259a164e5b598e35947b89 309)         self.handle_input(curses.KEY_ENTER)
-                id = result.stdout.split(' ')[0]
-                # When commit id starts with '^' it means this is initial git-id and is 1 char shorer
-                # ^1af87e6c2614c1aea4a81476df0deb8206d5489 451)         except Exception:
-                if id.startswith('^'):
-                    id = Gitkcli.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
-                commit = Gitkcli.get_view('git-log').select_commit(id)
-                if commit:
-                    commit.show_commit()
-            else:
-                log_error(f"Failed to show origin: " + result.stderr)
+                # a42cadebfe42d85cbf36f4887be166b34077b3e2 test test.txt 1 1) aaa
+                match = re.search(r'^(\S+) ([^)]+) ([0-9]+) ', result.stdout)
+                if match:
+                    id = str(match.group(1))
+                    file_path = str(match.group(2))
+                    file_line = int(match.group(3))
+
+                    # When commit id starts with '^' it means this is initial git-id and is 1 char shorer
+                    # ^1af87e6c2614c1aea4a81476df0deb8206d5489 451)         except Exception:
+                    if id.startswith('^'):
+                        id = Gitkcli.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
+                    commit = Gitkcli.get_view('git-log').select_commit(id)
+                    if commit:
+                        self.commit_id = commit.id
+                        Gitkcli.get_job('git-diff').start_show_job(commit.id, on_finished = lambda: self.select_line(file_path, file_line))
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
@@ -1204,7 +1253,7 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
             self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id)))
         elif view_id == 'git-diff' and hasattr(item, 'line'):
-            self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [item.line], item.get_text().startswith((' ', '-'))))
+            self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [item.line], item.old_file_path and item.old_file_line is not None))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         elif view_id == 'git-refs' and hasattr(item, 'data'):
             if item.data['type'] == 'heads':
