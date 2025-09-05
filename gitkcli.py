@@ -226,12 +226,10 @@ class GitDiffJob(SubprocessJob):
 
     def change_context(self, size:int):
         Gitkcli.context_size = max(0, Gitkcli.context_size + size)
-        Gitkcli.get_view(self.id).clear()
         self.start_job(self._get_args())
 
     def change_ignore_whitespace(self, val:bool):
         Gitkcli.ignore_whitespace = val
-        Gitkcli.get_view(self.id).clear()
         self.start_job(self._get_args())
 
     def process_line(self, line):
@@ -352,7 +350,7 @@ class RefListItem(Item):
         win.clrtoeol()
 
     def jump_to_ref(self):
-        if Gitkcli.get_view('git-log').jump_to_id(self.data['id']):
+        if Gitkcli.get_view('git-log').select_commit(self.data['id']):
             Gitkcli.hide_current_and_show_view('git-log')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
@@ -975,17 +973,17 @@ class GitLogView(ListView):
         super().__init__(id, parent_win, 'fullscreen', TextListItem('Git commit log', 19, expand = True)) 
         self.marked_commit_id = ''
 
-    def jump_to_id(self, id):
+    def select_commit(self, id):
         idx = 0
         for item in self.items:
             if id == item.id:
                 self.selected = idx
                 if self.selected < self.offset_y or self.selected >= self.offset_y + self.height:
                     self.offset_y = max(0, self.selected - int(self.height / 2))
-                return True
+                return self.items[idx]
             idx += 1
         log_error(f'Commit with hash {id} not found')
-        return False
+        return None
     
     def get_selected_commit_id(self):
         if len(self.items) > 0:
@@ -1059,7 +1057,7 @@ class GitLogView(ListView):
         elif key == ord('m'):
             self.mark_commit()
         elif key == ord('M'):
-            self.jump_to_id(self.marked_commit_id)
+            self.select_commit(self.marked_commit_id)
         else:
             return super().handle_input(key)
         return True
@@ -1135,8 +1133,9 @@ class GitDiffView(ListView):
                 # ^1af87e6c2614c1aea4a81476df0deb8206d5489 451)         except Exception:
                 if id.startswith('^'):
                     id = Gitkcli.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
-                Gitkcli.get_view('git-log').jump_to_id(id)
-                Gitkcli.show_view('git-log')
+                commit = Gitkcli.get_view('git-log').select_commit(id)
+                if commit:
+                    commit.show_commit()
             else:
                 log_error(f"Failed to show origin: " + result.stderr)
 
@@ -1146,8 +1145,6 @@ class GitDiffView(ListView):
             return True
         else:
             return super().handle_input(key)
-        return True
-
 
 class ContextMenuItem(TextListItem):
     def __init__(self, text, action, args=None, is_selectable=True):
@@ -1207,7 +1204,7 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.id], bool(view.marked_commit_id)))
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
-            self.append(ContextMenuItem("Return to mark", view.jump_to_id, [view.marked_commit_id], bool(view.marked_commit_id)))
+            self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id)))
         elif view_id == 'git-diff' and hasattr(item, 'line'):
             self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [item.line], item.get_text().startswith((' ', '-'))))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
