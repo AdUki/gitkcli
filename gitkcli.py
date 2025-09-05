@@ -57,6 +57,14 @@ def get_ref_color_and_title(ref):
         color = 14
     return color, title
 
+def create_window_title_item(title:str, additional_segments = [], color = 19):
+    segments = [TextSegment(title, color), FillerSegment()]
+    segments.extend(additional_segments)
+    segments.append(ButtonSegment('[Search]', lambda: Gitkcli.get_view().handle_input(ord('/')), color));
+    segments.append(ButtonSegment("[Exit]", lambda: Gitkcli.hide_view(), color))
+    return SegmentedListItem(segments, color)
+
+
 class SubprocessJob:
 
     def __init__(self, id):
@@ -394,7 +402,7 @@ class RefListItem(Item):
 
     def jump_to_ref(self):
         if Gitkcli.get_view('git-log').select_commit(self.data['id']):
-            Gitkcli.hide_current_and_show_view('git-log')
+            Gitkcli.show_view('git-log')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'double-click':
@@ -1034,7 +1042,7 @@ class ListView(View):
 
 class GitLogView(ListView):
     def __init__(self, id, parent_win):
-        super().__init__(id, parent_win, 'fullscreen', TextListItem('Git commit log', 19, expand = True)) 
+        super().__init__(id, parent_win, 'fullscreen', create_window_title_item('Git commit log'));
         self.marked_commit_id = ''
 
     def select_commit(self, id:str):
@@ -1135,12 +1143,12 @@ class ShowContextSegment(TextSegment):
 
 class GitDiffView(ListView):
     def __init__(self, id, parent_win):
-        title_item = SegmentedListItem([TextSegment("Git commit diff", 19), FillerSegment(),
-                                        ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.get_job(self.id).change_ignore_whitespace(val), 19),
-                                        TextSegment("  Lines of context:", 19),
-                                        ShowContextSegment(19),
-                                        ButtonSegment("[ + ]", lambda: Gitkcli.get_job(id).change_context(+1), 19),
-                                        ButtonSegment("[ - ]", lambda: Gitkcli.get_job(id).change_context(-1), 19)], 19)
+        title_item = create_window_title_item('Git commit diff', [
+            ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.get_job(self.id).change_ignore_whitespace(val), 19),
+            TextSegment("  Lines of context:", 19),
+            ShowContextSegment(19),
+            ButtonSegment("[ + ]", lambda: Gitkcli.get_job(id).change_context(+1), 19),
+            ButtonSegment("[ - ]", lambda: Gitkcli.get_job(id).change_context(-1), 19)])
         super().__init__(id, parent_win, 'fullscreen', title_item) 
         self.commit_id = ''
 
@@ -1650,7 +1658,7 @@ class Gitkcli:
 
     @classmethod
     def create_views_and_jobs(cls, stdscr, cmd_args):
-        ListView('log', stdscr, title_item = TextListItem('Logs', 19, expand = True))
+        ListView('log', stdscr, title_item = create_window_title_item('Logs'))
         SearchDialogPopup('log-search', stdscr)
 
         GitLogView('git-log', stdscr)
@@ -1660,7 +1668,7 @@ class Gitkcli:
         GitDiffView('git-diff', stdscr)
         SearchDialogPopup('git-diff-search', stdscr)
 
-        ListView('git-refs', stdscr, title_item = TextListItem('Git references', 19, expand = True))
+        ListView('git-refs', stdscr, title_item = create_window_title_item('Git references'))
         SearchDialogPopup('git-refs-search', stdscr)
         BranchRenameDialogPopup('git-branch-rename', stdscr)
 
@@ -1792,11 +1800,6 @@ class Gitkcli:
             cls.get_view(view_id).win.refresh()
             if cls.get_view():
                 cls.get_view().dirty = True
-
-    @classmethod
-    def hide_current_and_show_view(cls, id):
-        cls.hide_view()
-        cls.show_view(id)
 
     @classmethod
     def draw_visible_views(cls):
