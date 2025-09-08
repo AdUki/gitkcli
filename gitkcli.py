@@ -370,7 +370,7 @@ class Item:
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'right-click':
             return Gitkcli.get_view('context-menu').show_context_menu(self)
-        return True
+        return False
 
 class SeparatorItem(Item):
     def __init__(self):
@@ -397,7 +397,7 @@ class RefListItem(Item):
         if len(line) > width:
             line = line[:width]
 
-        win.addstr(line, curses_color(color, selected, marked))
+        win.addstr(line, curses_color(color, selected, marked, dim = not win == Gitkcli.get_view().win))
         win.clrtoeol()
 
     def jump_to_ref(self):
@@ -438,7 +438,7 @@ class TextListItem(Item):
             line = line[:width]
             clear = False
 
-        win.addstr(line, curses_color(16 if matched else self.color, selected, marked, dim = not self.is_selectable))
+        win.addstr(line, curses_color(16 if matched else self.color, selected, marked, dim = not self.is_selectable or not win == Gitkcli.get_view().win))
         if clear:
             win.clrtoeol()
 
@@ -501,7 +501,7 @@ class TextSegment(Segment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.get_text()[offset:width]
-        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked))
+        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
         return len(visible_txt)
 
 class RefSegment(TextSegment):
@@ -550,7 +550,7 @@ class ToggleSegment(TextSegment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.txt[offset:width]
-        win.addstr(visible_txt, curses_color(self.color, dim = not self.enabled, highlighted = self.toggled))
+        win.addstr(visible_txt, curses_color(self.color, selected, self.toggled, dim =  not self.enabled or not win == Gitkcli.get_view().win))
         return len(visible_txt)
 
 class SegmentedListItem(Item):
@@ -612,10 +612,10 @@ class SegmentedListItem(Item):
                 first = False
             elif self.segment_separator:
                 remaining_width -= len(self.segment_separator)
-                win.addstr(self.segment_separator, curses_color(self.bg_color, selected, marked))
+                win.addstr(self.segment_separator, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_view().win))
             if isinstance(segment, FillerSegment):
                 txt = self.get_fill_txt(width)
-                win.addstr(txt, curses_color(16 if matched else self.bg_color, selected, marked))
+                win.addstr(txt, curses_color(16 if matched else self.bg_color, selected, marked, dim = not win == Gitkcli.get_view().win))
                 length = len(txt)
             else:
                 length = segment.draw(win, offset, remaining_width, selected, matched, marked)
@@ -626,7 +626,7 @@ class SegmentedListItem(Item):
             offset -= len(txt) - length
 
         if selected or marked:
-            win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked))
+            win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_view().win))
         else:
             win.clrtoeol()
 
@@ -688,10 +688,13 @@ class View:
         self.parent_win = parent_win
         self.view_position = view_position
         self.title_item = title_item
-        self.win_x = x
-        self.win_y = y
-        self.win_height = height
-        self.win_width = width
+
+        # coordinates and sizes when view is 'floating'
+        self.fixed_x = x
+        self.fixed_y = y
+        self.fixed_height = height
+        self.fixed_width = width
+
         self.dirty = True
         
         parent_lines, parent_cols = parent_win.getmaxyx()
@@ -701,9 +704,6 @@ class View:
         Gitkcli.add_view(id, self)
         
     def _calculate_dimensions(self, lines, cols):
-        self.parent_height = lines
-        self.parent_width = cols
-
         # fullscreen dimensions
         win_height = lines - 1
         win_width = cols
@@ -716,11 +716,11 @@ class View:
             top_height = lines - int(lines / 2)
             win_height = lines - top_height
             win_y = top_height - 1
-        elif self.view_position == 'window':
-            win_height = min(lines, self.win_height if self.win_height else int(lines / 2))
-            win_width = min(cols, self.win_width if self.win_width else int(cols / 2))
-            win_y = min(lines - win_height, int((lines - win_height) / 2) if self.win_y is None else self.win_y)
-            win_x = min(cols - win_width, int((cols - win_width) / 2) if self.win_x is None else self.win_x)
+        elif self.view_position == 'floating':
+            win_height = min(lines, self.fixed_height if self.fixed_height else int(lines / 2))
+            win_width = min(cols, self.fixed_width if self.fixed_width else int(cols / 2))
+            win_y = min(lines - win_height, int((lines - win_height) / 2) if self.fixed_y is None else self.fixed_y)
+            win_x = min(cols - win_width, int((cols - win_width) / 2) if self.fixed_x is None else self.fixed_x)
 
         # substract title bar
         self.height = win_height - 1
@@ -728,7 +728,7 @@ class View:
         self.y = 1
         self.x = 0
 
-        if self.view_position == 'window':
+        if self.view_position == 'floating':
             # substract "box"
             self.height -= 1
             self.width -= 2
@@ -736,24 +736,28 @@ class View:
 
         return win_height, win_width, win_y, win_x
 
-    def move(self, x, y):
+    def move(self, rel_x, rel_y):
         self.dirty = True
-        self.win_x = min(x, self.parent_width - self.win_width)
-        self.win_y = min(y, self.parent_height - self.win_height)
-        self.win.mvwin(self.win_y, self.win_x)
+        parent_height, parent_width = self.parent_win.getmaxyx()
+        win_y, win_x = self.win.getbegyx()
+        win_height, win_width = self.win.getmaxyx()
+        win_x = max(0, min(win_x + rel_x, parent_width - win_width))
+        win_y = max(0, min(win_y + rel_y, parent_height - win_height))
+        self.win.mvwin(win_y, win_x)
 
-    def resize(self, height, width):
+    def set_dimensions(self, x, y, height, width):
+        self.fixed_x = x
+        self.fixed_y = y
+        self.fixed_height = height
+        self.fixed_width = width
         self.dirty = True
-        self.win_height = height
-        self.win_width = width
-        height, width, y, x = self._calculate_dimensions(self.parent_height, self.parent_width)
+        parent_height, parent_width = self.parent_win.getmaxyx()
+        height, width, y, x = self._calculate_dimensions(parent_height, parent_width)
         self.win.resize(height, width)
         self.win.mvwin(y, x)
             
     def parent_resize(self, lines, cols):
         self.dirty = True
-        self.parent_width = cols
-        self.parent_height = lines
         height, width, y, x = self._calculate_dimensions(lines, cols)
         self.win.resize(height, width)
         self.win.mvwin(y, x)
@@ -767,7 +771,7 @@ class View:
             return False
 
     def draw(self):
-        if self.view_position == 'window':
+        if self.view_position == 'floating':
             self.win.box()
 
         # draw title bar
@@ -780,13 +784,16 @@ class View:
         if not self.id.startswith('log') and self.parent_id != 'log':
             log_debug(f'Draw view {self.id}')
 
-    def on_show_view(self):
-        log_debug(f'Show view {self.id}')
+    def on_activated(self):
+        log_debug(f'View {self.id} activated')
 
-    def on_hide_view(self):
-        log_debug(f'Hide view {self.id}')
+    def on_deactivated(self):
+        log_debug(f'View {self.id} deactivated')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        if event_type == 'drag' and self.view_position == 'floating':
+            self.move(x, y)
+            return True
         if y == 0:
             return self.title_item.handle_mouse_input(event_type, x, y)
         else:
@@ -897,6 +904,8 @@ class ListView(View):
                 return
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        if event_type == 'drag':
+            return super().handle_mouse_input(event_type, x, y)
         if event_type == 'wheel-up':
             self.offset_y -= 5
             if self.offset_y < 0:
@@ -918,7 +927,9 @@ class ListView(View):
             if event_type == 'left-click' or event_type == 'hover':
                 if self.items[index].is_selectable:
                     self.selected = index
-            return self.items[index].handle_mouse_input(event_type, view_x + self.offset_x, index)
+            self.items[index].handle_mouse_input(event_type, view_x + self.offset_x, index)
+            # we've selected the item, so we will always return True
+            return True
 
         return super().handle_mouse_input(event_type, x, y)
 
@@ -1030,7 +1041,7 @@ class ListView(View):
 
         if separator_items:
             for i in separator_items:
-                if self.view_position == 'window':
+                if self.view_position == 'floating':
                     self.win.move(self.y + i, self.x-1)
                     self.win.addstr('├', curses_color(1))
                     self.win.addstr('─' * self.width, curses_color(1))
@@ -1227,15 +1238,16 @@ class ContextMenuItem(TextListItem):
 
 class ContextMenu(ListView):
     def __init__(self, id, parent_win):
-        super().__init__(id, parent_win, 'window')
+        super().__init__(id, parent_win, 'floating')
 
-    def on_show_view(self):
-        super().on_show_view()
+    def on_activated(self):
+        super().on_activated()
         print("\033[?1003h", end='', flush=True) # start capturing mouse movement
 
-    def on_hide_view(self):
-        super().on_hide_view()
+    def on_deactivated(self):
+        super().on_deactivated()
         print("\033[?1000h", end='', flush=True) # end capturing mouse movement
+        Gitkcli.hide_view(self.id)
         
     def show_context_menu(self, item, view_id:typing.Optional[str] = None):
         self.clear()
@@ -1284,8 +1296,7 @@ class ContextMenu(ListView):
         else:
             return False
         self.parent_id = view_id
-        self.resize(len(self.items) + 2, 30)
-        self.move(Gitkcli.mouse_x, Gitkcli.mouse_y)
+        self.set_dimensions(Gitkcli.mouse_x, Gitkcli.mouse_y, len(self.items) + 2, 30)
         Gitkcli.show_view('context-menu')
         return True
 
@@ -1408,31 +1419,38 @@ class UserInputListItem(Item):
         left_txt = self.txt[self.offset:self.offset+self.cursor_pos]
         right_txt = self.txt[self.offset+self.cursor_pos:self.offset+width-1]
 
-        win.addstr(left_txt, curses_color(16 if matched else self.color, selected, marked))
+        win.addstr(left_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
         win.addch(ord(' '), curses.A_REVERSE | curses.A_BLINK)
-        win.addstr(right_txt, curses_color(16 if matched else self.color, selected, marked))
-        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(16 if matched else self.color, selected, marked))
+        win.addstr(right_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
+        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
 
 class UserInputDialogPopup(ListView):
-    def __init__(self, id, parent_win, title, header_item, help_text = ''):
+    def __init__(self, id, parent_win, title, header_item, bottom_item = None):
         
-        super().__init__(id, parent_win, 'window', TextListItem(title, 19, expand = True), height = 7)
+        super().__init__(id, parent_win, 'floating', TextListItem(title, 19, expand = True), height = 7)
         self.input = UserInputListItem()
 
-        help_item = SegmentedListItem([FillerSegment(), TextSegment(help_text or "Enter: Execute | Esc: Cancel", 18), FillerSegment()])
+        if not bottom_item:
+            bottom_item = SegmentedListItem([FillerSegment(),
+                                         ButtonSegment("[Execute]", lambda: self.handle_input(curses.KEY_ENTER)),
+                                         ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT)),
+                                         FillerSegment()])
+            bottom_item.is_selectable = False
 
-        help_item.is_selectable = False
         header_item.is_selectable = False
 
         self.append(header_item)
         self.append(SpacerListItem())
         self.append(self.input)
         self.append(SpacerListItem())
-        self.append(help_item)
+        self.append(bottom_item)
         self.selected = 2
 
     def execute(self):
         pass
+
+    def on_deactivated(self):
+        Gitkcli.hide_view(self.id)
 
     def clear(self):
         self.input.clear()
@@ -1482,8 +1500,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
         self.ref_type = '' # branch or tag
         self.title_segment = TextSegment('')
         super().__init__(id, parent_win, ' New Branch',
-            SegmentedListItem([TextSegment(f"Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]),
-            "Enter: Execute | Esc: Cancel | F1: Force") 
+            SegmentedListItem([TextSegment(f"Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()])) 
 
     def set_ref_type(self, ref_type):
         self.title = f' New {ref_type}'
@@ -1510,11 +1527,17 @@ class NewRefDialogPopup(UserInputDialogPopup):
             log_error(f"Error creating {self.ref_type}: " + result.stderr)
 
 class SearchDialogPopup(UserInputDialogPopup):
-    def __init__(self, id, parent_win, help_item = None):
+    def __init__(self, id, parent_win):
         self.case_sensitive = ToggleSegment("<Case>", True)
         self.use_regexp = ToggleSegment("<Regexp>")
         self.header = SegmentedListItem([FillerSegment(), TextSegment("Flags:"), self.case_sensitive, self.use_regexp, FillerSegment()])
-        super().__init__(id, parent_win, ' Search', self.header, "Enter: Search | Esc: Cancel | F1: Case | F2: Regexp")
+        buttons = SegmentedListItem([FillerSegment(),
+                                     ButtonSegment("[Search Next]", lambda: Gitkcli.get_parent_view(id).handle_input(ord('n'))),
+                                     ButtonSegment("[Search Previous]", lambda: Gitkcli.get_parent_view(id).handle_input(ord('N'))),
+                                     ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT)),
+                                     FillerSegment()])
+        buttons.is_selectable = False
+        super().__init__(id, parent_win, ' Search', self.header, buttons)
 
     def matches(self, item):
         if self.input.txt:
@@ -1547,7 +1570,7 @@ class SearchDialogPopup(UserInputDialogPopup):
 
 class GitSearchDialogPopup(SearchDialogPopup):
     def __init__(self, id, parent_win):
-        super().__init__(id, parent_win, "Enter: Search | Esc: Cancel | Tab: Change type | F1: Case | F2: Regexp") 
+        super().__init__(id, parent_win) 
 
         self.search_type_txt_segment = ToggleSegment("[Txt]", callback = lambda val: self.change_search_type("txt"))
         self.search_type_id_segment = ToggleSegment("[ID]", callback = lambda val: self.change_search_type("id"))
@@ -1655,6 +1678,7 @@ class Gitkcli:
     mouse_click_x = 0
     mouse_click_y = 0
     mouse_click_time = time.time()
+    mouse_drag = False
 
     @classmethod
     def create_views_and_jobs(cls, stdscr, cmd_args):
@@ -1750,6 +1774,12 @@ class Gitkcli:
             view.parent_resize(lines, cols)
 
     @classmethod
+    def redraw_all_views(cls):
+        for view_id in cls.showed_views:
+            view = cls.get_view(view_id)
+            view.dirty = True
+
+    @classmethod
     def get_job(cls, id = None) -> typing.Any:
         if len(cls.showed_views) > 0:
             id = cls.showed_views[-1] if not id else id
@@ -1783,8 +1813,8 @@ class Gitkcli:
         cls.showed_views.append(id)
         cls.get_view().dirty = True
         if prev_view and cls.get_view().view_position == 'fullscreen':
-            prev_view.on_hide_view()
-        cls.get_view().on_show_view()
+            prev_view.on_deactivated()
+        cls.get_view().on_activated()
 
     @classmethod
     def clear_and_show_view(cls, id):
@@ -1792,10 +1822,16 @@ class Gitkcli:
         cls.show_view(id)
 
     @classmethod
-    def hide_view(cls):
+    def hide_view(cls, id:typing.Optional[str] = None):
         if len(cls.showed_views) > 0:
-            cls.get_view().on_hide_view()
-            view_id = cls.showed_views.pop(-1)
+            if not id or cls.showed_views[-1] == id:
+                view_id = cls.showed_views.pop(-1)
+                cls.get_view(view_id).on_deactivated()
+            elif id in cls.showed_views:
+                view_id = id
+                cls.showed_views.remove(id)
+            else:
+                return
             cls.get_view(view_id).win.erase()
             cls.get_view(view_id).win.refresh()
             if cls.get_view():
@@ -1806,7 +1842,7 @@ class Gitkcli:
         positions = {}
         for view_id in cls.showed_views:
             view = cls.get_view(view_id)
-            positions.pop('window', None)
+            positions.pop('floating', None)
             if view.view_position == 'fullscreen':
                 positions.clear()
             positions[view.view_position] = view
@@ -1820,8 +1856,8 @@ class Gitkcli:
             force_redraw = positions['top'].redraw(force_redraw)
         if 'bottom' in positions:
             force_redraw = positions['bottom'].redraw(force_redraw)
-        if 'window' in positions:
-            force_redraw = positions['window'].redraw(force_redraw)
+        if 'floating' in positions:
+            force_redraw = positions['floating'].redraw(force_redraw)
 
     @classmethod
     def draw_status_bar(cls, stdscr):
@@ -1884,8 +1920,9 @@ def launch_curses(stdscr, cmd_args):
     init_color(18, 245, -1)                  # debug text
 
     curses.init_pair(19, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Active window title
-    curses.init_pair(100 + 19, curses.COLOR_BLACK, 245)          # Inactive window title
     curses.init_pair(50 + 19, curses.COLOR_WHITE, 20)            # Active segment in window title
+    curses.init_pair(100 + 19, curses.COLOR_BLACK, 245)          # Inactive window title
+    curses.init_pair(150 + 19, curses.COLOR_BLACK, 247)          # Active segment in inactive window title
 
     curses.init_pair(200, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Status bar normal
     curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Status bar success
@@ -1928,6 +1965,8 @@ def launch_curses(stdscr, cmd_args):
             event_type = None
             if Gitkcli.mouse_state == curses.BUTTON1_PRESSED:
                 now = time.time()
+                Gitkcli.mouse_drag = True
+                print("\033[?1003h", end='', flush=True) # start capturing mouse movement
                 if now - Gitkcli.mouse_click_time < 0.3 and Gitkcli.mouse_x == Gitkcli.mouse_click_x and Gitkcli.mouse_y == Gitkcli.mouse_click_y:
                     event_type = 'double-click'
                 else:
@@ -1935,30 +1974,54 @@ def launch_curses(stdscr, cmd_args):
                     Gitkcli.mouse_click_y = Gitkcli.mouse_y
                     Gitkcli.mouse_click_time = now
                     event_type = 'left-click'
+
+            elif Gitkcli.mouse_state == curses.BUTTON1_RELEASED:
+                Gitkcli.mouse_drag = False
+                print("\033[?1000h", end='', flush=True) # end capturing mouse movement
+
             elif Gitkcli.mouse_state == curses.BUTTON3_RELEASED:
                 event_type = "right-release"
+
             elif Gitkcli.mouse_state == curses.BUTTON3_PRESSED:
                 event_type = 'right-click'
+
             elif Gitkcli.mouse_state == curses.REPORT_MOUSE_POSITION:
-                event_type = 'hover'
+                if Gitkcli.mouse_drag:
+                    event_type = 'drag'
+                else:
+                    event_type = 'hover'
+
             elif Gitkcli.mouse_state == curses.BUTTON4_PRESSED:
                 event_type = 'wheel-up'
+
             elif Gitkcli.mouse_state == curses.BUTTON5_PRESSED:
                 event_type = 'wheel-down'
 
             if event_type:
-                begin_y, begin_x = active_view.win.getbegyx()
-                win_height, win_width = active_view.win.getmaxyx()
-                max_y = begin_y + win_height
-                max_x = begin_x + win_width
-                # check if we are inside window
-                if begin_y <= Gitkcli.mouse_y < max_y and begin_x <= Gitkcli.mouse_x < max_x:
-                    win_x = Gitkcli.mouse_x - begin_x
-                    win_y = Gitkcli.mouse_y - begin_y
-                    if active_view.handle_mouse_input(event_type, win_x, win_y):
+                if event_type == 'drag':
+                    active_view.handle_mouse_input(event_type, Gitkcli.mouse_x - Gitkcli.mouse_click_x, Gitkcli.mouse_y - Gitkcli.mouse_click_y)
+                    Gitkcli.mouse_click_x = Gitkcli.mouse_x
+                    Gitkcli.mouse_click_y = Gitkcli.mouse_y
+                    Gitkcli.redraw_all_views()
+                else:
+                    clicked_view = None
+                    for id in reversed(Gitkcli.showed_views):
+                        view = Gitkcli.get_view(id)
+                        if view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
+                            clicked_view = view
+                            break
+
+                    if 'click' in event_type and clicked_view and clicked_view != active_view:
+                        Gitkcli.show_view(clicked_view.id)
+                        clicked_view.dirty = True
                         active_view.dirty = True
-                elif 'click' in event_type:
-                    Gitkcli.hide_view()
+
+                    if clicked_view: 
+                        begin_y, begin_x = clicked_view.win.getbegyx()
+                        win_x = Gitkcli.mouse_x - begin_x
+                        win_y = Gitkcli.mouse_y - begin_y
+                        if clicked_view.handle_mouse_input(event_type, win_x, win_y):
+                            clicked_view.dirty = True
 
         elif key == curses.KEY_RESIZE:
             lines, cols = stdscr.getmaxyx()
