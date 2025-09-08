@@ -2011,10 +2011,13 @@ def launch_curses(stdscr, cmd_args):
                             clicked_view = view
                             break
 
-                    if 'click' in event_type and clicked_view and clicked_view != active_view:
-                        Gitkcli.show_view(clicked_view.id)
-                        clicked_view.dirty = True
-                        active_view.dirty = True
+                    if clicked_view and clicked_view != active_view:
+                        if 'click' in event_type:
+                            Gitkcli.show_view(clicked_view.id)
+                            clicked_view.dirty = True
+                            active_view.dirty = True
+                        elif 'hover' in event_type:
+                            clicked_view = None
 
                     if clicked_view: 
                         begin_y, begin_x = clicked_view.win.getbegyx()
