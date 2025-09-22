@@ -58,10 +58,12 @@ def get_ref_color_and_title(ref):
     return color, title
 
 def create_window_title_item(title:str, additional_segments = [], color = 19):
-    segments = [TextSegment(title, color), FillerSegment()]
+    segments = [ButtonSegment('[Menu]', lambda: Gitkcli.get_view('context-menu').show_context_menu(Gitkcli), color),
+                TextSegment(title, color),
+                FillerSegment()]
     segments.extend(additional_segments)
     segments.append(ButtonSegment('[Search]', lambda: Gitkcli.get_view().handle_input(ord('/')), color));
-    segments.append(ButtonSegment("[Exit]", lambda: Gitkcli.hide_view(), color))
+    segments.append(ButtonSegment("[X]", lambda: Gitkcli.hide_view(), color))
     return SegmentedListItem(segments, color)
 
 
@@ -1286,7 +1288,23 @@ class ContextMenu(ListView):
         if not view_id:
             view_id = Gitkcli.showed_views[-1]
         view = Gitkcli.get_view()
-        if view_id == 'git-log' and hasattr(item, 'id'):
+        x = Gitkcli.mouse_x
+        y = Gitkcli.mouse_y
+        if item == Gitkcli: # main menu
+            x = 0
+            y = 1
+            self.append(ContextMenuItem("Show Git commit log <F1>", item.show_view, ['git-log']))
+            self.append(ContextMenuItem("Show Git references <F2>", item.show_view, ['git-refs']))
+            self.append(ContextMenuItem("Show Git commit diff <F3>", item.show_view, ['git-diff']))
+            self.append(ContextMenuItem("Show Logs <F4>", item.show_view, ['log']))
+            self.append(SeparatorItem())
+            if view_id == 'git-log':
+                self.append(ContextMenuItem("Refresh <F5>", item.refresh_head, []))
+                self.append(ContextMenuItem("Reread references", item.refresh_refs, []))
+                self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_commits, []))
+                self.append(SeparatorItem())
+            self.append(ContextMenuItem("Quit", item.exit_program, []))
+        elif view_id == 'git-log' and hasattr(item, 'id'):
             self.append(ContextMenuItem("Create new branch", view.create_branch, [item.id]))
             self.append(ContextMenuItem("Create new tag", view.create_tag, [item.id]))
             self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
@@ -1327,7 +1345,7 @@ class ContextMenu(ListView):
         else:
             return False
         self.parent_id = view_id
-        self.set_dimensions(Gitkcli.mouse_x, Gitkcli.mouse_y, len(self.items) + 2, 30)
+        self.set_dimensions(x, y, len(self.items) + 2, 30)
         Gitkcli.show_view('context-menu')
         return True
 
@@ -1778,6 +1796,11 @@ class Gitkcli:
             cls.get_job('git-refresh-head').start_job(['--reverse', f'{commit_id}..HEAD'], clear_view = False)
 
     @classmethod
+    def reload_commits(cls):
+        Gitkcli.refresh_refs()
+        Gitkcli.get_job('git-log').start_job()
+
+    @classmethod
     def add_commit(cls, id, commit):
         if id in cls.commits:
             return False
@@ -2126,8 +2149,7 @@ def launch_curses(stdscr, cmd_args):
                 Gitkcli.refresh_head()
                 Gitkcli.refresh_refs()
             elif key == ord('~'): # Shift + F5
-                Gitkcli.refresh_refs()
-                Gitkcli.get_job('git-log').start_job()
+                Gitkcli.reload_commits()
 
     Gitkcli.exit_program()
 
