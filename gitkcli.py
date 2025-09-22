@@ -520,12 +520,29 @@ class ButtonSegment(TextSegment):
     def __init__(self, txt, callback, color = 1):
         super().__init__(txt, color)
         self.callback = callback
+        self.is_pressed = False
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click':
+        if event_type == 'left-click' or event_type == 'double-click' or event_type == 'left-move-in':
+            self.is_pressed = True
+            return True
+
+        if event_type == 'left-move-out':
+            self.is_pressed = False
+            return True
+
+        if event_type == 'left-release':
+            self.is_pressed = False
             return self.callback()
         else:
             return super().handle_mouse_input(event_type, x, y)
+
+    def draw(self, win, offset, width, selected, matched, marked) -> int:
+        if self.is_pressed:
+            visible_txt = self.get_text()[offset:width]
+            win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, dim = True))
+            return len(visible_txt)
+        return super().draw(win, offset, width, selected, matched, marked)
 
 class ToggleSegment(TextSegment):
     def __init__(self, txt, toggled = False, callback = lambda val: None, color = 1):
@@ -541,7 +558,7 @@ class ToggleSegment(TextSegment):
             self.toggled = True
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click':
+        if event_type == 'left-click' or event_type == 'double-click':
             self.toggle()
             self.callback(self.toggled)
             return True
@@ -560,6 +577,7 @@ class SegmentedListItem(Item):
         self.segments = segments
         self.filler_width = 0
         self.bg_color = bg_color
+        self.clicked_segment = None
 
     def get_segments(self):
         return self.segments
@@ -589,7 +607,11 @@ class SegmentedListItem(Item):
         return Segment()
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        segment = self.get_segment_on_offset(x)
+        segment = self.clicked_segment or self.get_segment_on_offset(x)
+        if 'left-click' == event_type:
+            self.clicked_segment = segment
+        if 'release' in event_type:
+            self.clicked_segment = None
         if segment and segment.handle_mouse_input(event_type, x, y):
             return True
         return super().handle_mouse_input(event_type, x, y)
@@ -791,11 +813,16 @@ class View:
         log_debug(f'View {self.id} deactivated')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'drag' and self.view_position == 'floating':
-            self.move(x, y)
+        if event_type == 'left-move' and self.view_position == 'floating':
+            move_x = Gitkcli.mouse_x - Gitkcli.mouse_click_x
+            move_y = Gitkcli.mouse_y - Gitkcli.mouse_click_y
+            self.move(move_x, move_y)
             return True
         if y == 0:
-            return self.title_item.handle_mouse_input(event_type, x, y)
+            handled = self.title_item.handle_mouse_input(event_type, x, y)
+            if handled and ('left-click' == event_type or 'double-click' == event_type):
+                Gitkcli.clicked_item = self.title_item
+            return handled
         else:
             return False
 
@@ -904,8 +931,6 @@ class ListView(View):
                 return
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'drag':
-            return super().handle_mouse_input(event_type, x, y)
         if event_type == 'wheel-up':
             self.offset_y -= 5
             if self.offset_y < 0:
@@ -920,16 +945,22 @@ class ListView(View):
         view_x = x - self.x
         view_y = y - self.y
         index = self.offset_y + view_y
+
         if 0 <= view_y < self.height and 0 <= view_x < self.width and 0 <= index < len(self.items):
-            if event_type == 'hover':
+            selected = False
+            if 'move' in event_type:
                 if self.selected == index:
                     return False # do not redraw when hovering over same item
-            if event_type == 'left-click' or event_type == 'hover':
+            if event_type == 'left-click' or ('move' in event_type and self in Gitkcli.mouse_movement_capture):
                 if self.items[index].is_selectable:
                     self.selected = index
-            self.items[index].handle_mouse_input(event_type, view_x + self.offset_x, index)
-            # we've selected the item, so we will always return True
-            return True
+                    selected = True
+            item = self.items[index]
+            handled = item.handle_mouse_input(event_type, view_x + self.offset_x, index)
+            if handled and ('left-click' == event_type or 'double-click' == event_type):
+                Gitkcli.clicked_item = item
+            if selected or handled:
+                return True
 
         return super().handle_mouse_input(event_type, x, y)
 
@@ -1242,11 +1273,11 @@ class ContextMenu(ListView):
 
     def on_activated(self):
         super().on_activated()
-        print("\033[?1003h", end='', flush=True) # start capturing mouse movement
+        Gitkcli.capture_mouse_movement(True, self)
 
     def on_deactivated(self):
         super().on_deactivated()
-        print("\033[?1000h", end='', flush=True) # end capturing mouse movement
+        Gitkcli.capture_mouse_movement(False, self)
         Gitkcli.hide_view(self.id)
         
     def show_context_menu(self, item, view_id:typing.Optional[str] = None):
@@ -1678,7 +1709,12 @@ class Gitkcli:
     mouse_click_x = 0
     mouse_click_y = 0
     mouse_click_time = time.time()
-    mouse_drag = False
+    mouse_left_pressed = False
+    mouse_right_pressed = False
+    mouse_movement_capture = set()
+
+    clicked_view = None
+    clicked_item = None
 
     @classmethod
     def create_views_and_jobs(cls, stdscr, cmd_args):
@@ -1718,6 +1754,18 @@ class Gitkcli:
             cls.status_bar_message = first_line
             cls.status_bar_time = time.time()
             cls.status_bar_color = status_color
+
+    @classmethod
+    def capture_mouse_movement(cls, enable:bool, id = None):
+        enabled = len(cls.mouse_movement_capture) > 0
+        if enable:
+            cls.mouse_movement_capture.add(id)
+            if not enabled:
+                print("\033[?1003h", end='', flush=True) # start capturing mouse movement
+        else:
+            cls.mouse_movement_capture.remove(id)
+            if enabled and len(cls.mouse_movement_capture) == 0:
+                print("\033[?1000h", end='', flush=True) # end capturing mouse movement
 
     @classmethod
     def refresh_refs(cls):
@@ -1965,31 +2013,34 @@ def launch_curses(stdscr, cmd_args):
             event_type = None
             if Gitkcli.mouse_state == curses.BUTTON1_PRESSED:
                 now = time.time()
-                Gitkcli.mouse_drag = True
-                print("\033[?1003h", end='', flush=True) # start capturing mouse movement
+                Gitkcli.mouse_left_pressed = True
                 if now - Gitkcli.mouse_click_time < 0.3 and Gitkcli.mouse_x == Gitkcli.mouse_click_x and Gitkcli.mouse_y == Gitkcli.mouse_click_y:
                     event_type = 'double-click'
                 else:
-                    Gitkcli.mouse_click_x = Gitkcli.mouse_x
-                    Gitkcli.mouse_click_y = Gitkcli.mouse_y
                     Gitkcli.mouse_click_time = now
                     event_type = 'left-click'
+                Gitkcli.mouse_click_x = Gitkcli.mouse_x
+                Gitkcli.mouse_click_y = Gitkcli.mouse_y
 
             elif Gitkcli.mouse_state == curses.BUTTON1_RELEASED:
-                Gitkcli.mouse_drag = False
-                print("\033[?1000h", end='', flush=True) # end capturing mouse movement
-
-            elif Gitkcli.mouse_state == curses.BUTTON3_RELEASED:
-                event_type = "right-release"
+                Gitkcli.mouse_left_pressed = False
+                event_type = 'left-release'
 
             elif Gitkcli.mouse_state == curses.BUTTON3_PRESSED:
+                Gitkcli.mouse_right_pressed = True
                 event_type = 'right-click'
 
+            elif Gitkcli.mouse_state == curses.BUTTON3_RELEASED:
+                Gitkcli.mouse_right_pressed = False
+                event_type = "right-release"
+
             elif Gitkcli.mouse_state == curses.REPORT_MOUSE_POSITION:
-                if Gitkcli.mouse_drag:
-                    event_type = 'drag'
+                if Gitkcli.mouse_left_pressed:
+                    event_type = 'left-move'
+                elif Gitkcli.mouse_right_pressed:
+                    event_type = 'right-move'
                 else:
-                    event_type = 'hover'
+                    event_type = 'move'
 
             elif Gitkcli.mouse_state == curses.BUTTON4_PRESSED:
                 event_type = 'wheel-up'
@@ -1998,33 +2049,60 @@ def launch_curses(stdscr, cmd_args):
                 event_type = 'wheel-down'
 
             if event_type:
-                if event_type == 'drag':
-                    active_view.handle_mouse_input(event_type, Gitkcli.mouse_x - Gitkcli.mouse_click_x, Gitkcli.mouse_y - Gitkcli.mouse_click_y)
+                if 'click' in event_type:
+                    Gitkcli.capture_mouse_movement(True)
+                if 'release' in event_type:
+                    Gitkcli.capture_mouse_movement(False)
+
+                if Gitkcli.clicked_item:
+                    if Gitkcli.mouse_click_y == Gitkcli.mouse_y:
+                        if event_type == 'left-move':
+                            event_type = 'left-move-in'
+                    elif event_type == 'left-move':
+                        event_type = 'left-move-out'
+                    elif event_type == 'left-release':
+                        event_type = 'left-release-out'
+
+                enclosed_view = None
+                for id in reversed(Gitkcli.showed_views):
+                    view = Gitkcli.get_view(id)
+                    if view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
+                        enclosed_view = view
+                        break
+
+                if enclosed_view and event_type == 'left-click':
+                    Gitkcli.clicked_view = enclosed_view
+                    if enclosed_view and enclosed_view != active_view:
+                        Gitkcli.show_view(enclosed_view.id)
+                        enclosed_view.dirty = True
+                        active_view.dirty = True
+
+                send_event_to = None
+                view_to_process = enclosed_view
+                if 'move' in event_type or 'release' in event_type:
+                    if Gitkcli.clicked_view:
+                        view_to_process = Gitkcli.clicked_view
+                    if Gitkcli.clicked_item:
+                        send_event_to = Gitkcli.clicked_item
+
+                if not send_event_to:
+                    send_event_to = view_to_process
+
+                if view_to_process and send_event_to:
+                    begin_y, begin_x = view_to_process.win.getbegyx()
+                    win_x = Gitkcli.mouse_x - begin_x
+                    win_y = Gitkcli.mouse_y - begin_y
+                    if send_event_to.handle_mouse_input(event_type, win_x, win_y):
+                        view_to_process.dirty = True
+
+                if 'left-move' == event_type and not Gitkcli.clicked_item:
                     Gitkcli.mouse_click_x = Gitkcli.mouse_x
                     Gitkcli.mouse_click_y = Gitkcli.mouse_y
                     Gitkcli.redraw_all_views()
-                else:
-                    clicked_view = None
-                    for id in reversed(Gitkcli.showed_views):
-                        view = Gitkcli.get_view(id)
-                        if view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
-                            clicked_view = view
-                            break
 
-                    if clicked_view and clicked_view != active_view:
-                        if 'click' in event_type:
-                            Gitkcli.show_view(clicked_view.id)
-                            clicked_view.dirty = True
-                            active_view.dirty = True
-                        elif 'hover' in event_type:
-                            clicked_view = None
-
-                    if clicked_view: 
-                        begin_y, begin_x = clicked_view.win.getbegyx()
-                        win_x = Gitkcli.mouse_x - begin_x
-                        win_y = Gitkcli.mouse_y - begin_y
-                        if clicked_view.handle_mouse_input(event_type, win_x, win_y):
-                            clicked_view.dirty = True
+                if 'release' in event_type:
+                    Gitkcli.clicked_view = None
+                    Gitkcli.clicked_item = None
 
         elif key == curses.KEY_RESIZE:
             lines, cols = stdscr.getmaxyx()
