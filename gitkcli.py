@@ -629,12 +629,11 @@ class SegmentedListItem(Item):
         return ''
 
     def draw_line(self, win, offset, width, selected, matched, marked):
-        first = True
+        draw_separator = False
         remaining_width = width
         for segment in self.get_segments():
-            if first:
-                first = False
-            elif self.segment_separator:
+            if draw_separator and self.segment_separator:
+                draw_separator = False
                 remaining_width -= len(self.segment_separator)
                 win.addstr(self.segment_separator, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_view().win))
             if isinstance(segment, FillerSegment):
@@ -644,6 +643,7 @@ class SegmentedListItem(Item):
             else:
                 length = segment.draw(win, offset, remaining_width, selected, matched, marked)
                 txt = segment.get_text()
+            draw_separator = length > 0
             remaining_width -= length
             if remaining_width <= 0:
                 return
