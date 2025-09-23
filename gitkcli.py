@@ -467,6 +467,9 @@ class DiffListItem(TextListItem):
             color = 4
         elif txt.startswith(('diff', 'new', 'index', '+++', '---')):
             color = 17
+        elif (txt.startswith(' ') and not txt.startswith('    ') and old_file_line is None and new_file_line is None):
+            # diff stat output
+            color = 10
         elif txt.startswith('-'):
             color = 8
         elif txt.startswith('+'):
