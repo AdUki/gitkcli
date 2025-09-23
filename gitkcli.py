@@ -562,7 +562,7 @@ class ToggleSegment(TextSegment):
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'left-click' or event_type == 'double-click':
             self.toggle()
-            self.callback(self.toggled)
+            self.callback(self)
             return True
         else:
             return super().handle_mouse_input(event_type, x, y)
@@ -1188,7 +1188,7 @@ class ShowContextSegment(TextSegment):
 class GitDiffView(ListView):
     def __init__(self, id, parent_win):
         title_item = create_window_title_item('Git commit diff', [
-            ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.get_job(self.id).change_ignore_whitespace(val), 19),
+            ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.get_job(self.id).change_ignore_whitespace(val.toggled), 19),
             TextSegment("  Lines of context:", 19),
             ShowContextSegment(19),
             ButtonSegment("[ + ]", lambda: Gitkcli.get_job(id).change_context(+1), 19),
@@ -1329,9 +1329,13 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Rename this branch", self.rename_branch, [item.data['name']]))
                 self.append(ContextMenuItem("Copy branch name", self.copy_ref_name, [item.data['name']]))
                 self.append(SeparatorItem())
+                self.append(ContextMenuItem("Push branch to remote", self.push_ref_to_remote, [item.data['name']]))
+                self.append(SeparatorItem())
                 self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
             elif item.data['type'] == 'tags':
                 self.append(ContextMenuItem("Copy tag name", self.copy_ref_name, [item.data['name']]))
+                self.append(SeparatorItem())
+                self.append(ContextMenuItem("Push tag to remote", self.push_ref_to_remote, [item.data['name']]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Remove this tag", self.remove_tag, [item.data['name']]))
             elif item.data['type'] == 'remotes':
@@ -1361,6 +1365,10 @@ class ContextMenu(ListView):
     def rename_branch(self, branch_name):
         Gitkcli.get_view('git-branch-rename').set_old_branch_name(branch_name)
         Gitkcli.clear_and_show_view('git-branch-rename')
+
+    def push_ref_to_remote(self, branch_name):
+        Gitkcli.get_view('git-ref-push').set_ref_name(branch_name)
+        Gitkcli.clear_and_show_view('git-ref-push')
 
     def remove_branch(self, branch_name):
         result = Gitkcli.run_job(['git', 'branch', '-d', branch_name])
@@ -1473,6 +1481,77 @@ class UserInputListItem(Item):
         win.addstr(right_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
         win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
 
+class RefPushDialogPopup(ListView):
+    def __init__(self, id, parent_win):
+        super().__init__(id, parent_win, 'floating', TextListItem('', 19, expand = True), height = 6)
+        self.append(SpacerListItem())
+
+        self.remotes = []
+        for remote in Gitkcli.run_job(['git', 'remote']).stdout.rstrip().split('\n'):
+            self.remotes.append(ToggleSegment(remote, callback = lambda val: self.change_remote(val.txt)))
+        self.change_remote(self.remotes[0].txt)
+
+        self.force = ToggleSegment("<Force>")
+        self.append(SegmentedListItem([TextSegment(f"Select remote: ")] + self.remotes + [FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]))
+
+        self.append(SpacerListItem())
+        self.append(SegmentedListItem([FillerSegment(),
+                                       ButtonSegment("[Push]", lambda: self.handle_input(curses.KEY_ENTER)),
+                                       ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT)),
+                                       FillerSegment()]))
+        self.ref_name = ''
+
+        for item in self.items:
+            item.is_selectable = False
+
+    def change_remote(self, new_remote):
+        self.remote = new_remote
+        for remote in self.remotes:
+            remote.toggled = remote.txt == self.remote
+
+    def clear(self):
+        self.force.toggled = False
+
+    def set_ref_name(self, name):
+        self.ref_name = name
+        self.title_item.txt = f"Push ref: {self.ref_name}"
+
+    def push_ref(self):
+        args = ['git', 'push']
+        if self.force.toggled:
+            args += ['-f']
+        args += [self.remote, self.ref_name]
+        result = Gitkcli.run_job(args)
+        if result.returncode == 0:
+            Gitkcli.refresh_refs()
+            log_success(f'Branch pushed {self.ref_name} to {self.remote}')
+        else:
+            log_error(f"Error pushing ref '{self.ref_name}': {result.stderr}")
+
+    def on_deactivated(self):
+        Gitkcli.hide_view(self.id)
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
+            Gitkcli.hide_view()
+            self.push_ref()
+        elif key == curses.KEY_EXIT or key == 27:  # Escape key
+            Gitkcli.hide_view()
+        elif key == curses.KEY_F1:
+            self.force.toggle()
+        elif key == 9:  # Tab key - cycle through remotes
+            end = False
+            next_remote = self.remotes[0].txt
+            for remote in self.remotes:
+                if end:
+                    next_remote = remote.txt
+                    break
+                end = remote.txt == self.remote
+            self.change_remote(next_remote)
+        else:
+            return super().handle_input(key)
+        return True
+
 class UserInputDialogPopup(ListView):
     def __init__(self, id, parent_win, title, header_item, bottom_item = None):
         
@@ -1550,6 +1629,10 @@ class NewRefDialogPopup(UserInputDialogPopup):
         self.title_segment = TextSegment('')
         super().__init__(id, parent_win, ' New Branch',
             SegmentedListItem([TextSegment(f"Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()])) 
+
+    def clear(self):
+        self.force.toggled = False
+        super().clear()
 
     def set_ref_type(self, ref_type):
         self.title = f' New {ref_type}'
@@ -1749,6 +1832,7 @@ class Gitkcli:
         ListView('git-refs', stdscr, title_item = create_window_title_item('Git references'))
         SearchDialogPopup('git-refs-search', stdscr)
         BranchRenameDialogPopup('git-branch-rename', stdscr)
+        RefPushDialogPopup('git-ref-push', stdscr)
 
         ContextMenu('context-menu', stdscr)
 
