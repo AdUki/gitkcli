@@ -248,7 +248,9 @@ class GitDiffJob(SubprocessJob):
         self.start_job(self._get_args())
 
     def start_show_job(self, commit_id, on_finished = None):
-        self.cmd = f'git show -m --patch-with-stat --no-color {commit_id}'
+        view = Gitkcli.get_view(self.id)
+        width = view.width if view else 999
+        self.cmd = f'git show -m --stat={width} --no-color {commit_id}'
         self.start_job(self._get_args(), on_finished = on_finished)
 
     def change_context(self, size:int):
