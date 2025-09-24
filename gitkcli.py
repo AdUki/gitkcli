@@ -12,10 +12,25 @@ import time
 import traceback
 import typing
 
-def log_debug(txt): Gitkcli.log(18, txt)
-def log_info(txt): Gitkcli.log(1, txt)
-def log_success(txt): Gitkcli.log(1, txt, 201)
-def log_error(txt): Gitkcli.log(2, txt, 202)
+def log_debug(txt):
+    if Gitkcli.log_level > 4:
+        Gitkcli.log(18, txt)
+
+def log_info(txt):
+    if Gitkcli.log_level > 3:
+        Gitkcli.log(1, txt)
+
+def log_success(txt):
+    if Gitkcli.log_level > 2:
+        Gitkcli.log(1, txt, 201)
+
+def log_warning(txt):
+    if Gitkcli.log_level > 1:
+        Gitkcli.log(12, txt, 202)
+
+def log_error(txt):
+    if Gitkcli.log_level > 0:
+        Gitkcli.log(2, txt, 203)
 
 def curses_ctrl(key):
     return ord(key) & 0x1F
@@ -125,6 +140,7 @@ class SubprocessJob:
             except subprocess.TimeoutExpired:
                 self.job.kill()
                 self.running = False
+                log_debug(f'Job stopped {self.id}')
 
     def start_job(self, args = [], clear_view = True, on_finished = None):
         self.stop_job()
@@ -888,7 +904,7 @@ class ListView(View):
             import pyperclip
             pyperclip.copy(text)
         except ImportError:
-            log_error("pyperclip module not found. Install with: pip install pyperclip")
+            log_warning("pyperclip module not found. Install with: pip install pyperclip")
         except Exception as e:
             log_error(f"Error copying to clipboard: {str(e)}")
 
@@ -1139,7 +1155,7 @@ class GitLogView(ListView):
                     self.offset_y = max(0, self.selected - int(self.height / 2))
                 return self.items[idx]
             idx += 1
-        log_error(f'Commit with hash {id} not found')
+        log_warning(f'Commit with hash {id} not found')
         return None
     
     def get_selected_commit_id(self):
@@ -1242,7 +1258,6 @@ class GitDiffView(ListView):
                 self.select_item(item.line)
 
     def show_origin_of_line(self, line_index = None):
-        log_info(f'line_index={line_index}')
         if line_index is None:
             line_index = self.selected
 
@@ -1282,6 +1297,27 @@ class GitDiffView(ListView):
             return True
         else:
             return super().handle_input(key)
+
+class ShowLogLevelSegment(TextSegment):
+    def __init__(self, color):
+        super().__init__('', color)
+
+    def get_text(self):
+        return str(Gitkcli.log_level)
+
+class LogView(ListView):
+    def __init__(self, id, parent_win):
+        title_item = WindowTitleItem('Logs', [
+            TextSegment("  Log level:", 19),
+            ShowLogLevelSegment(19),
+            ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 19),
+            ButtonSegment("[ - ]", lambda: self.change_log_level(-1), 19)])
+        super().__init__(id, parent_win, 'fullscreen', title_item) 
+
+    def change_log_level(self, value):
+        if 0 <= Gitkcli.log_level + value <= 5:
+            Gitkcli.log_level += value
+        self.dirty = True
 
 class ContextMenuItem(TextListItem):
     def __init__(self, text, action, args=None, is_selectable=True):
@@ -1451,7 +1487,7 @@ class ContextMenu(ListView):
             pyperclip.copy(ref_name)
             log_success(f'Name "{ref_name}" copied to clipboard')
         except ImportError:
-            log_error("pyperclip module not found. Install with: pip install pyperclip")
+            log_warning("pyperclip module not found. Install with: pip install pyperclip")
         except Exception as e:
             log_error(f"Error copying to clipboard: {str(e)}")
 
@@ -1568,6 +1604,7 @@ class RefPushDialogPopup(ListView):
             log_error(f"Error pushing ref '{self.ref_name}': {result.stderr}")
 
     def on_deactivated(self):
+        super().on_deactivated()
         Gitkcli.hide_view(self.id)
 
     def handle_input(self, key):
@@ -1617,6 +1654,7 @@ class UserInputDialogPopup(ListView):
         pass
 
     def on_deactivated(self):
+        super().on_deactivated()
         Gitkcli.hide_view(self.id)
 
     def clear(self):
@@ -1649,7 +1687,7 @@ class BranchRenameDialogPopup(UserInputDialogPopup):
 
     def execute(self):
         if not self.input.txt:
-            log_error("New branch name cannot be empty")
+            log_warning("New branch name cannot be empty")
             return
             
         args = ['git', 'branch', '-m', self.old_branch_name, self.input.txt]
@@ -1830,6 +1868,7 @@ class Gitkcli:
     commits = {} # map: git_id --> { parents, date, author, title }
     found_ids = set()
     context_size = 3
+    log_level = 4
     ignore_whitespace = False
 
     unlinked_parent_ids = {}
@@ -1858,7 +1897,7 @@ class Gitkcli:
 
     @classmethod
     def create_views_and_jobs(cls, stdscr, cmd_args):
-        ListView('log', stdscr, title_item = WindowTitleItem('Logs'))
+        LogView('log', stdscr)
         SearchDialogPopup('log-search', stdscr)
 
         GitLogView('git-log', stdscr)
@@ -1944,7 +1983,7 @@ class Gitkcli:
 
     @classmethod
     def run_job(cls, args):
-        log_info(' '.join(args))
+        log_info('Run job: ' + ' '.join(args))
         return subprocess.run(args, capture_output=True, text=True)
 
     @classmethod
@@ -2120,7 +2159,8 @@ def launch_curses(stdscr, cmd_args):
 
     curses.init_pair(200, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Status bar normal
     curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Status bar success
-    curses.init_pair(202, curses.COLOR_WHITE, curses.COLOR_RED)   # Status bar error
+    curses.init_pair(202, curses.COLOR_BLACK, curses.COLOR_YELLOW)# Status bar warning
+    curses.init_pair(203, curses.COLOR_WHITE, curses.COLOR_RED)   # Status bar error
 
     curses.curs_set(0)  # Hide cursor
     stdscr.timeout(5)
@@ -2142,7 +2182,7 @@ def launch_curses(stdscr, cmd_args):
             Gitkcli.draw_status_bar(stdscr)
             Gitkcli.draw_visible_views()
         except curses.error as e:
-            log_error(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
+            log_warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
 
         active_view = Gitkcli.get_view()
         if not active_view:
