@@ -1375,8 +1375,13 @@ class ContextMenu(ListView):
             self.append(SeparatorItem())
             if view_id == 'git-log':
                 self.append(ContextMenuItem("Refresh <F5>", item.refresh_head, []))
-                self.append(ContextMenuItem("Reread references", item.refresh_refs, []))
                 self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_commits, []))
+                self.append(SeparatorItem())
+            elif view_id == 'git-refs':
+                self.append(ContextMenuItem("Reread references", item.refresh_refs, []))
+                self.append(SeparatorItem())
+            elif view_id == 'log':
+                self.append(ContextMenuItem("Clear log", view.clear, []))
                 self.append(SeparatorItem())
             self.append(ContextMenuItem("Quit", item.exit_program, []))
         elif view_id == 'git-log' and hasattr(item, 'id'):
