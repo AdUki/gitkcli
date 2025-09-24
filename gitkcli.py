@@ -88,9 +88,8 @@ class SubprocessJob:
         self.on_finished = None
         Gitkcli.add_job(id, self)
 
-    def process_line(self, line):
-        # This should be implemented by derived classes
-        pass
+    def process_line(self, line) -> typing.Any:
+        return line
 
     def process_item(self, item):
         # This should be implemented by derived classes
@@ -184,9 +183,7 @@ class SubprocessJob:
                 if is_stderr:
                     self.messages.put({'type': 'error', 'message': line})
                 else:
-                    item = self.process_line(line)
-                    if item:
-                        self.items.put(item)
+                    self.items.put(self.process_line(line))
 
             except Exception as e:
                 self.messages.put({'type': 'error', 'message': f"Error processing line: {bytearr}\n{str(e)}"})
@@ -202,20 +199,20 @@ class GitLogJob(SubprocessJob):
         if start_job:
             self.start_job()
 
-    def start_job(self, args = [], clear_view = True):
+    def start_job(self, args = [], clear_view = True, on_finished = None):
         if clear_view:
             Gitkcli.commits.clear()
             Gitkcli.get_view('git-log').dirty = True
         super().start_job(args, clear_view) 
 
-    def process_line(self, line):
+    def process_line(self, line) -> typing.Any:
         id, parents_str, date_str, author, title = line.split('|', 4)
-        self.items.put((id, {
+        return (id, {
             'parents': parents_str.split(' '),
             'date': datetime.datetime.fromisoformat(date_str),
             'author': author,
             'title': title,
-        }))
+        })
 
     def process_item(self, item):
         id, commit = item
@@ -238,19 +235,23 @@ class GitDiffJob(SubprocessJob):
         super().__init__(id) 
         self.cmd = 'git'
 
+        self.pattern = re.compile(r'^(?:( )|(?:\+\+\+ b/(.*))|(?:--- a/(.*))|(\+\+\+|---|diff|index)|(\+)|(-)|(@@ -(\d+),\d+ \+(\d+),\d+ @@))')
+
         self.commit_id: typing.Optional[int] = None
         self.old_commit_id: typing.Optional[int] = None
         self.new_commit_id: typing.Optional[int] = None
         self.old_file_path: typing.Optional[str] = None
-        self.old_file_line: typing.Optional[int] = None
+        self.old_file_line:int = -1
         self.new_file_path: typing.Optional[str] = None
-        self.new_file_line: typing.Optional[int] = None
+        self.new_file_line:int = -1
+        self.line_count = -1
 
     def _get_args(self):
         self.old_file_path = None
-        self.old_file_line = None
+        self.old_file_line = -1
         self.new_file_path = None
-        self.new_file_line = None
+        self.new_file_line = -1
+        self.line_count = -1
 
         if self.commit_id:
             args = ['show', '-m', self.commit_id]
@@ -295,39 +296,50 @@ class GitDiffJob(SubprocessJob):
         Gitkcli.ignore_whitespace = val
         self.start_job(self._get_args())
 
-    def process_line(self, line):
-        self.items.put(line)
+    def process_line(self, line) -> typing.Any:
+        color = 1
+        self.line_count += 1
+
+        # 9 capture groups
+        match = self.pattern.search(line)
+        if match:
+            if match.group(1): # code lines, stats and commit message
+                if self.old_file_line < 0 and self.new_file_line < 0: # commit message or stats line
+                    if line.startswith(' ') and not line.startswith('    '): # stats line
+                        color = 10
+                    return (self.line_count, line, color, None, None, None, None)
+                self.old_file_line += 1
+                self.new_file_line += 1
+                return (self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line)
+            elif match.group(2): # '+++' new file
+                color = 17
+                self.new_file_path = str(match.group(2))
+                return (self.line_count, line, color, None, None, None, None)
+            elif match.group(3): # '---' old file
+                color = 17
+                self.old_file_path = str(match.group(3))
+                return (self.line_count, line, color, None, None, None, None)
+            elif match.group(4): # infos
+                color = 17
+                return (self.line_count, line, color, None, None, None, None)
+            elif match.group(5): # '+' added code lines
+                color = 9
+                self.new_file_line += 1
+                return (self.line_count, line, color, None, None, self.new_file_path, self.new_file_line)
+            elif match.group(6): # '-' remove code lines
+                color = 8
+                self.old_file_line += 1
+                return (self.line_count, line, color, self.old_file_path, self.old_file_line, None, None)
+            elif match.group(7): # diff numbers
+                color = 10
+                self.old_file_line = int(match.group(8)) - 1
+                self.new_file_line = int(match.group(9)) - 1
+                return (self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line)
+
+        return (self.line_count, line, color, None, None, None, None)
 
     def process_item(self, item):
-        view = Gitkcli.get_view(self.id)
-        if view:
-
-            if item.startswith('---'):
-                self.old_file_path = item[6:]  # Remove the "--- b/" prefix
-            if item.startswith('+++'):
-                self.new_file_path = item[6:]  # Remove the "+++ a/" prefix
-
-            match = re.search(r'@@ -(\d+),\d+ \+(\d+),\d+ @@', item)
-            if match:
-                self.old_file_line = int(match.group(1))
-                self.new_file_line = int(match.group(2))
-                view.append(DiffListItem(view.size(), item, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line))
-
-            elif not self.old_file_line is None and not self.new_file_line is None and item.startswith(' '):
-                self.old_file_line += 1
-                self.new_file_line += 1
-                view.append(DiffListItem(view.size(), item, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line))
-
-            elif not self.old_file_line is None and item.startswith('-'):
-                self.old_file_line += 1
-                view.append(DiffListItem(view.size(), item, self.old_file_path, self.old_file_line))
-
-            elif not self.new_file_line is None and item.startswith('+'):
-                self.new_file_line += 1
-                view.append(DiffListItem(view.size(), item, None, None, self.new_file_path, self.new_file_line))
-
-            else:
-                view.append(DiffListItem(view.size(), item))
+        Gitkcli.get_view(self.id).append(DiffListItem(*item))
 
 class GitSearchJob(SubprocessJob):
     def __init__(self, id, args = []):
@@ -335,13 +347,10 @@ class GitSearchJob(SubprocessJob):
         self.cmd = 'git log --format=%H'
         self.args = args
 
-    def start_job(self, args = [], clear_view = True):
+    def start_job(self, args = [], clear_view = True, on_finished = None):
         Gitkcli.found_ids.clear()
         Gitkcli.get_view('git-log').dirty = True
         super().start_job(args, clear_view) 
-
-    def process_line(self, line):
-        self.items.put(line)
 
     def process_item(self, item):
         Gitkcli.found_ids.add(item)
@@ -353,7 +362,7 @@ class GitRefsJob(SubprocessJob):
         self.cmd = 'git show-ref --head'
         self.start_job()
 
-    def start_job(self, args = [], clear_view = True):
+    def start_job(self, args = [], clear_view = True, on_finished = None):
         Gitkcli.refs.clear()
 
         Gitkcli.head_branch = Gitkcli.run_job(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).stdout.rstrip()
@@ -361,7 +370,7 @@ class GitRefsJob(SubprocessJob):
 
         super().start_job(args, clear_view) 
 
-    def process_line(self, line):
+    def process_line(self, line) -> typing.Any:
         id, value = tuple(line.split(' '))
 
         ref = {}
@@ -378,7 +387,7 @@ class GitRefsJob(SubprocessJob):
                 ref['type'] = parts[1]
                 ref['name'] = parts[2]
 
-        self.items.put(ref)
+        return ref
 
     def process_item(self, item):
         view = Gitkcli.get_view(self.id)
@@ -495,27 +504,15 @@ class SpacerListItem(Item):
         win.clrtoeol()
 
 class DiffListItem(TextListItem):
-    def __init__(self, line:int, txt:str,
+    def __init__(self, line:int, txt:str, color:int,
                  old_file_path:typing.Optional[str] = None, old_file_line:typing.Optional[int] = None,
                  new_file_path:typing.Optional[str] = None, new_file_line:typing.Optional[int] = None):
         self.line = line
+        self.color = color
         self.old_file_line = old_file_line
         self.old_file_path = old_file_path
         self.new_file_line = new_file_line
         self.new_file_path = new_file_path
-        if txt.startswith(('diff', 'new', 'index', '+++', '---')):
-            color = 17
-        elif (txt.startswith(' ') and not txt.startswith('    ') and old_file_line is None and new_file_line is None):
-            # diff stat output
-            color = 10
-        elif txt.startswith('-'):
-            color = 8
-        elif txt.startswith('+'):
-            color = 9
-        elif txt.startswith('@@'):
-            color = 10
-        else:
-            color = 1
         super().__init__(txt, color)
 
 class Segment:
