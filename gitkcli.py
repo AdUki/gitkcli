@@ -12,6 +12,8 @@ import time
 import traceback
 import typing
 
+KEY_SHIFT_F5 = -100
+
 def log_debug(txt):
     if Gitkcli.log_level > 4:
         Gitkcli.log(18, txt)
@@ -1226,7 +1228,7 @@ class GitLogView(ListView):
         Gitkcli.clear_and_show_view('git-diff')
 
     def handle_input(self, key):
-        if key == ord('q') or key == curses.KEY_EXIT or key == 27:
+        if key == ord('q') or key == curses.KEY_EXIT:
             Gitkcli.exit_program()
         elif key == ord('b'):
             self.create_branch()
@@ -1628,7 +1630,7 @@ class RefPushDialogPopup(ListView):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
             Gitkcli.hide_view()
             self.push_ref()
-        elif key == curses.KEY_EXIT or key == 27:  # Escape key
+        elif key == curses.KEY_EXIT:
             Gitkcli.hide_view()
         elif key == curses.KEY_F1:
             self.force.toggle()
@@ -1682,7 +1684,7 @@ class UserInputDialogPopup(ListView):
             Gitkcli.hide_view()
             self.execute()
 
-        elif key == curses.KEY_EXIT or key == 27:  # Escape key
+        elif key == curses.KEY_EXIT:
             self.input.txt = ""
             self.cursor_pos = 0
             Gitkcli.hide_view()
@@ -2222,6 +2224,22 @@ def launch_curses(stdscr, cmd_args):
             # no key pressed
             continue
 
+        # parse escape sequences
+        if key == 27: # Esc key
+            sequence = []
+            while key >= 0:
+                sequence.append(key)
+                key = stdscr.getch()
+            log_debug('Escape sequence: ' + str(sequence))
+            if len(sequence) == 1:
+                key = curses.KEY_EXIT
+            elif sequence == [27, 91, 49, 53, 59, 50, 126]:
+                key = KEY_SHIFT_F5
+            else:
+                continue
+        # else:
+        #     log_debug('Key: ' + str(key))
+
         if key == curses.KEY_MOUSE:
             _, Gitkcli.mouse_x, Gitkcli.mouse_y, _, Gitkcli.mouse_state = curses.getmouse()
 
@@ -2332,7 +2350,7 @@ def launch_curses(stdscr, cmd_args):
             active_view.dirty = True
 
         else:
-            if key == ord('q') or key == curses.KEY_EXIT or key == 27:
+            if key == ord('q') or key == curses.KEY_EXIT:
                 Gitkcli.hide_view()
             elif key == curses.KEY_F1 or key == 9:
                 Gitkcli.show_view('git-log')
@@ -2345,7 +2363,7 @@ def launch_curses(stdscr, cmd_args):
             elif key == curses.KEY_F5:
                 Gitkcli.refresh_head()
                 Gitkcli.refresh_refs()
-            elif key == ord('~'): # Shift + F5
+            elif key == KEY_SHIFT_F5:
                 Gitkcli.reload_commits()
 
     Gitkcli.exit_program()
