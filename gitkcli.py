@@ -591,7 +591,7 @@ class ButtonSegment(TextSegment):
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         if self.is_pressed:
             visible_txt = self.get_text()[offset:width]
-            if self.color == 19: marked = True
+            if self.color == 30: marked = True
             else: selected = True
             win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, bold = True, dim = True))
             return len(visible_txt)
@@ -713,7 +713,7 @@ class SegmentedListItem(Item):
                 win.clrtoeol()
 
 class WindowTitleItem(SegmentedListItem):
-    def __init__(self, title:str, additional_segments = [], color = 19):
+    def __init__(self, title:str, additional_segments = [], color = 30):
         self.title_segment = TextSegment(title, color)
         segments = [ButtonSegment('[Menu]', lambda: Gitkcli.get_view('context-menu').show_context_menu(Gitkcli), color),
                     self.title_segment,
@@ -1259,11 +1259,11 @@ class ShowContextSegment(TextSegment):
 class GitDiffView(ListView):
     def __init__(self, id, parent_win):
         title_item = WindowTitleItem('Git commit diff', [
-            ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.get_job(self.id).change_ignore_whitespace(val.toggled), 19),
-            TextSegment("  Lines of context:", 19),
-            ShowContextSegment(19),
-            ButtonSegment("[ + ]", lambda: Gitkcli.get_job(id).change_context(+1), 19),
-            ButtonSegment("[ - ]", lambda: Gitkcli.get_job(id).change_context(-1), 19)])
+            ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.get_job(self.id).change_ignore_whitespace(val.toggled), 30),
+            TextSegment("  Lines of context:", 30),
+            ShowContextSegment(30),
+            ButtonSegment("[ + ]", lambda: Gitkcli.get_job(id).change_context(+1), 30),
+            ButtonSegment("[ - ]", lambda: Gitkcli.get_job(id).change_context(-1), 30)])
         super().__init__(id, parent_win, 'fullscreen', title_item) 
         self.commit_id = ''
 
@@ -1323,10 +1323,10 @@ class ShowLogLevelSegment(TextSegment):
 class LogView(ListView):
     def __init__(self, id, parent_win):
         title_item = WindowTitleItem('Logs', [
-            TextSegment("  Log level:", 19),
-            ShowLogLevelSegment(19),
-            ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 19),
-            ButtonSegment("[ - ]", lambda: self.change_log_level(-1), 19)])
+            TextSegment("  Log level:", 30),
+            ShowLogLevelSegment(30),
+            ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 30),
+            ButtonSegment("[ - ]", lambda: self.change_log_level(-1), 30)])
         super().__init__(id, parent_win, 'fullscreen', title_item) 
 
     def change_log_level(self, value):
@@ -1578,7 +1578,7 @@ class UserInputListItem(Item):
 
 class RefPushDialogPopup(ListView):
     def __init__(self, id, parent_win):
-        super().__init__(id, parent_win, 'floating', TextListItem('', 19, expand = True), height = 6)
+        super().__init__(id, parent_win, 'floating', TextListItem('', 30, expand = True), height = 6)
         self.append(SpacerListItem())
 
         self.remotes = []
@@ -1651,7 +1651,7 @@ class RefPushDialogPopup(ListView):
 class UserInputDialogPopup(ListView):
     def __init__(self, id, parent_win, title, header_item, bottom_item = None):
         
-        super().__init__(id, parent_win, 'floating', TextListItem(title, 19, expand = True), height = 7)
+        super().__init__(id, parent_win, 'floating', TextListItem(title, 30, expand = True), height = 7)
         self.input = UserInputListItem()
 
         if not bottom_item:
@@ -2139,14 +2139,26 @@ class Gitkcli:
 
         stdscr.addstr(lines-1, 0, f"Line {view.selected+1}/{len(view.items)} - Offset {view.offset_x} - Process '{cls.showed_views[-1]}' {job_status}".ljust(cols - 1), curses_color(200))
 
-def init_color(pair_number: int, fg: int, bg: int) -> None:
+def init_color(pair_number: int, nfg:int, nbg:int = -1, hfg:int = -1, hbg:int = -1, sfg:int = -1, sbg:int = -1, shfg:int = -1, shbg:int = -1) -> None:
+    # normal
+    fg = nfg
+    bg = nbg
     curses.init_pair(pair_number, fg, bg)
-    # highlighted offset
-    curses.init_pair(50 + pair_number, fg, 20)
-    # selected offset
-    curses.init_pair(100 + pair_number, fg, 235)
-    # selected+highlighted offset
-    curses.init_pair(150 + pair_number, fg, 21)
+    # highlighted
+    if hfg >= 0: fg = hfg
+    if hbg >= 0: bg = hbg
+    else: bg = 20
+    curses.init_pair(50 + pair_number, fg, bg)
+    # selected
+    if sfg >= 0: fg = sfg
+    if sbg >= 0: bg = sbg
+    else: bg = 235
+    curses.init_pair(100 + pair_number, fg, bg)
+    # selected+highlighted
+    if shfg >= 0: fg = shfg
+    if shbg >= 0: bg = shbg
+    else: bg = 21
+    curses.init_pair(150 + pair_number, fg, bg)
 
 def launch_curses(stdscr, cmd_args):
     # Run with curses
@@ -2154,28 +2166,27 @@ def launch_curses(stdscr, cmd_args):
 
     curses.start_color()
 
-    init_color(1, curses.COLOR_WHITE, -1)    # Normal text
-    init_color(2, curses.COLOR_RED, -1)      # Error text
-    init_color(3, curses.COLOR_GREEN, -1)    # Status text
-    init_color(4, curses.COLOR_YELLOW, -1)   # Git ID
-    init_color(5, curses.COLOR_BLUE, -1)     # Data
-    init_color(6, curses.COLOR_GREEN, -1)    # Author
-    init_color(8, curses.COLOR_RED, -1)      # diff -
-    init_color(9, curses.COLOR_GREEN, -1)    # diff +
-    init_color(10, curses.COLOR_CYAN, -1)    # diff ranges
-    init_color(11, curses.COLOR_GREEN, -1)   # local ref
-    init_color(12, curses.COLOR_YELLOW, -1)  # tag
-    init_color(13, curses.COLOR_BLUE, -1)    # head
-    init_color(14, curses.COLOR_CYAN, -1)    # stash
-    init_color(15, curses.COLOR_RED, -1)     # remote ref
-    init_color(16, curses.COLOR_MAGENTA, -1) # search match
-    init_color(17, curses.COLOR_BLUE, -1)    # diff info lines
-    init_color(18, 245, -1)                  # debug text
+    init_color(1, curses.COLOR_WHITE)    # Normal text
+    init_color(2, curses.COLOR_RED)      # Error text
+    init_color(3, curses.COLOR_GREEN)    # Status text
+    init_color(4, curses.COLOR_YELLOW)   # Git ID
+    init_color(5, curses.COLOR_BLUE)     # Data
+    init_color(6, curses.COLOR_GREEN)    # Author
+    init_color(8, curses.COLOR_RED)      # diff -
+    init_color(9, curses.COLOR_GREEN)    # diff +
+    init_color(10, curses.COLOR_CYAN)    # diff ranges
+    init_color(11, curses.COLOR_GREEN)   # local ref
+    init_color(12, curses.COLOR_YELLOW)  # tag
+    init_color(13, curses.COLOR_BLUE)    # head
+    init_color(14, curses.COLOR_CYAN)    # stash
+    init_color(15, curses.COLOR_RED)     # remote ref
+    init_color(16, curses.COLOR_MAGENTA) # search match
+    init_color(17, curses.COLOR_BLUE)    # diff info lines
+    init_color(18, 245)                  # debug text
 
-    curses.init_pair(19, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Active window title
-    curses.init_pair(50 + 19, curses.COLOR_WHITE, 20)            # Active segment in window title
-    curses.init_pair(100 + 19, curses.COLOR_BLACK, 245)          # Inactive window title
-    curses.init_pair(150 + 19, curses.COLOR_BLACK, 247)          # Active segment in inactive window title
+    init_color(30,
+               curses.COLOR_WHITE, curses.COLOR_BLUE, -1, 20, # Active window title
+               curses.COLOR_BLACK, 245, -1, 247)              # Inactive window title
 
     curses.init_pair(200, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Status bar normal
     curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Status bar success
