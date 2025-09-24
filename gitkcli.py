@@ -5,6 +5,7 @@ import curses
 import datetime
 import queue
 import re
+import os
 import subprocess
 import threading
 import time
@@ -56,15 +57,6 @@ def get_ref_color_and_title(ref):
     elif ref['type'] == 'stash':
         color = 14
     return color, title
-
-def create_window_title_item(title:str, additional_segments = [], color = 19):
-    segments = [ButtonSegment('[Menu]', lambda: Gitkcli.get_view('context-menu').show_context_menu(Gitkcli), color),
-                TextSegment(title, color),
-                FillerSegment()]
-    segments.extend(additional_segments)
-    segments.append(ButtonSegment('[Search]', lambda: Gitkcli.get_view().handle_input(ord('/')), color));
-    segments.append(ButtonSegment("[X]", lambda: Gitkcli.hide_view(), color))
-    return SegmentedListItem(segments, color)
 
 
 class SubprocessJob:
@@ -226,8 +218,13 @@ class GitRefreshHeadJob(GitLogJob):
             Gitkcli.get_view('git-log').prepend(CommitListItem(id))
 
 class GitDiffJob(SubprocessJob):
-    def __init__(self, id, args = []):
+    def __init__(self, id):
         super().__init__(id) 
+        self.cmd = 'git'
+
+        self.commit_id: typing.Optional[int] = None
+        self.old_commit_id: typing.Optional[int] = None
+        self.new_commit_id: typing.Optional[int] = None
         self.old_file_path: typing.Optional[str] = None
         self.old_file_line: typing.Optional[int] = None
         self.new_file_path: typing.Optional[str] = None
@@ -238,19 +235,40 @@ class GitDiffJob(SubprocessJob):
         self.old_file_line = None
         self.new_file_path = None
         self.new_file_line = None
-        args = [f'-U{Gitkcli.context_size}']
-        if Gitkcli.ignore_whitespace:
-            args.append('-w')
-        return args
 
-    def start_diff_job(self, old_commit_id, new_commit_id):
-        self.cmd = f'git diff --no-color {old_commit_id} {new_commit_id}'
-        self.start_job(self._get_args())
+        if self.commit_id:
+            args = ['show', '-m', self.commit_id]
+        else:
+            args = ['diff', self.old_commit_id, self.new_commit_id]
 
-    def start_show_job(self, commit_id, on_finished = None):
         view = Gitkcli.get_view(self.id)
         width = view.width if view else 999
-        self.cmd = f'git show -m --stat={width} --no-color {commit_id}'
+
+        args.extend([f'-U{Gitkcli.context_size}', f'--stat={width}', '--no-color'])
+
+        if Gitkcli.ignore_whitespace:
+            args.append('-w')
+
+        return args
+
+    def show_diff(self, old_commit_id, new_commit_id):
+        self.commit_id = None
+        self.old_commit_id = old_commit_id
+        self.new_commit_id = new_commit_id
+        view = Gitkcli.get_view(self.id)
+        if view:
+            view.commit_id = old_commit_id
+            view.title_item.set_title(f'Diff {old_commit_id} {new_commit_id}')
+        self.start_job(self._get_args())
+
+    def show_commit(self, commit_id, on_finished = None):
+        self.commit_id = commit_id
+        self.old_commit_id = None
+        self.new_commit_id = None
+        view = Gitkcli.get_view(self.id)
+        if view:
+            view.commit_id = commit_id
+            view.title_item.set_title(f'Commit {commit_id}')
         self.start_job(self._get_args(), on_finished = on_finished)
 
     def change_context(self, size:int):
@@ -365,6 +383,9 @@ class Item:
     def get_text(self) -> str:
         return ''
 
+    def set_text(self, txt:str):
+        pass
+
     def draw_line(self, win, offset, width, selected, matched, marked):
         pass
 
@@ -432,6 +453,9 @@ class TextListItem(Item):
     def get_text(self):
         return self.txt
 
+    def set_text(self, txt:str):
+        self.txt = txt
+
     def draw_line(self, win, offset, width, selected, matched, marked):
         line = self.get_text()[offset:]
         clear = True
@@ -463,9 +487,7 @@ class DiffListItem(TextListItem):
         self.old_file_path = old_file_path
         self.new_file_line = new_file_line
         self.new_file_path = new_file_path
-        if txt.startswith('commit '):
-            color = 4
-        elif txt.startswith(('diff', 'new', 'index', '+++', '---')):
+        if txt.startswith(('diff', 'new', 'index', '+++', '---')):
             color = 17
         elif (txt.startswith(' ') and not txt.startswith('    ') and old_file_line is None and new_file_line is None):
             # diff stat output
@@ -659,6 +681,20 @@ class SegmentedListItem(Item):
         else:
             win.clrtoeol()
 
+class WindowTitleItem(SegmentedListItem):
+    def __init__(self, title:str, additional_segments = [], color = 19):
+        self.title_segment = TextSegment(title, color)
+        segments = [ButtonSegment('[Menu]', lambda: Gitkcli.get_view('context-menu').show_context_menu(Gitkcli), color),
+                    self.title_segment,
+                    FillerSegment()]
+        segments.extend(additional_segments)
+        segments.append(ButtonSegment('[Search]', lambda: Gitkcli.get_view().handle_input(ord('/')), color));
+        segments.append(ButtonSegment("[X]", lambda: Gitkcli.hide_view(), color))
+        super().__init__(segments, color)
+
+    def set_title(self, txt:str):
+        self.title_segment.txt = txt
+
 class CommitListItem(SegmentedListItem):
     def __init__(self, id):
         super().__init__()
@@ -686,8 +722,7 @@ class CommitListItem(SegmentedListItem):
         if Gitkcli.get_view('git-diff').commit_id == self.id:
             Gitkcli.show_view('git-diff')
         else:
-            Gitkcli.get_view('git-diff').commit_id = self.id
-            Gitkcli.get_job('git-diff').start_show_job(self.id)
+            Gitkcli.get_job('git-diff').show_commit(self.id)
             Gitkcli.show_view('git-diff')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
@@ -1091,7 +1126,8 @@ class ListView(View):
 
 class GitLogView(ListView):
     def __init__(self, id, parent_win):
-        super().__init__(id, parent_win, 'fullscreen', create_window_title_item('Git commit log'));
+        repo_name = os.path.basename(Gitkcli.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
+        super().__init__(id, parent_win, 'fullscreen', WindowTitleItem('Repository: ' + repo_name));
         self.marked_commit_id = ''
 
     def select_commit(self, id:str):
@@ -1158,8 +1194,7 @@ class GitLogView(ListView):
         self.marked_commit_id = commit_id
     
     def diff_commits(self, old_commit_id, new_commit_id):
-        Gitkcli.get_job('git-diff').start_diff_job(old_commit_id, new_commit_id)
-        Gitkcli.get_view('git-diff').commit_id = old_commit_id
+        Gitkcli.get_job('git-diff').show_diff(old_commit_id, new_commit_id)
         Gitkcli.clear_and_show_view('git-diff')
 
     def handle_input(self, key):
@@ -1192,7 +1227,7 @@ class ShowContextSegment(TextSegment):
 
 class GitDiffView(ListView):
     def __init__(self, id, parent_win):
-        title_item = create_window_title_item('Git commit diff', [
+        title_item = WindowTitleItem('Git commit diff', [
             ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.get_job(self.id).change_ignore_whitespace(val.toggled), 19),
             TextSegment("  Lines of context:", 19),
             ShowContextSegment(19),
@@ -1239,8 +1274,7 @@ class GitDiffView(ListView):
                         id = Gitkcli.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
                     commit = Gitkcli.get_view('git-log').select_commit(id)
                     if commit:
-                        self.commit_id = commit.id
-                        Gitkcli.get_job('git-diff').start_show_job(commit.id, on_finished = lambda: self.select_line(file_path, file_line))
+                        Gitkcli.get_job('git-diff').show_commit(commit.id, on_finished = lambda: self.select_line(file_path, file_line))
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
@@ -1519,7 +1553,7 @@ class RefPushDialogPopup(ListView):
 
     def set_ref_name(self, name):
         self.ref_name = name
-        self.title_item.txt = f"Push ref: {self.ref_name}"
+        self.title_item.set_text(f"Push ref: {self.ref_name}")
 
     def push_ref(self):
         args = ['git', 'push']
@@ -1671,7 +1705,7 @@ class SearchDialogPopup(UserInputDialogPopup):
         buttons = SegmentedListItem([FillerSegment(),
                                      ButtonSegment("[Search Next]", lambda: Gitkcli.get_parent_view(id).handle_input(ord('n'))),
                                      ButtonSegment("[Search Previous]", lambda: Gitkcli.get_parent_view(id).handle_input(ord('N'))),
-                                     ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT)),
+                                     ButtonSegment("[Close]", lambda: self.handle_input(curses.KEY_EXIT)),
                                      FillerSegment()])
         buttons.is_selectable = False
         super().__init__(id, parent_win, ' Search', self.header, buttons)
@@ -1824,7 +1858,7 @@ class Gitkcli:
 
     @classmethod
     def create_views_and_jobs(cls, stdscr, cmd_args):
-        ListView('log', stdscr, title_item = create_window_title_item('Logs'))
+        ListView('log', stdscr, title_item = WindowTitleItem('Logs'))
         SearchDialogPopup('log-search', stdscr)
 
         GitLogView('git-log', stdscr)
@@ -1834,7 +1868,7 @@ class Gitkcli:
         GitDiffView('git-diff', stdscr)
         SearchDialogPopup('git-diff-search', stdscr)
 
-        ListView('git-refs', stdscr, title_item = create_window_title_item('Git references'))
+        ListView('git-refs', stdscr, title_item = WindowTitleItem('Git references'))
         SearchDialogPopup('git-refs-search', stdscr)
         BranchRenameDialogPopup('git-branch-rename', stdscr)
         RefPushDialogPopup('git-ref-push', stdscr)
