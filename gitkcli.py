@@ -260,7 +260,7 @@ class GitDiffJob(SubprocessJob):
         view = Gitkcli.get_view(self.id)
         width = view.width if view else 999
 
-        args.extend([f'-U{Gitkcli.context_size}', f'--stat={width}', '--no-color'])
+        args.extend([f'-U{Gitkcli.context_size}', f'--stat={width}', '--no-color', f'-l{Gitkcli.rename_limit}'])
 
         if Gitkcli.ignore_whitespace:
             args.append('-w')
@@ -1888,6 +1888,7 @@ class Gitkcli:
     commits = {} # map: git_id --> { parents, date, author, title }
     found_ids = set()
     context_size = 3
+    rename_limit = 1570
     log_level = 4
     ignore_whitespace = False
 
