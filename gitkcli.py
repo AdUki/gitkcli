@@ -525,6 +525,9 @@ class Segment:
     def get_text(self) -> str:
         return ''
 
+    def set_text(self, txt:str):
+        pass
+
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         return 0
 
@@ -543,6 +546,9 @@ class TextSegment(Segment):
 
     def get_text(self):
         return self.txt
+
+    def set_text(self, txt:str):
+        self.txt = txt
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.get_text()[offset:width]
@@ -655,8 +661,14 @@ class SegmentedListItem(Item):
         segment = self.clicked_segment or self.get_segment_on_offset(x)
         if 'left-click' == event_type:
             self.clicked_segment = segment
-        if 'release' in event_type:
-            self.clicked_segment = None
+        elif self.clicked_segment:
+            if 'release' in event_type:
+                self.clicked_segment = None
+            if segment != self.get_segment_on_offset(x):
+                if 'move-in' in event_type:
+                    event_type = event_type.replace('in', 'out')
+                if 'release' in event_type:
+                    return True
         if segment and segment.handle_mouse_input(event_type, x, y):
             return True
         return super().handle_mouse_input(event_type, x, y)
@@ -689,13 +701,14 @@ class SegmentedListItem(Item):
             draw_separator = length > 0
             remaining_width -= length
             if remaining_width <= 0:
-                return
+                break
             offset -= len(txt) - length
 
-        if selected or marked:
-            win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_view().win))
-        else:
-            win.clrtoeol()
+        if remaining_width > 0:
+            if selected or marked:
+                win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_view().win))
+            else:
+                win.clrtoeol()
 
 class WindowTitleItem(SegmentedListItem):
     def __init__(self, title:str, additional_segments = [], color = 19):
@@ -709,7 +722,7 @@ class WindowTitleItem(SegmentedListItem):
         super().__init__(segments, color)
 
     def set_title(self, txt:str):
-        self.title_segment.txt = txt
+        self.title_segment.set_text(txt)
 
 class CommitListItem(SegmentedListItem):
     def __init__(self, id):
@@ -2270,11 +2283,16 @@ def launch_curses(stdscr, cmd_args):
 
                 send_event_to = None
                 view_to_process = enclosed_view
+                item_x = 0
+                item_y = 0
                 if 'move' in event_type or 'release' in event_type:
                     if Gitkcli.clicked_view:
                         view_to_process = Gitkcli.clicked_view
                     if Gitkcli.clicked_item:
                         send_event_to = Gitkcli.clicked_item
+                        if Gitkcli.clicked_view:
+                            item_x = Gitkcli.clicked_view.x
+                            item_y = Gitkcli.clicked_view.y
 
                 if not send_event_to:
                     send_event_to = view_to_process
@@ -2283,7 +2301,7 @@ def launch_curses(stdscr, cmd_args):
                     begin_y, begin_x = view_to_process.win.getbegyx()
                     win_x = Gitkcli.mouse_x - begin_x
                     win_y = Gitkcli.mouse_y - begin_y
-                    if send_event_to.handle_mouse_input(event_type, win_x, win_y):
+                    if send_event_to.handle_mouse_input(event_type, win_x - item_x, win_y - item_y):
                         view_to_process.dirty = True
 
                 if 'left-move' == event_type and not Gitkcli.clicked_item:
