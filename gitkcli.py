@@ -591,7 +591,9 @@ class ButtonSegment(TextSegment):
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         if self.is_pressed:
             visible_txt = self.get_text()[offset:width]
-            win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, dim = True))
+            if self.color == 19: marked = True
+            else: selected = True
+            win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, bold = True, dim = True))
             return len(visible_txt)
         return super().draw(win, offset, width, selected, matched, marked)
 
