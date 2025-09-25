@@ -37,7 +37,7 @@ def log_error(txt):
 def curses_ctrl(key):
     return ord(key) & 0x1F
 
-def curses_color(number, selected = False, highlighted = False, bold = False, reverse = False, dim = False, underline = False):
+def curses_color(number, selected = False, highlighted = False, bold = None, reverse = False, dim = False, underline = False):
     if selected and highlighted:
         color = curses.color_pair(150 + number)
     elif selected:
@@ -48,7 +48,7 @@ def curses_color(number, selected = False, highlighted = False, bold = False, re
         color = curses.color_pair(number)
     if reverse:
         color = color | curses.A_REVERSE
-    if bold or selected:
+    if bold or (selected and bold is None):
         color = color | curses.A_BOLD
     if dim:
         color = color | curses.A_DIM
@@ -118,7 +118,8 @@ class SubprocessJob:
                 self.items.task_done()
                 if not item:
                     return;
-                self.process_item(item)
+                if not self.stop:
+                    self.process_item(item)
         except queue.Empty:
             pass
         try:
@@ -127,21 +128,22 @@ class SubprocessJob:
                 self.messages.task_done()
                 if not message:
                     return
-                self.process_message(message)
+                if not self.stop:
+                    self.process_message(message)
         except queue.Empty:
             pass
 
     def stop_job(self):
         self.stop = True
         self.on_finished = None
-        if self.job and self.job.poll() is None:
+        if self.job and self.get_exit_code() is None:
             self.job.terminate()
             try:
                 self.job.wait(timeout=1)
             except subprocess.TimeoutExpired:
                 self.job.kill()
                 self.running = False
-                log_debug(f'Job stopped {self.id}')
+            log_debug(f'Job stopped {self.id}')
 
     def start_job(self, args = [], clear_view = True, on_finished = None):
         self.stop_job()
@@ -166,9 +168,10 @@ class SubprocessJob:
         stderr_thread.start()
 
     def get_exit_code(self):
+        exit_code = None
         if self.job:
-            return self.job.poll()
-        return None
+            exit_code = self.job.poll()
+        return exit_code
 
     def job_running(self):
         return self.running
@@ -190,7 +193,7 @@ class SubprocessJob:
             except Exception as e:
                 self.messages.put({'type': 'error', 'message': f"Error processing line: {bytearr}\n{str(e)}"})
         stream.close()
-        if not is_stderr:
+        if not is_stderr and not self.stop:
             self.messages.put({'type': 'finished'})
 
 class GitLogJob(SubprocessJob):
@@ -590,9 +593,14 @@ class ButtonSegment(TextSegment):
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         if self.is_pressed:
             visible_txt = self.get_text()[offset:width]
-            if self.color == 30: marked = True
-            else: selected = True
-            win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, bold = True, dim = True))
+            dim = False
+            bold = False
+            if not selected:
+                selected = True
+            else:
+                bold = True
+                dim = True
+            win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, bold = bold, dim = dim))
             return len(visible_txt)
         return super().draw(win, offset, width, selected, matched, marked)
 
@@ -872,7 +880,7 @@ class View:
         if self.title_item:
             _, cols = self.win.getmaxyx()
             self.win.move(0, 0)
-            self.title_item.draw_line(self.win, 0, cols, not Gitkcli.get_view() == self, False, False)
+            self.title_item.draw_line(self.win, 0, cols, Gitkcli.get_view() == self, False, False)
 
         self.win.refresh()
         if not self.id.startswith('log') and self.parent_id != 'log':
@@ -953,6 +961,7 @@ class ListView(View):
         self.dirty = True
 
     def clear(self):
+        log_debug(f'Clear view {self.id}')
         self.items = []
         self.selected = 0
         self.offset_y = 0
@@ -2185,8 +2194,8 @@ def launch_curses(stdscr, cmd_args):
     init_color(18, 245)                  # debug text
 
     init_color(30,
-               curses.COLOR_WHITE, curses.COLOR_BLUE, -1, 20, # Active window title
-               curses.COLOR_BLACK, 245, -1, 247)              # Inactive window title
+               curses.COLOR_BLACK, 245, -1, 247,              # Inactive window title
+               curses.COLOR_WHITE, curses.COLOR_BLUE, -1, 20) # Active window title
 
     curses.init_pair(200, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Status bar normal
     curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Status bar success
@@ -2195,7 +2204,7 @@ def launch_curses(stdscr, cmd_args):
 
     curses.curs_set(0)  # Hide cursor
     stdscr.timeout(5)
-    curses.set_escdelay(200)
+    curses.set_escdelay(20)
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
     curses.mouseinterval(0)
 
@@ -2228,6 +2237,7 @@ def launch_curses(stdscr, cmd_args):
         if key == 27: # Esc key
             sequence = []
             while key >= 0:
+                if key == 27: sequence.clear()
                 sequence.append(key)
                 key = stdscr.getch()
             log_debug('Escape sequence: ' + str(sequence))
