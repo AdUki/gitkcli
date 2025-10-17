@@ -13,6 +13,8 @@ import traceback
 import typing
 
 KEY_SHIFT_F5 = -100
+KEY_CTRL_LEFT = -101
+KEY_CTRL_RIGHT = -102
 
 def log_debug(txt):
     if Gitkcli.log_level > 4:
@@ -250,6 +252,7 @@ class GitDiffJob(SubprocessJob):
         self.new_file_path: typing.Optional[str] = None
         self.new_file_line:int = -1
         self.line_count = -1
+        self.selected_line_map = {}
 
     def _get_args(self):
         self.old_file_path = None
@@ -279,26 +282,38 @@ class GitDiffJob(SubprocessJob):
         self.new_commit_id = new_commit_id
         view = Gitkcli.get_view(self.id)
         if view:
+            view.clear()
             view.commit_id = old_commit_id
+            view.is_diff = True
             view.title_item.set_title(f'Diff {old_commit_id} {new_commit_id}')
-        self.start_job(self._get_args())
+        self.start_job(self._get_args(), clear_view = False)
 
-    def show_commit(self, commit_id, on_finished = None):
+    def show_commit(self, commit_id, on_finished = None, add_to_jump_list = True):
         self.commit_id = commit_id
         self.old_commit_id = None
         self.new_commit_id = None
         view = Gitkcli.get_view(self.id)
         if view:
+            if view.commit_id and view.is_diff == False:
+                self.selected_line_map[view.commit_id] = view.selected
+            view.clear()
             view.commit_id = commit_id
+            view.is_diff = False
             view.title_item.set_title(f'Commit {commit_id}')
-        self.start_job(self._get_args(), on_finished = on_finished)
+            if on_finished == None and commit_id in self.selected_line_map:
+                on_finished = lambda: view.select_item(self.selected_line_map[commit_id])
+        self.start_job(self._get_args(), clear_view = False, on_finished = on_finished)
+        if add_to_jump_list:
+            Gitkcli.get_view('git-log').add_to_jump_list(commit_id)
 
     def change_context(self, size:int):
         Gitkcli.context_size = max(0, Gitkcli.context_size + size)
+        self.selected_line_map.clear()
         self.start_job(self._get_args())
 
     def change_ignore_whitespace(self, val:bool):
         Gitkcli.ignore_whitespace = val
+        self.selected_line_map.clear()
         self.start_job(self._get_args())
 
     def process_line(self, line) -> typing.Any:
@@ -757,7 +772,7 @@ class CommitListItem(SegmentedListItem):
         super().draw_line(win, offset, width, selected, matched, Gitkcli.get_view('git-log').marked_commit_id == self.id)
 
     def show_commit(self):
-        if Gitkcli.get_view('git-diff').commit_id == self.id:
+        if Gitkcli.get_view('git-diff').commit_id == self.id and Gitkcli.get_view('git-diff').is_diff == False:
             Gitkcli.show_view('git-diff')
         else:
             Gitkcli.get_job('git-diff').show_commit(self.id)
@@ -1166,8 +1181,13 @@ class ListView(View):
 class GitLogView(ListView):
     def __init__(self, id, parent_win):
         repo_name = os.path.basename(Gitkcli.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
-        super().__init__(id, parent_win, 'fullscreen', WindowTitleItem('Repository: ' + repo_name));
+        super().__init__(id, parent_win, 'fullscreen', WindowTitleItem('Repository: ' + repo_name, [
+                ButtonSegment("[<---]", lambda: self.move_in_jump_list(+1), 30),
+                ButtonSegment("[--->]", lambda: self.move_in_jump_list(-1), 30)
+            ]));
         self.marked_commit_id = ''
+        self.jump_list = []
+        self.jump_index = 0
 
     def select_commit(self, id:str):
         idx = 0
@@ -1180,7 +1200,27 @@ class GitLogView(ListView):
             idx += 1
         log_warning(f'Commit with hash {id} not found')
         return None
-    
+
+    def add_to_jump_list(self, id:str):
+        self.jump_list = self.jump_list[self.jump_index:]
+        if id in self.jump_list:
+            self.jump_list.remove(id)
+        self.jump_list.insert(0, id)
+        self.jump_index = 0
+
+    def move_in_jump_list(self, jump:int):
+        new_index = self.jump_index + jump
+        if 0 <= new_index < len(self.jump_list):
+            self.jump_index = new_index
+            if self.jump_list[new_index] in Gitkcli.commits:
+                self.select_commit(self.jump_list[new_index])
+                self._ensure_selection_is_visible()
+                Gitkcli.get_job('git-diff').show_commit(self.jump_list[new_index], add_to_jump_list = False)
+            else:
+                # when commit id not found, go to next item
+                self.move_in_jump_list(jump)
+        return True
+
     def get_selected_commit_id(self):
         if len(self.items) > 0:
             selected_item = self.items[self.selected]
@@ -1234,7 +1274,7 @@ class GitLogView(ListView):
     
     def diff_commits(self, old_commit_id, new_commit_id):
         Gitkcli.get_job('git-diff').show_diff(old_commit_id, new_commit_id)
-        Gitkcli.clear_and_show_view('git-diff')
+        Gitkcli.show_view('git-diff')
 
     def handle_input(self, key):
         if key == ord('q') or key == curses.KEY_EXIT:
@@ -1271,9 +1311,18 @@ class GitDiffView(ListView):
             TextSegment("  Lines of context:", 30),
             ShowContextSegment(30),
             ButtonSegment("[ + ]", lambda: Gitkcli.get_job(id).change_context(+1), 30),
-            ButtonSegment("[ - ]", lambda: Gitkcli.get_job(id).change_context(-1), 30)])
+            ButtonSegment("[ - ]", lambda: Gitkcli.get_job(id).change_context(-1), 30),
+            ButtonSegment("[<---]", lambda: Gitkcli.get_view('git-log').move_in_jump_list(+1), 30),
+            ButtonSegment("[--->]", lambda: Gitkcli.get_view('git-log').move_in_jump_list(-1), 30)
+            ])
         super().__init__(id, parent_win, 'fullscreen', title_item) 
         self.commit_id = ''
+        self.is_diff = False
+
+    def clear(self):
+        super().clear()
+        self.commit_id = ''
+        self.is_diff = False
 
     def select_line(self, file:str, line:int):
         for item in self.items:
@@ -2213,168 +2262,180 @@ def launch_curses(stdscr, cmd_args):
 
     log_info('Application started')
 
-    while Gitkcli.running:
-        Gitkcli.process_all_jobs()
+    try:
+        while Gitkcli.running:
+            Gitkcli.process_all_jobs()
 
-        stdscr.refresh()
+            stdscr.refresh()
 
-        try:
-            Gitkcli.draw_status_bar(stdscr)
-            Gitkcli.draw_visible_views()
-        except curses.error as e:
-            log_warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
+            try:
+                Gitkcli.draw_status_bar(stdscr)
+                Gitkcli.draw_visible_views()
+            except curses.error as e:
+                log_warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
 
-        active_view = Gitkcli.get_view()
-        if not active_view:
-            break;
-        
-        key = stdscr.getch()
-        if key < 0:
-            # no key pressed
-            continue
-
-        # parse escape sequences
-        if key == 27: # Esc key
-            sequence = []
-            while key >= 0:
-                if key == 27: sequence.clear()
-                sequence.append(key)
-                key = stdscr.getch()
-            log_debug('Escape sequence: ' + str(sequence))
-            if len(sequence) == 1:
-                key = curses.KEY_EXIT
-            elif sequence == [27, 91, 49, 53, 59, 50, 126]:
-                key = KEY_SHIFT_F5
-            else:
+            active_view = Gitkcli.get_view()
+            if not active_view:
+                break;
+            
+            key = stdscr.getch()
+            if key < 0:
+                # no key pressed
                 continue
-        # else:
-        #     log_debug('Key: ' + str(key))
 
-        if key == curses.KEY_MOUSE:
-            _, Gitkcli.mouse_x, Gitkcli.mouse_y, _, Gitkcli.mouse_state = curses.getmouse()
-
-            event_type = None
-            if Gitkcli.mouse_state == curses.BUTTON1_PRESSED:
-                now = time.time()
-                Gitkcli.mouse_left_pressed = True
-                if now - Gitkcli.mouse_click_time < 0.3 and Gitkcli.mouse_x == Gitkcli.mouse_click_x and Gitkcli.mouse_y == Gitkcli.mouse_click_y:
-                    event_type = 'double-click'
+            # parse escape sequences
+            if key == 27: # Esc key
+                sequence = []
+                while key >= 0:
+                    if key == 27: sequence.clear()
+                    sequence.append(key)
+                    key = stdscr.getch()
+                log_debug('Escape sequence: ' + str(sequence))
+                if len(sequence) == 1:
+                    key = curses.KEY_EXIT
+                elif sequence == [27, 91, 49, 53, 59, 50, 126]:
+                    key = KEY_SHIFT_F5
+                elif sequence == [27, 91, 49, 59, 53, 68]:
+                    key = KEY_CTRL_LEFT
+                elif sequence == [27, 91, 49, 59, 53, 67]:
+                    key = KEY_CTRL_RIGHT
                 else:
-                    Gitkcli.mouse_click_time = now
-                    event_type = 'left-click'
-                Gitkcli.mouse_click_x = Gitkcli.mouse_x
-                Gitkcli.mouse_click_y = Gitkcli.mouse_y
+                    continue
+            else:
+                log_debug('Key: ' + str(key))
 
-            elif Gitkcli.mouse_state == curses.BUTTON1_RELEASED:
-                Gitkcli.mouse_left_pressed = False
-                event_type = 'left-release'
+            if key == curses.KEY_MOUSE:
+                _, Gitkcli.mouse_x, Gitkcli.mouse_y, _, Gitkcli.mouse_state = curses.getmouse()
 
-            elif Gitkcli.mouse_state == curses.BUTTON3_PRESSED:
-                Gitkcli.mouse_right_pressed = True
-                event_type = 'right-click'
-
-            elif Gitkcli.mouse_state == curses.BUTTON3_RELEASED:
-                Gitkcli.mouse_right_pressed = False
-                event_type = "right-release"
-
-            elif Gitkcli.mouse_state == curses.REPORT_MOUSE_POSITION:
-                if Gitkcli.mouse_left_pressed:
-                    event_type = 'left-move'
-                elif Gitkcli.mouse_right_pressed:
-                    event_type = 'right-move'
-                else:
-                    event_type = 'move'
-
-            elif Gitkcli.mouse_state == curses.BUTTON4_PRESSED:
-                event_type = 'wheel-up'
-
-            elif Gitkcli.mouse_state == curses.BUTTON5_PRESSED:
-                event_type = 'wheel-down'
-
-            if event_type:
-                if 'click' in event_type:
-                    Gitkcli.capture_mouse_movement(True)
-                if 'release' in event_type:
-                    Gitkcli.capture_mouse_movement(False)
-
-                if Gitkcli.clicked_item:
-                    if Gitkcli.mouse_click_y == Gitkcli.mouse_y:
-                        if event_type == 'left-move':
-                            event_type = 'left-move-in'
-                    elif event_type == 'left-move':
-                        event_type = 'left-move-out'
-                    elif event_type == 'left-release':
-                        event_type = 'left-release-out'
-
-                enclosed_view = None
-                for id in reversed(Gitkcli.showed_views):
-                    view = Gitkcli.get_view(id)
-                    if view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
-                        enclosed_view = view
-                        break
-
-                if enclosed_view and event_type == 'left-click':
-                    Gitkcli.clicked_view = enclosed_view
-                    if enclosed_view and enclosed_view != active_view:
-                        Gitkcli.show_view(enclosed_view.id)
-                        enclosed_view.dirty = True
-                        active_view.dirty = True
-
-                send_event_to = None
-                view_to_process = enclosed_view
-                item_x = 0
-                item_y = 0
-                if 'move' in event_type or 'release' in event_type:
-                    if Gitkcli.clicked_view:
-                        view_to_process = Gitkcli.clicked_view
-                    if Gitkcli.clicked_item:
-                        send_event_to = Gitkcli.clicked_item
-                        if Gitkcli.clicked_view:
-                            item_x = Gitkcli.clicked_view.x
-                            item_y = Gitkcli.clicked_view.y
-
-                if not send_event_to:
-                    send_event_to = view_to_process
-
-                if view_to_process and send_event_to:
-                    begin_y, begin_x = view_to_process.win.getbegyx()
-                    win_x = Gitkcli.mouse_x - begin_x
-                    win_y = Gitkcli.mouse_y - begin_y
-                    if send_event_to.handle_mouse_input(event_type, win_x - item_x, win_y - item_y):
-                        view_to_process.dirty = True
-
-                if 'left-move' == event_type and not Gitkcli.clicked_item:
+                event_type = None
+                if Gitkcli.mouse_state == curses.BUTTON1_PRESSED:
+                    now = time.time()
+                    Gitkcli.mouse_left_pressed = True
+                    if now - Gitkcli.mouse_click_time < 0.3 and Gitkcli.mouse_x == Gitkcli.mouse_click_x and Gitkcli.mouse_y == Gitkcli.mouse_click_y:
+                        event_type = 'double-click'
+                    else:
+                        Gitkcli.mouse_click_time = now
+                        event_type = 'left-click'
                     Gitkcli.mouse_click_x = Gitkcli.mouse_x
                     Gitkcli.mouse_click_y = Gitkcli.mouse_y
-                    Gitkcli.redraw_all_views()
 
-                if 'release' in event_type:
-                    Gitkcli.clicked_view = None
-                    Gitkcli.clicked_item = None
+                elif Gitkcli.mouse_state == curses.BUTTON1_RELEASED:
+                    Gitkcli.mouse_left_pressed = False
+                    event_type = 'left-release'
 
-        elif key == curses.KEY_RESIZE:
-            lines, cols = stdscr.getmaxyx()
-            Gitkcli.resize_all_views(lines, cols)
+                elif Gitkcli.mouse_state == curses.BUTTON3_PRESSED:
+                    Gitkcli.mouse_right_pressed = True
+                    event_type = 'right-click'
 
-        elif active_view.handle_input(key):
-            active_view.dirty = True
+                elif Gitkcli.mouse_state == curses.BUTTON3_RELEASED:
+                    Gitkcli.mouse_right_pressed = False
+                    event_type = "right-release"
 
-        else:
-            if key == ord('q') or key == curses.KEY_EXIT:
-                Gitkcli.hide_view()
-            elif key == curses.KEY_F1 or key == 9:
-                Gitkcli.show_view('git-log')
-            elif key == curses.KEY_F2:
-                Gitkcli.show_view('git-refs')
-            elif key == curses.KEY_F3:
-                Gitkcli.show_view('git-diff')
-            elif key == curses.KEY_F4:
-                Gitkcli.show_view('log')
-            elif key == curses.KEY_F5:
-                Gitkcli.refresh_head()
-                Gitkcli.refresh_refs()
-            elif key == KEY_SHIFT_F5:
-                Gitkcli.reload_commits()
+                elif Gitkcli.mouse_state == curses.REPORT_MOUSE_POSITION:
+                    if Gitkcli.mouse_left_pressed:
+                        event_type = 'left-move'
+                    elif Gitkcli.mouse_right_pressed:
+                        event_type = 'right-move'
+                    else:
+                        event_type = 'move'
+
+                elif Gitkcli.mouse_state == curses.BUTTON4_PRESSED:
+                    event_type = 'wheel-up'
+
+                elif Gitkcli.mouse_state == curses.BUTTON5_PRESSED:
+                    event_type = 'wheel-down'
+
+                if event_type:
+                    if 'click' in event_type:
+                        Gitkcli.capture_mouse_movement(True)
+                    if 'release' in event_type:
+                        Gitkcli.capture_mouse_movement(False)
+
+                    if Gitkcli.clicked_item:
+                        if Gitkcli.mouse_click_y == Gitkcli.mouse_y:
+                            if event_type == 'left-move':
+                                event_type = 'left-move-in'
+                        elif event_type == 'left-move':
+                            event_type = 'left-move-out'
+                        elif event_type == 'left-release':
+                            event_type = 'left-release-out'
+
+                    enclosed_view = None
+                    for id in reversed(Gitkcli.showed_views):
+                        view = Gitkcli.get_view(id)
+                        if view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
+                            enclosed_view = view
+                            break
+
+                    if enclosed_view and event_type == 'left-click':
+                        Gitkcli.clicked_view = enclosed_view
+                        if enclosed_view and enclosed_view != active_view:
+                            Gitkcli.show_view(enclosed_view.id)
+                            enclosed_view.dirty = True
+                            active_view.dirty = True
+
+                    send_event_to = None
+                    view_to_process = enclosed_view
+                    item_x = 0
+                    item_y = 0
+                    if 'move' in event_type or 'release' in event_type:
+                        if Gitkcli.clicked_view:
+                            view_to_process = Gitkcli.clicked_view
+                        if Gitkcli.clicked_item:
+                            send_event_to = Gitkcli.clicked_item
+                            if Gitkcli.clicked_view:
+                                item_x = Gitkcli.clicked_view.x
+                                item_y = Gitkcli.clicked_view.y
+
+                    if not send_event_to:
+                        send_event_to = view_to_process
+
+                    if view_to_process and send_event_to:
+                        begin_y, begin_x = view_to_process.win.getbegyx()
+                        win_x = Gitkcli.mouse_x - begin_x
+                        win_y = Gitkcli.mouse_y - begin_y
+                        if send_event_to.handle_mouse_input(event_type, win_x - item_x, win_y - item_y):
+                            view_to_process.dirty = True
+
+                    if 'left-move' == event_type and not Gitkcli.clicked_item:
+                        Gitkcli.mouse_click_x = Gitkcli.mouse_x
+                        Gitkcli.mouse_click_y = Gitkcli.mouse_y
+                        Gitkcli.redraw_all_views()
+
+                    if 'release' in event_type:
+                        Gitkcli.clicked_view = None
+                        Gitkcli.clicked_item = None
+
+            elif key == curses.KEY_RESIZE:
+                lines, cols = stdscr.getmaxyx()
+                Gitkcli.resize_all_views(lines, cols)
+
+            elif active_view.handle_input(key):
+                active_view.dirty = True
+
+            else:
+                if key == ord('q') or key == curses.KEY_EXIT:
+                    Gitkcli.hide_view()
+                elif key == KEY_CTRL_LEFT:
+                    Gitkcli.get_view('git-log').move_in_jump_list(+1)
+                elif key == KEY_CTRL_RIGHT:
+                    Gitkcli.get_view('git-log').move_in_jump_list(-1)
+                elif key == curses.KEY_F1:
+                    Gitkcli.show_view('git-log')
+                elif key == curses.KEY_F2:
+                    Gitkcli.show_view('git-refs')
+                elif key == curses.KEY_F3:
+                    Gitkcli.show_view('git-diff')
+                elif key == curses.KEY_F4:
+                    Gitkcli.show_view('log')
+                elif key == curses.KEY_F5:
+                    Gitkcli.refresh_head()
+                    Gitkcli.refresh_refs()
+                elif key == KEY_SHIFT_F5:
+                    Gitkcli.reload_commits()
+
+    except KeyboardInterrupt:
+        pass
 
     Gitkcli.exit_program()
 
