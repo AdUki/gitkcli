@@ -379,7 +379,7 @@ class GitSearchJob(SubprocessJob):
 class GitRefsJob(SubprocessJob):
     def __init__(self, id):
         super().__init__(id) 
-        self.cmd = 'git show-ref --head'
+        self.cmd = 'git show-ref --head --dereference'
         self.start_job()
 
     def start_job(self, args = [], clear_view = True, on_finished = None):
