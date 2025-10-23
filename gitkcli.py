@@ -190,7 +190,9 @@ class SubprocessJob:
                 if is_stderr:
                     self.messages.put({'type': 'error', 'message': line})
                 else:
-                    self.items.put(self.process_line(line))
+                    item = self.process_line(line)
+                    if item:
+                        self.items.put(item)
 
             except Exception as e:
                 self.messages.put({'type': 'error', 'message': f"Error processing line: {bytearr}\n{str(e)}"})
@@ -244,9 +246,10 @@ class GitDiffJob(SubprocessJob):
 
         self.pattern = re.compile(r'^(?:( )|(?:\+\+\+ b/(.*))|(?:--- a/(.*))|(\+\+\+|---|diff|index)|(\+)|(-)|(@@ -(\d+),\d+ \+(\d+),\d+ @@))')
 
-        self.commit_id: typing.Optional[int] = None
-        self.old_commit_id: typing.Optional[int] = None
-        self.new_commit_id: typing.Optional[int] = None
+        self.commit_id: typing.Optional[str] = None
+        self.tag_id: typing.Optional[str] = None
+        self.old_commit_id: typing.Optional[str] = None
+        self.new_commit_id: typing.Optional[str] = None
         self.old_file_path: typing.Optional[str] = None
         self.old_file_line:int = -1
         self.new_file_path: typing.Optional[str] = None
@@ -260,6 +263,10 @@ class GitDiffJob(SubprocessJob):
         self.new_file_path = None
         self.new_file_line = -1
         self.line_count = -1
+
+        if self.tag_id:
+            args = ['cat-file', '-p', self.tag_id]
+            return args
 
         if self.commit_id:
             args = ['show', '-m', self.commit_id]
@@ -278,6 +285,7 @@ class GitDiffJob(SubprocessJob):
 
     def show_diff(self, old_commit_id, new_commit_id):
         self.commit_id = None
+        self.tag_id = None
         self.old_commit_id = old_commit_id
         self.new_commit_id = new_commit_id
         view = Gitkcli.get_view(self.id)
@@ -290,6 +298,7 @@ class GitDiffJob(SubprocessJob):
 
     def show_commit(self, commit_id, on_finished = None, add_to_jump_list = True):
         self.commit_id = commit_id
+        self.tag_id = None
         self.old_commit_id = None
         self.new_commit_id = None
         view = Gitkcli.get_view(self.id)
@@ -305,6 +314,20 @@ class GitDiffJob(SubprocessJob):
         self.start_job(self._get_args(), clear_view = False, on_finished = on_finished)
         if add_to_jump_list:
             Gitkcli.get_view('git-log').add_to_jump_list(commit_id)
+
+    def show_tag_annotation(self, tag_id):
+        self.tag_id = tag_id
+        self.commit_id = None
+        self.old_commit_id = None
+        self.new_commit_id = None
+        view = Gitkcli.get_view(self.id)
+        if view:
+            view.clear()
+            view.commit_id = tag_id
+            view.is_diff = True
+            view.title_item.set_title(f'Tag {tag_id}')
+        self.start_job(self._get_args(), clear_view = False)
+        Gitkcli.show_view(self.id)
 
     def change_context(self, size:int):
         Gitkcli.context_size = max(0, Gitkcli.context_size + size)
@@ -411,10 +434,17 @@ class GitRefsJob(SubprocessJob):
 
     def process_item(self, item):
         view = Gitkcli.get_view(self.id)
-        if view:
+        id = item['id']
+
+        if item['type'] == 'tags' and item['name'].endswith('^{}'): 
+            # process link to annotated tag
+            last_item_data = view.items[-1].data
+            last_item_data['tag_id'] = last_item_data['id']
+            last_item_data['id'] = id
+            item = last_item_data
+        else:
             view.append(RefListItem(item))
 
-        id = item['id']
         Gitkcli.refs.setdefault(id,[]).append(item)
         Gitkcli.get_view('git-log').dirty = True
         if item['type'] == 'head':
@@ -581,6 +611,9 @@ class RefSegment(TextSegment):
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'right-click':
             return Gitkcli.get_view('context-menu').show_context_menu(RefListItem(self.ref), 'git-refs')
+        elif event_type == 'double-click' and 'tag_id' in self.ref:
+            Gitkcli.get_job('git-diff').show_tag_annotation(self.ref['tag_id'])
+            return True
         else:
             return super().handle_mouse_input(event_type, x, y)
 
@@ -683,7 +716,7 @@ class SegmentedListItem(Item):
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         segment = self.clicked_segment or self.get_segment_on_offset(x)
-        if 'left-click' == event_type:
+        if 'left-click' == event_type or 'double-click' == event_type:
             self.clicked_segment = segment
         elif self.clicked_segment:
             if 'release' in event_type:
@@ -779,11 +812,12 @@ class CommitListItem(SegmentedListItem):
             Gitkcli.show_view('git-diff')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        if super().handle_mouse_input(event_type, x, y):
+            return True
         if event_type == 'double-click':
             self.show_commit()
             return True
-        else:
-            return super().handle_mouse_input(event_type, x, y)
+        return False
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13 or key == 9:
@@ -1400,8 +1434,9 @@ class ContextMenuItem(TextListItem):
         self.is_selectable = is_selectable
 
     def execute_action(self):
-        Gitkcli.hide_view()
-        self.action(*self.args)
+        if self.is_selectable:
+            Gitkcli.hide_view()
+            self.action(*self.args)
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:
@@ -1487,6 +1522,7 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
             elif item.data['type'] == 'tags':
                 self.append(ContextMenuItem("Copy tag name", self.copy_ref_name, [item.data['name']]))
+                self.append(ContextMenuItem("Show tag annotation", Gitkcli.get_job('git-diff').show_tag_annotation, [item.data.get('tag_id')], 'tag_id' in item.data))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Push tag to remote", self.push_ref_to_remote, [item.data['name']]))
                 self.append(SeparatorItem())
@@ -2307,6 +2343,7 @@ def launch_curses(stdscr, cmd_args):
 
             if key == curses.KEY_MOUSE:
                 _, Gitkcli.mouse_x, Gitkcli.mouse_y, _, Gitkcli.mouse_state = curses.getmouse()
+                log_debug('Mouse state: ' + str(Gitkcli.mouse_state))
 
                 event_type = None
                 if Gitkcli.mouse_state == curses.BUTTON1_PRESSED:
