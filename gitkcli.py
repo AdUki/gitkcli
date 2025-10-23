@@ -1380,6 +1380,7 @@ class ShowLogLevelSegment(TextSegment):
 class LogView(ListView):
     def __init__(self, id, parent_win):
         title_item = WindowTitleItem('Logs', [
+            ToggleSegment("[Autoscroll]", False, lambda val: setattr(self, 'autoscroll', val.toggled), 30),
             TextSegment("  Log level:", 30),
             ShowLogLevelSegment(30),
             ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 30),
