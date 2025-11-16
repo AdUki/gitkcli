@@ -212,7 +212,22 @@ class GitLogJob(SubprocessJob):
         if clear_view:
             Gitkcli.commits.clear()
             Gitkcli.get_view('git-log').dirty = True
+
         super().start_job(args, clear_view) 
+
+        Gitkcli.get_view('git-log').remove_local_commits()
+
+        # Check for staged changes
+        result = Gitkcli.run_job(['git', 'diff', '--cached', '--quiet'])
+        has_staged = result.returncode != 0
+        if has_staged:
+            Gitkcli.get_view('git-log').prepend_commit(UncommittedChangesListItem(staged = True))
+
+        # Check for working directory changes
+        result = Gitkcli.run_job(['git', 'diff', '--quiet'])
+        has_working = result.returncode != 0
+        if has_working:
+            Gitkcli.get_view('git-log').prepend_commit(UncommittedChangesListItem())
 
     def process_line(self, line) -> typing.Any:
         id, parents_str, date_str, author, title = line.split('|', 4)
@@ -237,7 +252,7 @@ class GitRefreshHeadJob(GitLogJob):
     def process_item(self, item):
         (id, commit) = item
         if Gitkcli.add_commit(id, commit):
-            Gitkcli.get_view('git-log').prepend(CommitListItem(id))
+            Gitkcli.get_view('git-log').prepend_commit(CommitListItem(id))
 
 class GitDiffJob(SubprocessJob):
     def __init__(self, id):
@@ -248,6 +263,7 @@ class GitDiffJob(SubprocessJob):
 
         self.commit_id: typing.Optional[str] = None
         self.tag_id: typing.Optional[str] = None
+        self.cached: bool = False
         self.old_commit_id: typing.Optional[str] = None
         self.new_commit_id: typing.Optional[str] = None
         self.old_file_path: typing.Optional[str] = None
@@ -271,7 +287,12 @@ class GitDiffJob(SubprocessJob):
         if self.commit_id:
             args = ['show', '-m', self.commit_id]
         else:
-            args = ['diff', self.old_commit_id, self.new_commit_id]
+            args = ['diff', self.old_commit_id]
+            if self.new_commit_id:
+                args.append(self.new_commit_id)
+
+        if self.cached:
+            args.insert(1, '--cached')
 
         view = Gitkcli.get_view(self.id)
         width = view.width if view else 999
@@ -283,9 +304,10 @@ class GitDiffJob(SubprocessJob):
 
         return args
 
-    def show_diff(self, old_commit_id, new_commit_id):
+    def show_diff(self, old_commit_id, new_commit_id = None, cached = False, title = None):
         self.commit_id = None
         self.tag_id = None
+        self.cached = cached
         self.old_commit_id = old_commit_id
         self.new_commit_id = new_commit_id
         view = Gitkcli.get_view(self.id)
@@ -293,12 +315,15 @@ class GitDiffJob(SubprocessJob):
             view.clear()
             view.commit_id = old_commit_id
             view.is_diff = True
-            view.title_item.set_title(f'Diff {old_commit_id} {new_commit_id}')
+            if not title:
+                title = f'Diff {old_commit_id} {new_commit_id}'
+            view.title_item.set_title(title)
         self.start_job(self._get_args(), clear_view = False)
 
     def show_commit(self, commit_id, on_finished = None, add_to_jump_list = True):
         self.commit_id = commit_id
         self.tag_id = None
+        self.cached = False
         self.old_commit_id = None
         self.new_commit_id = None
         view = Gitkcli.get_view(self.id)
@@ -317,6 +342,7 @@ class GitDiffJob(SubprocessJob):
 
     def show_tag_annotation(self, tag_id):
         self.tag_id = tag_id
+        self.cached = False
         self.commit_id = None
         self.old_commit_id = None
         self.new_commit_id = None
@@ -781,6 +807,34 @@ class WindowTitleItem(SegmentedListItem):
     def set_title(self, txt:str):
         self.title_segment.set_text(txt)
 
+class UncommittedChangesListItem(TextListItem):
+    def __init__(self, staged:bool = False):
+        self._staged = staged
+        self.id = 'local-staged' if staged else 'local-working'
+        if self._staged:
+            super().__init__('Uncommitted changes (staged)', 3)
+        else:
+            super().__init__('Uncommitted changes (working directory)', 2)
+
+    def show_changes(self):
+        Gitkcli.get_job('git-diff').show_diff('HEAD', cached = self._staged, title = self.txt)
+        Gitkcli.show_view('git-diff')
+
+    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        if super().handle_mouse_input(event_type, x, y):
+            return True
+        if event_type == 'double-click':
+            self.show_changes()
+            return True
+        return False
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == 10 or key == 13 or key == 9:
+            self.show_changes()
+        else:
+            return False
+        return True
+
 class CommitListItem(SegmentedListItem):
     def __init__(self, id):
         super().__init__()
@@ -989,15 +1043,6 @@ class ListView(View):
             self.dirty = True
         if self.autoscroll:
             self.offset_y = max(0, len(self.items) - self.height)
-        
-    def prepend(self, item):
-        """Add item to beginning of list"""
-        self.items.insert(0, item)
-        self.selected += 1
-        if self.offset_y > 0:
-            self.offset_y += 1
-        else:
-            self._ensure_selection_is_visible()
         
     def insert(self, item, position=None):
         """Insert item at position or selected position"""
@@ -1222,6 +1267,33 @@ class GitLogView(ListView):
         self.marked_commit_id = ''
         self.jump_list = []
         self.jump_index = 0
+        
+    def remove_local_commits(self):
+        to_remove = 0
+        for i in range(min(2, len(self.items))):
+            if self.items[i].id.startswith('local'):
+                to_remove += 1
+        for _ in range(to_remove):
+            self.items.pop(0)
+            if self.selected > 0:
+                self.selected -= 1
+            if self.offset_y > 0:
+                self.offset_y -= 1
+
+    def prepend_commit(self, item):
+        offset = 0
+        for i in range(min(2, len(self.items))):
+            if item.id.startswith('local'):
+                if self.items[i].id == item.id:
+                    return
+            elif self.items[i].id.startswith('local'):
+                offset += 1
+        self.items.insert(offset, item)
+        self.selected += 1
+        if self.offset_y > 0:
+            self.offset_y += 1
+        else:
+            self._ensure_selection_is_visible()
 
     def select_commit(self, id:str):
         idx = 0
