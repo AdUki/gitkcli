@@ -245,6 +245,7 @@ class GitLogJob(SubprocessJob):
             if view:
                 view.append(CommitListItem(id))
 
+# NOTE: Temporary class, until we have proper git tree
 class GitRefreshHeadJob(GitLogJob):
     def __init__(self, id):
         super().__init__(id, [], False) 
@@ -1267,7 +1268,8 @@ class GitLogView(ListView):
         self.marked_commit_id = ''
         self.jump_list = []
         self.jump_index = 0
-        
+
+    # NOTE: Temporary function, until we have proper git tree
     def remove_local_commits(self):
         to_remove = 0
         for i in range(min(2, len(self.items))):
@@ -1280,6 +1282,7 @@ class GitLogView(ListView):
             if self.offset_y > 0:
                 self.offset_y -= 1
 
+    # NOTE: Temporary function, until we have proper git tree
     def prepend_commit(self, item):
         offset = 0
         for i in range(min(2, len(self.items))):
