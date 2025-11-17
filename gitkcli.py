@@ -215,8 +215,6 @@ class GitLogJob(SubprocessJob):
 
         super().start_job(args, clear_view) 
 
-        Gitkcli.get_view('git-log').remove_local_commits()
-
         # Check for staged changes
         result = Gitkcli.run_job(['git', 'diff', '--cached', '--quiet'])
         has_staged = result.returncode != 0
@@ -1269,8 +1267,7 @@ class GitLogView(ListView):
         self.jump_list = []
         self.jump_index = 0
 
-    # NOTE: Temporary function, until we have proper git tree
-    def remove_local_commits(self):
+    def check_uncommitted_changes(self):
         to_remove = 0
         for i in range(min(2, len(self.items))):
             if self.items[i].id.startswith('local'):
@@ -1281,6 +1278,18 @@ class GitLogView(ListView):
                 self.selected -= 1
             if self.offset_y > 0:
                 self.offset_y -= 1
+
+        # Check for staged changes
+        result = Gitkcli.run_job(['git', 'diff', '--cached', '--quiet'])
+        has_staged = result.returncode != 0
+        if has_staged:
+            self.prepend_commit(UncommittedChangesListItem(staged = True))
+
+        # Check for working directory changes
+        result = Gitkcli.run_job(['git', 'diff', '--quiet'])
+        has_working = result.returncode != 0
+        if has_working:
+            self.prepend_commit(UncommittedChangesListItem())
 
     # NOTE: Temporary function, until we have proper git tree
     def prepend_commit(self, item):
@@ -1374,8 +1383,26 @@ class GitLogView(ListView):
         result = Gitkcli.run_job(['git', 'reset', reset_type, commit_id])
         if result.returncode == 0:
             Gitkcli.refresh_refs()
+            Gitkcli.get_view('git-log').check_uncommitted_changes()
         else:
             log_error(f"Error during {reset_type} reset:" + result.stderr)
+
+    def clean_uncommitted_changes(self, staged:bool = False):
+        if staged:
+            result = Gitkcli.run_job(['git', 'stash', 'save', '--keep-index'])
+            if result.returncode == 0:
+                result = Gitkcli.run_job(['git', 'reset', '--hard'])
+            if result.returncode == 0:
+                result = Gitkcli.run_job(['git', 'stash', 'pop'])
+        else:
+            result = Gitkcli.run_job(['git', 'restore', '.'])
+        if result.returncode == 0:
+            Gitkcli.refresh_refs()
+            Gitkcli.get_view('git-log').check_uncommitted_changes()
+        else:
+            log_error("Error during cleaning " +
+                      "staged" if staged else "unstaged" +
+                      " changes: " + result.stderr)
     
     def mark_commit(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
@@ -1568,21 +1595,26 @@ class ContextMenu(ListView):
                 self.append(SeparatorItem())
             self.append(ContextMenuItem("Quit", item.exit_program, []))
         elif view_id == 'git-log' and hasattr(item, 'id'):
-            self.append(ContextMenuItem("Create new branch", view.create_branch, [item.id]))
-            self.append(ContextMenuItem("Create new tag", view.create_tag, [item.id]))
-            self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
-            self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
-            self.append(SeparatorItem())
-            self.append(ContextMenuItem("Reset here", view.reset, [False, item.id]))
-            self.append(ContextMenuItem("Hard reset here", view.reset, [True, item.id]))
-            self.append(SeparatorItem())
-            self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()]))
-            self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id]))
-            self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.id, view.marked_commit_id], bool(view.marked_commit_id)))
-            self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.id], bool(view.marked_commit_id)))
-            self.append(SeparatorItem())
-            self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
-            self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id)))
+            if item.id == 'local-staged':
+                self.append(ContextMenuItem("Clear staged changes", view.clean_uncommitted_changes, [True]))
+            elif item.id == 'local-working':
+                self.append(ContextMenuItem("Clear unstaged changes", view.clean_uncommitted_changes, [False]))
+            else:
+                self.append(ContextMenuItem("Create new branch", view.create_branch, [item.id]))
+                self.append(ContextMenuItem("Create new tag", view.create_tag, [item.id]))
+                self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
+                self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
+                self.append(SeparatorItem())
+                self.append(ContextMenuItem("Reset here", view.reset, [False, item.id]))
+                self.append(ContextMenuItem("Hard reset here", view.reset, [True, item.id]))
+                self.append(SeparatorItem())
+                self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()]))
+                self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id]))
+                self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.id, view.marked_commit_id], bool(view.marked_commit_id)))
+                self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.id], bool(view.marked_commit_id)))
+                self.append(SeparatorItem())
+                self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
+                self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id)))
         elif view_id == 'git-diff' and hasattr(item, 'line'):
             self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [item.line], item.old_file_path and item.old_file_line is not None))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
@@ -1622,6 +1654,7 @@ class ContextMenu(ListView):
         if result.returncode == 0:
             Gitkcli.refresh_head()
             Gitkcli.refresh_refs()
+            Gitkcli.get_view('git-log').check_uncommitted_changes()
             log_success(f'Switched to branch {branch_name}')
         else:
             log_error(f"Error checking out branch: {result.stderr}")
@@ -2151,6 +2184,7 @@ class Gitkcli:
     def reload_commits(cls):
         Gitkcli.refresh_refs()
         Gitkcli.get_job('git-log').start_job()
+        Gitkcli.get_view('git-log').check_uncommitted_changes()
 
     @classmethod
     def add_commit(cls, id, commit):
