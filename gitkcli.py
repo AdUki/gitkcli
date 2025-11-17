@@ -892,6 +892,7 @@ class View:
         self.parent_win = parent_win
         self.view_position = view_position
         self.title_item = title_item
+        self.is_modal = False
 
         # coordinates and sizes when view is 'floating'
         self.fixed_x = x
@@ -1000,13 +1001,16 @@ class View:
             move_y = Gitkcli.mouse_y - Gitkcli.mouse_click_y
             self.move(move_x, move_y)
             return True
-        if y == 0:
-            handled = self.title_item.handle_mouse_input(event_type, x, y)
-            if handled and ('left-click' == event_type or 'double-click' == event_type):
-                Gitkcli.clicked_item = self.title_item
-            return handled
-        else:
-            return False
+        if self.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
+            if y == 0:
+                handled = self.title_item.handle_mouse_input(event_type, x, y)
+                if handled and ('left-click' == event_type or 'double-click' == event_type):
+                    Gitkcli.clicked_item = self.title_item
+                return handled
+        elif self.is_modal and 'click' in event_type:
+            Gitkcli.hide_view(self.id)
+            return True
+        return False
 
     def handle_input(self, key):
         return False
@@ -1125,7 +1129,7 @@ class ListView(View):
             if 'move' in event_type:
                 if self.selected == index:
                     return False # do not redraw when hovering over same item
-            if event_type == 'left-click' or ('move' in event_type and self in Gitkcli.mouse_movement_capture):
+            if event_type == 'left-click' or event_type == 'double-click' or ('move' in event_type and self in Gitkcli.mouse_movement_capture):
                 if self.items[index].is_selectable:
                     self.selected = index
                     selected = True
@@ -1407,6 +1411,7 @@ class GitLogView(ListView):
     def mark_commit(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
         self.marked_commit_id = commit_id
+        self.dirty = True
     
     def diff_commits(self, old_commit_id, new_commit_id):
         Gitkcli.get_job('git-diff').show_diff(old_commit_id, new_commit_id)
@@ -1537,7 +1542,7 @@ class ContextMenuItem(TextListItem):
 
     def execute_action(self):
         if self.is_selectable:
-            Gitkcli.hide_view()
+            Gitkcli.hide_view('context-menu')
             self.action(*self.args)
 
     def handle_input(self, key):
@@ -1548,7 +1553,7 @@ class ContextMenuItem(TextListItem):
         return True
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'right-release':
+        if event_type == 'left-click' or event_type == 'double-click' or event_type == 'right-release':
             self.execute_action()
             return True
         else:
@@ -1557,6 +1562,7 @@ class ContextMenuItem(TextListItem):
 class ContextMenu(ListView):
     def __init__(self, id, parent_win):
         super().__init__(id, parent_win, 'floating')
+        self.is_modal = True
 
     def on_activated(self):
         super().on_activated()
@@ -1565,9 +1571,10 @@ class ContextMenu(ListView):
     def on_deactivated(self):
         super().on_deactivated()
         Gitkcli.capture_mouse_movement(False, self)
-        Gitkcli.hide_view(self.id)
         
     def show_context_menu(self, item, view_id:typing.Optional[str] = None):
+        if Gitkcli.showed_views[-1] == self.id:
+            return
         self.clear()
         self.selected = -1
         if not view_id:
@@ -1646,7 +1653,7 @@ class ContextMenu(ListView):
             return False
         self.parent_id = view_id
         self.set_dimensions(x, y, len(self.items) + 2, 30)
-        Gitkcli.show_view('context-menu')
+        Gitkcli.show_view(self.id)
         return True
 
     def checkout_branch(self, branch_name):
@@ -1763,7 +1770,7 @@ class UserInputListItem(Item):
         return True
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click':
+        if event_type == 'left-click' or event_type == 'double-click':
             self.cursor_pos = x if x < len(self.txt) else len(self.txt)
             return True
         else:
@@ -1782,6 +1789,7 @@ class RefPushDialogPopup(ListView):
     def __init__(self, id, parent_win):
         super().__init__(id, parent_win, 'floating', TextListItem('', 30, expand = True), height = 6)
         self.append(SpacerListItem())
+        self.is_modal = True
 
         self.remotes = []
         for remote in Gitkcli.run_job(['git', 'remote']).stdout.rstrip().split('\n'):
@@ -1831,10 +1839,10 @@ class RefPushDialogPopup(ListView):
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
-            Gitkcli.hide_view()
+            Gitkcli.hide_view(self.id)
             self.push_ref()
         elif key == curses.KEY_EXIT:
-            Gitkcli.hide_view()
+            Gitkcli.hide_view(self.id)
         elif key == curses.KEY_F1:
             self.force.toggle()
         elif key == 9:  # Tab key - cycle through remotes
@@ -1855,6 +1863,7 @@ class UserInputDialogPopup(ListView):
         
         super().__init__(id, parent_win, 'floating', TextListItem(title, 30, expand = True), height = 7)
         self.input = UserInputListItem()
+        self.is_modal = True
 
         if not bottom_item:
             bottom_item = SegmentedListItem([FillerSegment(),
@@ -1884,13 +1893,13 @@ class UserInputDialogPopup(ListView):
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
-            Gitkcli.hide_view()
+            Gitkcli.hide_view(self.id)
             self.execute()
 
         elif key == curses.KEY_EXIT:
             self.input.txt = ""
             self.cursor_pos = 0
-            Gitkcli.hide_view()
+            Gitkcli.hide_view(self.id)
 
         else:
             return super().handle_input(key)
@@ -2039,7 +2048,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
             if self.search_type == "txt":
                 return super().handle_input(key)
 
-            Gitkcli.hide_view()
+            Gitkcli.hide_view(self.id)
 
             args = []
             if not self.case_sensitive.toggled:
@@ -2115,8 +2124,8 @@ class Gitkcli:
     mouse_right_pressed = False
     mouse_movement_capture = set()
 
-    clicked_view = None
-    clicked_item = None
+    clicked_view:View|None = None
+    clicked_item:Item|None = None
 
     @classmethod
     def create_views_and_jobs(cls, stdscr, cmd_args):
@@ -2510,7 +2519,7 @@ def launch_curses(stdscr, cmd_args):
                     enclosed_view = None
                     for id in reversed(Gitkcli.showed_views):
                         view = Gitkcli.get_view(id)
-                        if view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
+                        if view.is_modal or view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
                             enclosed_view = view
                             break
 
