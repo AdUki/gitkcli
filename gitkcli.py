@@ -2174,7 +2174,7 @@ class Gitkcli:
             cls.mouse_movement_capture.add(id)
             if not enabled:
                 print("\033[?1003h", end='', flush=True) # start capturing mouse movement
-        else:
+        elif id in cls.mouse_movement_capture:
             cls.mouse_movement_capture.remove(id)
             if enabled and len(cls.mouse_movement_capture) == 0:
                 print("\033[?1000h", end='', flush=True) # end capturing mouse movement
@@ -2373,6 +2373,68 @@ def init_color(pair_number: int, nfg:int, nbg:int = -1, hfg:int = -1, hbg:int = 
     else: bg = 21
     curses.init_pair(150 + pair_number, fg, bg)
 
+def process_mouse_event(event_type:str, active_view:View):
+    if 'click' in event_type:
+        Gitkcli.capture_mouse_movement(True)
+    if 'release' in event_type:
+        Gitkcli.capture_mouse_movement(False)
+
+    if Gitkcli.clicked_item:
+        if Gitkcli.mouse_click_y == Gitkcli.mouse_y:
+            if event_type == 'left-move':
+                event_type = 'left-move-in'
+        elif event_type == 'left-move':
+            event_type = 'left-move-out'
+        elif event_type == 'left-release':
+            event_type = 'left-release-out'
+
+    enclosed_view = None
+    for id in reversed(Gitkcli.showed_views):
+        view = Gitkcli.get_view(id)
+        if view.is_modal or view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
+            enclosed_view = view
+            break
+
+    if enclosed_view and event_type == 'left-click':
+        Gitkcli.clicked_view = enclosed_view
+        if enclosed_view and enclosed_view != active_view:
+            Gitkcli.show_view(enclosed_view.id)
+            enclosed_view.dirty = True
+            active_view.dirty = True
+
+    send_event_to = None
+    view_to_process = enclosed_view
+    item_x = 0
+    item_y = 0
+    if 'move' in event_type or 'release' in event_type:
+        if Gitkcli.clicked_view:
+            view_to_process = Gitkcli.clicked_view
+        if Gitkcli.clicked_item:
+            send_event_to = Gitkcli.clicked_item
+            if Gitkcli.clicked_view:
+                item_x = Gitkcli.clicked_view.x
+                item_y = Gitkcli.clicked_view.y
+
+    if not send_event_to:
+        send_event_to = view_to_process
+
+    if view_to_process and send_event_to:
+        begin_y, begin_x = view_to_process.win.getbegyx()
+        win_x = Gitkcli.mouse_x - begin_x
+        win_y = Gitkcli.mouse_y - begin_y
+        if send_event_to.handle_mouse_input(event_type, win_x - item_x, win_y - item_y):
+            view_to_process.dirty = True
+
+    if 'left-move' == event_type and not Gitkcli.clicked_item:
+        Gitkcli.mouse_click_x = Gitkcli.mouse_x
+        Gitkcli.mouse_click_y = Gitkcli.mouse_y
+        Gitkcli.redraw_all_views()
+
+    if 'release' in event_type:
+        Gitkcli.clicked_view = None
+        Gitkcli.clicked_item = None
+
+
 def launch_curses(stdscr, cmd_args):
     # Run with curses
     curses.use_default_colors()
@@ -2476,6 +2538,8 @@ def launch_curses(stdscr, cmd_args):
                     Gitkcli.mouse_click_y = Gitkcli.mouse_y
 
                 elif Gitkcli.mouse_state == curses.BUTTON1_RELEASED:
+                    if not Gitkcli.mouse_left_pressed:
+                        continue
                     Gitkcli.mouse_left_pressed = False
                     event_type = 'left-release'
 
@@ -2484,6 +2548,8 @@ def launch_curses(stdscr, cmd_args):
                     event_type = 'right-click'
 
                 elif Gitkcli.mouse_state == curses.BUTTON3_RELEASED:
+                    if not Gitkcli.mouse_right_pressed:
+                        continue
                     Gitkcli.mouse_right_pressed = False
                     event_type = "right-release"
 
@@ -2501,66 +2567,16 @@ def launch_curses(stdscr, cmd_args):
                 elif Gitkcli.mouse_state == curses.BUTTON5_PRESSED:
                     event_type = 'wheel-down'
 
+                if event_type == 'right-click' and Gitkcli.mouse_left_pressed:
+                    Gitkcli.mouse_left_pressed = False
+                    process_mouse_event('right-release', active_view)
+
+                if (event_type == 'left-click' or event_type == 'double-click') and Gitkcli.mouse_right_pressed:
+                    Gitkcli.mouse_right_pressed = False
+                    process_mouse_event('left-release', active_view)
+
                 if event_type:
-                    if 'click' in event_type:
-                        Gitkcli.capture_mouse_movement(True)
-                    if 'release' in event_type:
-                        Gitkcli.capture_mouse_movement(False)
-
-                    if Gitkcli.clicked_item:
-                        if Gitkcli.mouse_click_y == Gitkcli.mouse_y:
-                            if event_type == 'left-move':
-                                event_type = 'left-move-in'
-                        elif event_type == 'left-move':
-                            event_type = 'left-move-out'
-                        elif event_type == 'left-release':
-                            event_type = 'left-release-out'
-
-                    enclosed_view = None
-                    for id in reversed(Gitkcli.showed_views):
-                        view = Gitkcli.get_view(id)
-                        if view.is_modal or view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
-                            enclosed_view = view
-                            break
-
-                    if enclosed_view and event_type == 'left-click':
-                        Gitkcli.clicked_view = enclosed_view
-                        if enclosed_view and enclosed_view != active_view:
-                            Gitkcli.show_view(enclosed_view.id)
-                            enclosed_view.dirty = True
-                            active_view.dirty = True
-
-                    send_event_to = None
-                    view_to_process = enclosed_view
-                    item_x = 0
-                    item_y = 0
-                    if 'move' in event_type or 'release' in event_type:
-                        if Gitkcli.clicked_view:
-                            view_to_process = Gitkcli.clicked_view
-                        if Gitkcli.clicked_item:
-                            send_event_to = Gitkcli.clicked_item
-                            if Gitkcli.clicked_view:
-                                item_x = Gitkcli.clicked_view.x
-                                item_y = Gitkcli.clicked_view.y
-
-                    if not send_event_to:
-                        send_event_to = view_to_process
-
-                    if view_to_process and send_event_to:
-                        begin_y, begin_x = view_to_process.win.getbegyx()
-                        win_x = Gitkcli.mouse_x - begin_x
-                        win_y = Gitkcli.mouse_y - begin_y
-                        if send_event_to.handle_mouse_input(event_type, win_x - item_x, win_y - item_y):
-                            view_to_process.dirty = True
-
-                    if 'left-move' == event_type and not Gitkcli.clicked_item:
-                        Gitkcli.mouse_click_x = Gitkcli.mouse_x
-                        Gitkcli.mouse_click_y = Gitkcli.mouse_y
-                        Gitkcli.redraw_all_views()
-
-                    if 'release' in event_type:
-                        Gitkcli.clicked_view = None
-                        Gitkcli.clicked_item = None
+                    process_mouse_event(event_type, active_view)
 
             elif key == curses.KEY_RESIZE:
                 lines, cols = stdscr.getmaxyx()
