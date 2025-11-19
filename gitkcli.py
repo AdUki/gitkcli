@@ -232,9 +232,7 @@ class GitLogJob(SubprocessJob):
     def process_item(self, item):
         id, commit = item
         if Gitkcli.add_commit(id, commit):
-            view = Gitkcli.get_view(self.id)
-            if view:
-                view.append(CommitListItem(id))
+            Gitkcli.view_git_log.append(CommitListItem(id))
 
 # NOTE: Temporary class, until we have proper git tree
 class GitRefreshHeadJob(GitLogJob):
@@ -340,7 +338,7 @@ class GitDiffJob(SubprocessJob):
         Gitkcli.view_git_diff.is_diff = True
         Gitkcli.view_git_diff.title_item.set_title(f'Tag {tag_id}')
         self.start_job(self._get_args())
-        Gitkcli.show_view(self.id)
+        Gitkcli.view_git_diff.show()
 
     def change_context(self, size:int):
         Gitkcli.context_size = max(0, Gitkcli.context_size + size)
@@ -397,7 +395,7 @@ class GitDiffJob(SubprocessJob):
         return (self.line_count, line, color, None, None, None, None)
 
     def process_item(self, item):
-        Gitkcli.get_view(self.id).append(DiffListItem(*item))
+        Gitkcli.view_git_diff.append(DiffListItem(*item))
 
 class GitSearchJob(SubprocessJob):
     def __init__(self, args = []):
@@ -447,17 +445,16 @@ class GitRefsJob(SubprocessJob):
         return ref
 
     def process_item(self, item):
-        view = Gitkcli.get_view(self.id)
         id = item['id']
 
         if item['type'] == 'tags' and item['name'].endswith('^{}'): 
             # process link to annotated tag
-            last_item_data = view.items[-1].data
+            last_item_data = Gitkcli.view_git_refs.items[-1].data
             last_item_data['tag_id'] = last_item_data['id']
             last_item_data['id'] = id
             item = last_item_data
         else:
-            view.append(RefListItem(item))
+            Gitkcli.view_git_refs.append(RefListItem(item))
 
         Gitkcli.refs.setdefault(id,[]).append(item)
         Gitkcli.view_git_log.dirty = True
@@ -483,7 +480,7 @@ class Item:
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'right-click':
-            return Gitkcli.get_view('context-menu').show_context_menu(self)
+            return Gitkcli.view_context_menu.show_context_menu(self)
         return False
 
 class SeparatorItem(Item):
@@ -511,12 +508,12 @@ class RefListItem(Item):
         if len(line) > width:
             line = line[:width]
 
-        win.addstr(line, curses_color(color, selected, marked, dim = not win == Gitkcli.get_view().win))
+        win.addstr(line, curses_color(color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
         win.clrtoeol()
 
     def jump_to_ref(self):
         if Gitkcli.view_git_log.select_commit(self.data['id']):
-            Gitkcli.show_view('git-log')
+            Gitkcli.view_git_log.show()
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'double-click':
@@ -555,7 +552,7 @@ class TextListItem(Item):
             line = line[:width]
             clear = False
 
-        win.addstr(line, curses_color(16 if matched else self.color, selected, marked, dim = not self.is_selectable or not win == Gitkcli.get_view().win))
+        win.addstr(line, curses_color(16 if matched else self.color, selected, marked, dim = not self.is_selectable or not win == Gitkcli.get_active_view().win))
         if clear:
             win.clrtoeol()
 
@@ -613,7 +610,7 @@ class TextSegment(Segment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.get_text()[offset:width]
-        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
+        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
         return len(visible_txt)
 
 class RefSegment(TextSegment):
@@ -624,7 +621,7 @@ class RefSegment(TextSegment):
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'right-click':
-            return Gitkcli.get_view('context-menu').show_context_menu(RefListItem(self.ref), 'git-refs')
+            return Gitkcli.view_context_menu.show_context_menu(RefListItem(self.ref), 'git-refs')
         elif event_type == 'double-click' and 'tag_id' in self.ref:
             Gitkcli.job_git_diff.show_tag_annotation(self.ref['tag_id'])
             return True
@@ -689,7 +686,7 @@ class ToggleSegment(TextSegment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.txt[offset:width]
-        win.addstr(visible_txt, curses_color(self.color, selected, self.toggled, dim =  not self.enabled or not win == Gitkcli.get_view().win))
+        win.addstr(visible_txt, curses_color(self.color, selected, self.toggled, dim =  not self.enabled or not win == Gitkcli.get_active_view().win))
         return len(visible_txt)
 
 class SegmentedListItem(Item):
@@ -761,10 +758,10 @@ class SegmentedListItem(Item):
             if draw_separator and self.segment_separator:
                 draw_separator = False
                 remaining_width -= len(self.segment_separator)
-                win.addstr(self.segment_separator, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_view().win))
+                win.addstr(self.segment_separator, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
             if isinstance(segment, FillerSegment):
                 txt = self.get_fill_txt(width)
-                win.addstr(txt, curses_color(16 if matched else self.bg_color, selected, marked, dim = not win == Gitkcli.get_view().win))
+                win.addstr(txt, curses_color(16 if matched else self.bg_color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
                 length = len(txt)
             else:
                 length = segment.draw(win, offset, remaining_width, selected, matched, marked)
@@ -777,19 +774,19 @@ class SegmentedListItem(Item):
 
         if remaining_width > 0:
             if selected or marked:
-                win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_view().win))
+                win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
             else:
                 win.clrtoeol()
 
 class ListViewTitleItem(SegmentedListItem):
     def __init__(self, title:str, additional_segments = [], color = 30):
         self.title_segment = TextSegment(title, color)
-        segments = [ButtonSegment('[Menu]', lambda: Gitkcli.get_view('context-menu').show_context_menu(Gitkcli), color),
+        segments = [ButtonSegment('[Menu]', lambda: Gitkcli.view_context_menu.show_context_menu(Gitkcli), color),
                     self.title_segment,
                     FillerSegment()]
         segments.extend(additional_segments)
-        segments.append(ButtonSegment('[Search]', lambda: Gitkcli.get_view().handle_input(ord('/')), color));
-        segments.append(ButtonSegment("[X]", lambda: Gitkcli.hide_view(), color))
+        segments.append(ButtonSegment('[Search]', lambda: Gitkcli.get_active_view().handle_input(ord('/')), color));
+        segments.append(ButtonSegment("[X]", lambda: Gitkcli.hide_active_view(), color))
         super().__init__(segments, color)
 
     def set_title(self, txt:str):
@@ -806,7 +803,7 @@ class UncommittedChangesListItem(TextListItem):
 
     def show_changes(self):
         Gitkcli.job_git_diff.show_diff('HEAD', cached = self._staged, title = self.txt)
-        Gitkcli.show_view('git-diff')
+        Gitkcli.view_git_diff.show()
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if super().handle_mouse_input(event_type, x, y):
@@ -847,11 +844,11 @@ class CommitListItem(SegmentedListItem):
         super().draw_line(win, offset, width, selected, matched, Gitkcli.view_git_log.marked_commit_id == self.id)
 
     def show_commit(self):
-        if Gitkcli.get_view('git-diff').commit_id == self.id and Gitkcli.get_view('git-diff').is_diff == False:
-            Gitkcli.show_view('git-diff')
+        if Gitkcli.view_git_diff.commit_id == self.id and Gitkcli.view_git_diff.is_diff == False:
+            Gitkcli.view_git_diff.show()
         else:
             Gitkcli.job_git_diff.show_commit(self.id)
-            Gitkcli.show_view('git-diff')
+            Gitkcli.view_git_diff.show()
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if super().handle_mouse_input(event_type, x, y):
@@ -870,15 +867,13 @@ class CommitListItem(SegmentedListItem):
 
 class View:
     def __init__(self, id:str,
-                 title_item:typing.Any = None,
                  view_position:str = 'fullscreen',
                  x:typing.Optional[int] = None, y:typing.Optional[int] = None,
                  height:typing.Optional[int] = None, width:typing.Optional[int] = None):
 
         self.id:str = id
-        self.parent_id:str = ''
         self.view_position:str = view_position
-        self.title_item:typing.Any = title_item
+        self.title_item:typing.Any = None
         self.is_popup:bool = False
 
         # coordinates and sizes when view is 'floating'
@@ -928,6 +923,9 @@ class View:
 
         return win_height, win_width, win_y, win_x
 
+    def set_title_item(self, title_item):
+        self.title_item = title_item
+
     def move(self, rel_x, rel_y):
         self.dirty = True
         stdscr_height, stdscr_width = Gitkcli.stdscr.getmaxyx()
@@ -970,10 +968,10 @@ class View:
         if self.title_item:
             _, cols = self.win.getmaxyx()
             self.win.move(0, 0)
-            self.title_item.draw_line(self.win, 0, cols, Gitkcli.get_view() == self, False, False)
+            self.title_item.draw_line(self.win, 0, cols, self.is_active(), False, False)
 
         self.win.refresh()
-        if not self.id.startswith('log') and self.parent_id != 'log':
+        if self != Gitkcli.view_log and self.get_parent() != Gitkcli.view_log:
             log_debug(f'Draw view {self.id}')
 
     def on_activated(self):
@@ -995,7 +993,7 @@ class View:
                     Gitkcli.clicked_item = self.title_item
                 return handled
         elif self.is_popup and 'click' in event_type:
-            Gitkcli.hide_view(self.id)
+            self.hide()
             return True
         return False
 
@@ -1003,24 +1001,60 @@ class View:
         return False
 
     def get_parent(self):
-        if self.parent_id:
-            return Gitkcli.get_view(self.parent_id)
-        return Gitkcli.get_view(self.id[:self.id.rfind('-')])
+        try:
+            index = Gitkcli.showed_views.index(self)
+            if index > 0:
+                return Gitkcli.showed_views[index - 1]
+        except ValueError:
+            pass
+        return None
+    
+    def is_active(self) -> bool:
+        return len(Gitkcli.showed_views) > 0 and Gitkcli.showed_views[-1] == self
+
+    def show(self):
+        if self.is_active():
+            return
+        prev_view = Gitkcli.get_active_view()
+        if self in Gitkcli.showed_views:
+            Gitkcli.showed_views.remove(self)
+        Gitkcli.showed_views.append(self)
+        self.dirty = True
+        if prev_view:
+            prev_view.on_deactivated()
+        self.on_activated()
+
+    def hide(self):
+        if len(Gitkcli.showed_views) > 0:
+            deactivated = False
+            if self in Gitkcli.showed_views:
+                deactivated = Gitkcli.showed_views[-1] == self
+                Gitkcli.showed_views.remove(self)
+            else:
+                return
+            self.win.erase()
+            self.win.refresh()
+            if Gitkcli.get_active_view():
+                Gitkcli.get_active_view().dirty = True
+            if deactivated:
+                self.on_deactivated()
 
 class ListView(View):
     def __init__(self, id:str, view_position='fullscreen',
-                 title_item = None,
                  x:typing.Optional[int] = None, y:typing.Optional[int] = None,
-                 height:typing.Optional[int] = None, width:typing.Optional[int] = None,
-                 autoscroll:bool = False):
+                 height:typing.Optional[int] = None, width:typing.Optional[int] = None):
 
-        super().__init__(id, title_item, view_position, x, y, height, width)
+        super().__init__(id, view_position, x, y, height, width)
         self.items = []
         self.selected:int = 0
         self.offset_y:int = 0
         self.offset_x:int = 0
-        self.autoscroll:bool = autoscroll
-        self.search_dialog:typing.Optional[SearchDialogPopup] = None
+        self.autoscroll:bool = False
+        self._search_dialog:typing.Optional[SearchDialogPopup] = None
+
+    def set_search_dialog(self, search_dialog:"SearchDialogPopup"):
+        self._search_dialog = search_dialog
+        self._search_dialog.parent_list_view = self
 
     def copy_text_to_clipboard(self):
         text = "\n".join(item.get_text() for item in self.items)
@@ -1094,17 +1128,26 @@ class ListView(View):
                 break
         self.selected = new_selected
 
-    def search_requested(self, search_dialog_view):
-        for i in range(self.selected, len(self.items)):
-            if search_dialog_view.matches(self.items[i]):
-                self.selected = i
-                self._ensure_selection_is_visible()
-                return
-        for i in range(0, self.selected):
-            if search_dialog_view.matches(self.items[i]):
-                self.selected = i
-                self._ensure_selection_is_visible()
-                return
+    def search(self, backward:bool = False, repeat:bool = False):
+        if not self._search_dialog:
+            return
+
+        ranges = []
+        if not backward:
+            ranges.append(range(self.selected + 1, len(self.items)))
+            if repeat:
+                ranges.append(range(0, self.selected + 1))
+        else:
+            ranges.append(range(self.selected - 1, -1, -1))
+            if repeat:
+                ranges.append(range(len(self.items) - 1, self.selected - 1, -1))
+
+        for search_range in ranges:
+            for i in search_range:
+                if self._search_dialog.matches(self.items[i]):
+                    self.selected = i
+                    self._ensure_selection_is_visible()
+                    return
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'wheel-up':
@@ -1199,22 +1242,13 @@ class ListView(View):
             self._skip_non_selectable_items(1)
             self._ensure_selection_is_visible()
         elif key == ord('/'):
-            if self.search_dialog:
-                Gitkcli.clear_and_show_view(self.search_dialog.id)
+            if self._search_dialog:
+                self._search_dialog.clear()
+                self._search_dialog.show()
         elif key == ord('n'):
-            if self.search_dialog:
-                for i in range(self.selected + 1, len(self.items)):
-                    if self.search_dialog.matches(self.items[i]):
-                        self.selected = i
-                        self._ensure_selection_is_visible()
-                        break
+            self.search()
         elif key == ord('N'):
-            if self.search_dialog:
-                for i in reversed(range(0, self.selected)):
-                    if self.search_dialog.matches(self.items[i]):
-                        self.selected = i
-                        self._ensure_selection_is_visible()
-                        break
+            self.search(backward = True)
         else: 
             return super().handle_input(key)
 
@@ -1226,7 +1260,7 @@ class ListView(View):
             idx = i + self.offset_y
             item = self.items[idx]
             selected = idx == self.selected
-            matched = self.search_dialog.matches(item) if self.search_dialog else False
+            matched = self._search_dialog.matches(item) if self._search_dialog else False
 
             # curses throws exception if you want to write a character in bottom left corner
             width = self.width
@@ -1256,14 +1290,18 @@ class ListView(View):
 
 class GitLogView(ListView):
     def __init__(self):
-        repo_name = os.path.basename(Gitkcli.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
-        super().__init__(ID_GIT_LOG, 'fullscreen', ListViewTitleItem('Repository: ' + repo_name, [
-                ButtonSegment("[<---]", lambda: self.move_in_jump_list(+1), 30),
-                ButtonSegment("[--->]", lambda: self.move_in_jump_list(-1), 30)
-            ]));
+        super().__init__(ID_GIT_LOG, 'fullscreen');
         self.marked_commit_id = ''
         self.jump_list = []
         self.jump_index = 0
+
+        repo_name = os.path.basename(Gitkcli.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
+        self.set_title_item(ListViewTitleItem('Repository: ' + repo_name, [
+                ButtonSegment("[<---]", lambda: self.move_in_jump_list(+1), 30),
+                ButtonSegment("[--->]", lambda: self.move_in_jump_list(-1), 30)
+            ]))
+
+        self.set_search_dialog(GitSearchDialogPopup());
 
     def check_uncommitted_changes(self):
         to_remove = 0
@@ -1365,15 +1403,17 @@ class GitLogView(ListView):
     
     def create_branch(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
-        Gitkcli.get_view('git-log-ref').commit_id = commit_id
-        Gitkcli.get_view('git-log-ref').set_ref_type('branch')
-        Gitkcli.clear_and_show_view('git-log-ref')
+        Gitkcli.view_new_ref.commit_id = commit_id
+        Gitkcli.view_new_ref.set_ref_type('branch')
+        Gitkcli.view_new_ref.clear()
+        Gitkcli.view_new_ref.show()
     
     def create_tag(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
-        Gitkcli.get_view('git-log-ref').commit_id = commit_id
-        Gitkcli.get_view('git-log-ref').set_ref_type('tag')
-        Gitkcli.clear_and_show_view('git-log-ref')
+        Gitkcli.view_new_ref.commit_id = commit_id
+        Gitkcli.view_new_ref.set_ref_type('tag')
+        Gitkcli.view_new_ref.clear()
+        Gitkcli.view_new_ref.show()
     
     def reset(self, hard, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
@@ -1409,7 +1449,7 @@ class GitLogView(ListView):
     
     def diff_commits(self, old_commit_id, new_commit_id):
         Gitkcli.job_git_diff.show_diff(old_commit_id, new_commit_id)
-        Gitkcli.show_view('git-diff')
+        Gitkcli.view_git_diff.show()
 
     def handle_input(self, key):
         if key == ord('q') or key == curses.KEY_EXIT:
@@ -1441,7 +1481,11 @@ class ShowContextSegment(TextSegment):
 
 class GitDiffView(ListView):
     def __init__(self):
-        title_item = ListViewTitleItem('Git commit diff', [
+        super().__init__(ID_GIT_DIFF, 'fullscreen')
+        self.commit_id = ''
+        self.is_diff = False
+
+        self.set_title_item(ListViewTitleItem('Git commit diff', [
             ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.job_git_diff.change_ignore_whitespace(val.toggled), 30),
             TextSegment("  Lines of context:", 30),
             ShowContextSegment(30),
@@ -1449,10 +1493,9 @@ class GitDiffView(ListView):
             ButtonSegment("[ - ]", lambda: Gitkcli.job_git_diff.change_context(-1), 30),
             ButtonSegment("[<---]", lambda: Gitkcli.view_git_log.move_in_jump_list(+1), 30),
             ButtonSegment("[--->]", lambda: Gitkcli.view_git_log.move_in_jump_list(-1), 30)
-            ])
-        super().__init__(ID_GIT_DIFF, 'fullscreen', title_item) 
-        self.commit_id = ''
-        self.is_diff = False
+        ]))
+
+        self.set_search_dialog(SearchDialogPopup(ID_GIT_DIFF_SEARCH))
 
     def clear(self):
         super().clear()
@@ -1514,13 +1557,16 @@ class ShowLogLevelSegment(TextSegment):
 
 class LogView(ListView):
     def __init__(self):
-        title_item = ListViewTitleItem('Logs', [
+        super().__init__(ID_LOG, 'fullscreen') 
+
+        self.set_title_item(ListViewTitleItem('Logs', [
             ToggleSegment("[Autoscroll]", False, lambda val: setattr(self, 'autoscroll', val.toggled), 30),
             TextSegment("  Log level:", 30),
             ShowLogLevelSegment(30),
             ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 30),
-            ButtonSegment("[ - ]", lambda: self.change_log_level(-1), 30)])
-        super().__init__(ID_LOG, 'fullscreen', title_item) 
+            ButtonSegment("[ - ]", lambda: self.change_log_level(-1), 30)]))
+
+        self.set_search_dialog(SearchDialogPopup(ID_LOG_SEARCH))
 
     def change_log_level(self, value):
         if 0 <= Gitkcli.log_level + value <= 5:
@@ -1536,7 +1582,7 @@ class ContextMenuItem(TextListItem):
 
     def execute_action(self):
         if self.is_selectable:
-            Gitkcli.hide_view('context-menu')
+            Gitkcli.hide_active_view()
             self.action(*self.args)
 
     def handle_input(self, key):
@@ -1566,23 +1612,23 @@ class ContextMenu(ListView):
         super().on_deactivated()
         Gitkcli.capture_mouse_movement(False, self)
         
-    def show_context_menu(self, item, view_id:str = ''):
-        if Gitkcli.showed_views[-1] == self.id:
-            return
+    def show_context_menu(self, item, view_id:str = '') -> bool:
+        if Gitkcli.showed_views[-1] == self:
+            return True
         self.clear()
         self.selected = -1
         if not view_id:
-            view_id = Gitkcli.showed_views[-1]
-        view = Gitkcli.get_view()
+            view_id = Gitkcli.showed_views[-1].id
+        view = Gitkcli.get_active_view()
         x = Gitkcli.mouse_x
         y = Gitkcli.mouse_y
         if item == Gitkcli: # main menu
             x = 0
             y = 1
-            self.append(ContextMenuItem("Show Git commit log <F1>", item.show_view, ['git-log']))
-            self.append(ContextMenuItem("Show Git references <F2>", item.show_view, ['git-refs']))
-            self.append(ContextMenuItem("Show Git commit diff <F3>", item.show_view, ['git-diff']))
-            self.append(ContextMenuItem("Show Logs <F4>", item.show_view, ['log']))
+            self.append(ContextMenuItem("Show Git commit log <F1>", item.view_git_log.show, []))
+            self.append(ContextMenuItem("Show Git references <F2>", item.view_git_refs.show, []))
+            self.append(ContextMenuItem("Show Git commit diff <F3>", item.view_git_diff.show, []))
+            self.append(ContextMenuItem("Show Logs <F4>", item.view_log.show, []))
             self.append(SeparatorItem())
             if view_id == 'git-log':
                 self.append(ContextMenuItem("Refresh <F5>", item.refresh_head, []))
@@ -1645,9 +1691,8 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         else:
             return False
-        self.parent_id = view_id
         self.set_dimensions(x, y, len(self.items) + 2, 30)
-        Gitkcli.show_view(self.id)
+        self.show()
         return True
 
     def checkout_branch(self, branch_name):
@@ -1661,12 +1706,14 @@ class ContextMenu(ListView):
             log_error(f"Error checking out branch: {result.stderr}")
     
     def rename_branch(self, branch_name):
-        Gitkcli.get_view('git-branch-rename').set_old_branch_name(branch_name)
-        Gitkcli.clear_and_show_view('git-branch-rename')
+        Gitkcli.view_branch_rename.set_old_branch_name(branch_name)
+        Gitkcli.view_branch_rename.clear()
+        Gitkcli.view_branch_rename.show()
 
     def push_ref_to_remote(self, branch_name):
-        Gitkcli.get_view('git-ref-push').set_ref_name(branch_name)
-        Gitkcli.clear_and_show_view('git-ref-push')
+        Gitkcli.view_ref_push.set_ref_name(branch_name)
+        Gitkcli.view_ref_push.clear()
+        Gitkcli.view_ref_push.show()
 
     def remove_branch(self, branch_name):
         result = Gitkcli.run_job(['git', 'branch', '-d', branch_name])
@@ -1774,17 +1821,17 @@ class UserInputListItem(Item):
         left_txt = self.txt[self.offset:self.offset+self.cursor_pos]
         right_txt = self.txt[self.offset+self.cursor_pos:self.offset+width-1]
 
-        win.addstr(left_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
+        win.addstr(left_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
         win.addch(ord(' '), curses.A_REVERSE | curses.A_BLINK)
-        win.addstr(right_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
-        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_view().win))
+        win.addstr(right_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
+        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
 
 class RefPushDialogPopup(ListView):
     def __init__(self):
-        super().__init__(ID_GIT_REF_PUSH, 'floating', TextListItem('', 30, expand = True), height = 6)
+        super().__init__(ID_GIT_REF_PUSH, 'floating', height = 6)
+        self.set_title_item(TextListItem('', 30, expand = True))
         self.append(SpacerListItem())
         self.is_popup = True
-        self.parent_id = ID_GIT_LOG
 
         self.remotes = []
         for remote in Gitkcli.run_job(['git', 'remote']).stdout.rstrip().split('\n'):
@@ -1830,10 +1877,10 @@ class RefPushDialogPopup(ListView):
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
-            Gitkcli.hide_view(self.id)
+            self.hide()
             self.push_ref()
         elif key == curses.KEY_EXIT:
-            Gitkcli.hide_view(self.id)
+            self.hide()
         elif key == curses.KEY_F1:
             self.force.toggle()
         elif key == 9:  # Tab key - cycle through remotes
@@ -1851,8 +1898,8 @@ class RefPushDialogPopup(ListView):
 
 class UserInputDialogPopup(ListView):
     def __init__(self, id:str, title:str, header_item:Item, bottom_item:typing.Optional[Item] = None):
-        
-        super().__init__(id, 'floating', TextListItem(title, 30, expand = True), height = 7)
+        super().__init__(id, 'floating', height = 7)
+        self.set_title_item(TextListItem(title, 30, expand = True))
         self.input = UserInputListItem()
         self.is_popup = True
 
@@ -1880,13 +1927,13 @@ class UserInputDialogPopup(ListView):
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
-            Gitkcli.hide_view(self.id)
+            self.hide()
             self.execute()
 
         elif key == curses.KEY_EXIT:
             self.input.txt = ""
             self.cursor_pos = 0
-            Gitkcli.hide_view(self.id)
+            self.hide()
 
         else:
             return super().handle_input(key)
@@ -1897,7 +1944,6 @@ class BranchRenameDialogPopup(UserInputDialogPopup):
     def __init__(self):
         super().__init__(ID_BRANCH_RENAME, ' Rename Branch', TextListItem(''))
         self.old_branch_name = ''
-        self.parent_id = ID_GIT_LOG
 
     def set_old_branch_name(self, name):
         self.old_branch_name = name
@@ -1955,12 +2001,13 @@ class NewRefDialogPopup(UserInputDialogPopup):
 
 class SearchDialogPopup(UserInputDialogPopup):
     def __init__(self, id:str):
+        self.parent_list_view:ListView
         self.case_sensitive = ToggleSegment("<Case>", True)
         self.use_regexp = ToggleSegment("<Regexp>")
         self.header = SegmentedListItem([FillerSegment(), TextSegment("Flags:"), self.case_sensitive, self.use_regexp, FillerSegment()])
         buttons = SegmentedListItem([FillerSegment(),
-                                     ButtonSegment("[Search Next]", lambda: self.get_parent().handle_input(ord('n'))),
-                                     ButtonSegment("[Search Previous]", lambda: self.get_parent().handle_input(ord('N'))),
+                                     ButtonSegment("[Search Next]", lambda: self.parent_list_view.search()),
+                                     ButtonSegment("[Search Previous]", lambda: self.parent_list_view.search(backward = True)),
                                      ButtonSegment("[Close]", lambda: self.handle_input(curses.KEY_EXIT)),
                                      FillerSegment()])
         buttons.is_selectable = False
@@ -1982,7 +2029,7 @@ class SearchDialogPopup(UserInputDialogPopup):
 
     def handle_input(self, key):
         if key == curses.KEY_DC or key == curses.KEY_BACKSPACE or key == 127 or 32 <= key <= 126:
-            self.get_parent().dirty = True
+            self.parent_list_view.dirty = True
 
         if key == curses.KEY_F1:
             self.case_sensitive.toggle()
@@ -1993,7 +2040,7 @@ class SearchDialogPopup(UserInputDialogPopup):
         return True
 
     def execute(self):
-        self.get_parent().search_requested(self)
+        self.parent_list_view.search(repeat = True)
 
 class GitSearchDialogPopup(SearchDialogPopup):
     def __init__(self):
@@ -2035,7 +2082,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
             if self.search_type == "txt":
                 return super().handle_input(key)
 
-            Gitkcli.hide_view(self.id)
+            self.hide()
 
             args = []
             if not self.case_sensitive.toggled:
@@ -2061,7 +2108,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
             Gitkcli.job_git_search.start_job(args)
 
         elif key == 9:  # Tab key - cycle through search types
-            self.get_parent().dirty = True
+            self.parent_list_view.dirty = True
             if self.search_type == "txt":
                 self.change_search_type("id")
             elif self.search_type == "id":
@@ -2137,15 +2184,12 @@ class Gitkcli:
         cls.view_git_log = GitLogView()
         cls.view_new_ref = NewRefDialogPopup()
         cls.view_git_diff = GitDiffView()
-        cls.view_git_refs = ListView(ID_GIT_REFS, title_item = ListViewTitleItem('Git references'))
+        cls.view_git_refs = ListView(ID_GIT_REFS)
+        cls.view_git_refs.set_title_item(ListViewTitleItem('Git references'))
+        cls.view_git_refs.set_search_dialog(SearchDialogPopup(ID_GIT_REFS_SEARCH))
         cls.view_branch_rename = BranchRenameDialogPopup()
         cls.view_ref_push = RefPushDialogPopup()
         cls.view_context_menu = ContextMenu()
-
-        cls.view_log.search_dialog = SearchDialogPopup(ID_LOG_SEARCH)
-        cls.view_git_log.search_dialog = GitSearchDialogPopup()
-        cls.view_git_diff.search_dialog = SearchDialogPopup(ID_GIT_DIFF_SEARCH)
-        cls.view_git_refs.search_dialog = SearchDialogPopup(ID_GIT_REFS_SEARCH)
 
         cls.job_git_log = GitLogJob(ID_GIT_LOG, cmd_args)
         cls.job_git_refresh_head = GitRefreshHeadJob() # NOTE: This job will be no longer needed when we will have implemented graph with topology order
@@ -2188,6 +2232,7 @@ class Gitkcli:
         commit_id = cls.head_id
         if commit_id:
             cls.job_git_refresh_head.start_job(['--reverse', f'{commit_id}..HEAD'])
+        cls.view_git_log.check_uncommitted_changes()
 
     @classmethod
     def reload_refs_commits(cls):
@@ -2237,67 +2282,39 @@ class Gitkcli:
 
     @classmethod
     def redraw_all_views(cls):
-        for view_id in cls.showed_views:
-            view = cls.get_view(view_id)
+        for view in reversed(cls.showed_views):
             view.dirty = True
             if view.view_position == 'fullscreen':
                 break
 
     @classmethod
-    def get_job(cls, id = None) -> typing.Any:
+    def get_job(cls) -> typing.Optional[SubprocessJob]:
         if len(cls.showed_views) > 0:
-            id = cls.showed_views[-1] if not id else id
+            id = cls.showed_views[-1].id
             if id in cls.jobs:
                 return cls.jobs[id]
         return None
 
     @classmethod
-    def get_view(cls, id = None) -> typing.Any:
-        if id is None and len(cls.showed_views) > 0:
-            id = cls.showed_views[-1]
-        if id in cls.views:
-            return cls.views[id]
+    def get_active_view(cls) -> typing.Any:
+        if len(cls.showed_views) > 0:
+            return cls.showed_views[-1]
         return None
 
     @classmethod
-    def show_view(cls, id):
-        if len(cls.showed_views) > 0 and cls.showed_views[-1] == id:
-            return
-        prev_view = cls.get_view()
-        if id in cls.showed_views:
-            cls.showed_views.remove(id)
-        cls.showed_views.append(id)
-        cls.get_view().dirty = True
-        if prev_view and cls.get_view().view_position == 'fullscreen':
-            prev_view.on_deactivated()
-        cls.get_view().on_activated()
-
-    @classmethod
-    def clear_and_show_view(cls, id):
-        cls.get_view(id).clear()
-        cls.show_view(id)
-
-    @classmethod
-    def hide_view(cls, id:typing.Optional[str] = None):
+    def hide_active_view(cls):
         if len(cls.showed_views) > 0:
-            if not id or cls.showed_views[-1] == id:
-                view_id = cls.showed_views.pop(-1)
-                cls.get_view(view_id).on_deactivated()
-            elif id in cls.showed_views:
-                view_id = id
-                cls.showed_views.remove(id)
-            else:
-                return
-            cls.get_view(view_id).win.erase()
-            cls.get_view(view_id).win.refresh()
-            if cls.get_view():
-                cls.get_view().dirty = True
+            view = cls.showed_views.pop(-1)
+            view.on_deactivated()
+            view.win.erase()
+            view.win.refresh()
+            if cls.get_active_view():
+                cls.get_active_view().dirty = True
 
     @classmethod
     def draw_visible_views(cls):
         positions = {}
-        for view_id in cls.showed_views:
-            view = cls.get_view(view_id)
+        for view in cls.showed_views:
             positions.pop('floating', None)
             if view.view_position == 'fullscreen':
                 positions.clear()
@@ -2328,7 +2345,7 @@ class Gitkcli:
                 cls.status_bar_message = ''
 
         job = cls.get_job()
-        view = cls.get_view()
+        view = cls.get_active_view()
         if not job or not view:
             return
 
@@ -2340,7 +2357,7 @@ class Gitkcli:
         else:
             job_status = f"Exited with code {job.get_exit_code()}"
 
-        stdscr.addstr(lines-1, 0, f"Line {view.selected+1}/{len(view.items)} - Offset {view.offset_x} - Process '{cls.showed_views[-1]}' {job_status}".ljust(cols - 1), curses_color(200))
+        stdscr.addstr(lines-1, 0, f"Line {view.selected+1}/{len(view.items)} - Offset {view.offset_x} - Process '{cls.showed_views[-1].id}' {job_status}".ljust(cols - 1), curses_color(200))
 
 def init_color(pair_number: int, nfg:int, nbg:int = -1, hfg:int = -1, hbg:int = -1, sfg:int = -1, sbg:int = -1, shfg:int = -1, shbg:int = -1) -> None:
     # normal
@@ -2379,8 +2396,7 @@ def process_mouse_event(event_type:str, active_view:View):
             event_type = 'left-release-out'
 
     enclosed_view = None
-    for id in reversed(Gitkcli.showed_views):
-        view = Gitkcli.get_view(id)
+    for view in reversed(Gitkcli.showed_views):
         if view.is_popup or view.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
             enclosed_view = view
             break
@@ -2388,7 +2404,7 @@ def process_mouse_event(event_type:str, active_view:View):
     if enclosed_view and event_type == 'left-click':
         Gitkcli.clicked_view = enclosed_view
         if enclosed_view and enclosed_view != active_view:
-            Gitkcli.show_view(enclosed_view.id)
+            enclosed_view.show()
             enclosed_view.dirty = True
             active_view.dirty = True
 
@@ -2472,8 +2488,9 @@ def launch_curses(stdscr, cmd_args):
 
     Gitkcli.job_git_refs.start_job()
     Gitkcli.job_git_log.start_job()
+    Gitkcli.view_git_log.check_uncommitted_changes()
 
-    Gitkcli.show_view('git-log')
+    Gitkcli.view_git_log.show()
 
     try:
         while Gitkcli.running:
@@ -2487,7 +2504,7 @@ def launch_curses(stdscr, cmd_args):
             except curses.error as e:
                 log_warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
 
-            active_view = Gitkcli.get_view()
+            active_view = Gitkcli.get_active_view()
             if not active_view:
                 break;
             
@@ -2584,19 +2601,19 @@ def launch_curses(stdscr, cmd_args):
 
             else:
                 if key == ord('q') or key == curses.KEY_EXIT:
-                    Gitkcli.hide_view()
+                    Gitkcli.hide_active_view()
                 elif key == KEY_CTRL_LEFT:
                     Gitkcli.view_git_log.move_in_jump_list(+1)
                 elif key == KEY_CTRL_RIGHT:
                     Gitkcli.view_git_log.move_in_jump_list(-1)
                 elif key == curses.KEY_F1:
-                    Gitkcli.show_view('git-log')
+                    Gitkcli.view_git_log.show()
                 elif key == curses.KEY_F2:
-                    Gitkcli.show_view('git-refs')
+                    Gitkcli.view_git_refs.show()
                 elif key == curses.KEY_F3:
-                    Gitkcli.show_view('git-diff')
+                    Gitkcli.view_git_diff.show()
                 elif key == curses.KEY_F4:
-                    Gitkcli.show_view('log')
+                    Gitkcli.view_log.show()
                 elif key == curses.KEY_F5:
                     Gitkcli.refresh_head()
                     Gitkcli.reload_refs()
