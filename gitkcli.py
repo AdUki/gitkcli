@@ -305,7 +305,7 @@ class GitDiffJob(SubprocessJob):
         Gitkcli.view_git_diff.commit_id = old_commit_id
         Gitkcli.view_git_diff.is_diff = True
         if not title:
-            title = f'Diff {old_commit_id} {new_commit_id}'
+            title = f'Diff {old_commit_id[:7]} {new_commit_id[:7]}'
         Gitkcli.view_git_diff.title_item.set_title(title)
         self.start_job(self._get_args())
 
@@ -320,7 +320,7 @@ class GitDiffJob(SubprocessJob):
         Gitkcli.view_git_diff.clear()
         Gitkcli.view_git_diff.commit_id = commit_id
         Gitkcli.view_git_diff.is_diff = False
-        Gitkcli.view_git_diff.title_item.set_title(f'Commit {commit_id}')
+        Gitkcli.view_git_diff.title_item.set_title(f'Commit {commit_id[:7]}')
         if on_finished == None and commit_id in self.selected_line_map:
             on_finished = lambda: Gitkcli.view_git_diff.select_item(self.selected_line_map[commit_id])
         self.start_job(self._get_args(), on_finished = on_finished)
@@ -946,16 +946,6 @@ class View:
         self.win.resize(height, width)
         self.win.mvwin(y, x)
 
-    def move(self, rel_x, rel_y):
-        self.dirty = True
-        self.resized = True
-        stdscr_height, stdscr_width = Gitkcli.stdscr.getmaxyx()
-        win_y, win_x = self.win.getbegyx()
-        win_height, win_width = self.win.getmaxyx()
-        win_x = max(0, min(win_x + rel_x, stdscr_width - win_width))
-        win_y = max(0, min(win_y + rel_y, stdscr_height - win_height))
-        self.win.mvwin(win_y, win_x)
-
     def set_dimensions(self, x, y, height, width):
         self.fixed_x = x
         self.fixed_y = y
@@ -996,24 +986,31 @@ class View:
     def handle_resize(self, rel_x:int, rel_y:int):
         if not self.resize_mode:
             return
-        if 'm' in self.resize_mode:
-            self.move(rel_x, rel_y)
-            return
+
         stdscr_height, stdscr_width = Gitkcli.stdscr.getmaxyx()
+        stdscr_height -= 1 # status bar
         win_y, win_x = self.win.getbegyx()
         win_height, win_width = self.win.getmaxyx()
-        new_x = win_x
-        new_y = win_y
-        new_width = win_width
-        new_height = win_height
-        if 'w' in self.resize_mode:
-            new_x = max(0, win_x + rel_x)
-            new_width = win_width - (new_x - win_x)
-        if 'e' in self.resize_mode:
-            new_width = max(5, min(stdscr_width - new_x, win_width + rel_x))
-        if 's' in self.resize_mode:
-            new_height = max(5, min(stdscr_height - new_y, win_height + rel_y))
-        self.set_dimensions(new_x, new_y, new_height, new_width)
+
+        if 'm' in self.resize_mode:
+            new_x = max(0, min(win_x + rel_x, stdscr_width - win_width))
+            new_y = max(0, min(win_y + rel_y, stdscr_height - win_height))
+            self.win.mvwin(new_y, new_x)
+            self.dirty = True
+            self.resized = True
+        else:
+            new_x = win_x
+            new_y = win_y
+            new_width = win_width
+            new_height = win_height
+            if 'w' in self.resize_mode:
+                new_x = max(0, win_x + rel_x)
+                new_width = win_width - (new_x - win_x)
+            if 'e' in self.resize_mode:
+                new_width = max(5, min(stdscr_width - new_x, win_width + rel_x))
+            if 's' in self.resize_mode:
+                new_height = max(5, min(stdscr_height - new_y, win_height + rel_y))
+            self.set_dimensions(new_x, new_y, new_height, new_width)
 
     def screen_size_changed(self, lines, cols):
         self.dirty = True
@@ -1094,6 +1091,7 @@ class View:
             Gitkcli.showed_views.remove(self)
         Gitkcli.showed_views.append(self)
         self.dirty = True
+        self.resized = True
         if prev_view:
             prev_view.on_deactivated()
         self.on_activated()
@@ -1104,15 +1102,15 @@ class View:
                 return
             deactivated = Gitkcli.showed_views[-1] == self
             Gitkcli.showed_views.remove(self)
-            self.win.erase()
-            self.win.refresh()
-            if Gitkcli.get_active_view():
-                Gitkcli.get_active_view().dirty = True
+            active_view = Gitkcli.get_active_view()
+            if active_view:
+                active_view.dirty = True
+                active_view.resized = True
             if deactivated:
                 self.on_deactivated()
 
 class ListView(View):
-    def __init__(self, id:str, view_mode='fullscreen',
+    def __init__(self, id:str, view_mode:str = 'fullscreen',
                  x:typing.Optional[int] = None, y:typing.Optional[int] = None,
                  height:typing.Optional[int] = None, width:typing.Optional[int] = None):
 
@@ -2238,6 +2236,7 @@ class Gitkcli:
     clicked_item:Item|None = None
 
     stdscr:curses.window
+    force_redraw:bool = False
 
     view_log:LogView
     view_git_log:GitLogView
@@ -2395,13 +2394,12 @@ class Gitkcli:
                 positions.pop('fullscreen', None)
 
         force_redraw = False
-
-        resized = False
         for view in windows:
-            resized = resized or view.resized
-        if resized:
-            force_redraw = True
-            if not 'fullscreen' in positions:
+            if view.resized:
+                force_redraw = True
+                break
+
+        if force_redraw and not 'fullscreen' in positions:
                 Gitkcli.stdscr.clear()
                 Gitkcli.stdscr.refresh()
 
