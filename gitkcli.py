@@ -732,11 +732,8 @@ class SegmentedListItem(Item):
         elif self.clicked_segment:
             if 'release' in event_type:
                 self.clicked_segment = None
-            if segment != self.get_segment_on_offset(x):
-                if 'move-in' in event_type:
-                    event_type = event_type.replace('in', 'out')
-                if 'release' in event_type:
-                    return True
+            if 'move-in' in event_type and self.clicked_segment != self.get_segment_on_offset(x):
+                event_type = event_type.replace('in', 'out')
         if segment and segment.handle_mouse_input(event_type, x, y):
             return True
         return super().handle_mouse_input(event_type, x, y)
@@ -971,16 +968,16 @@ class View:
         self.win.resize(height, width)
         self.win.mvwin(y, x)
 
-    def start_resize(self, x:int, y:int):
+    def start_resize(self, x:int, y:int) -> bool:
         self.resize_mode = ''
         if self.view_mode != 'window':
-            return
+            return False
         win_y, win_x = self.win.getbegyx()
         if y <= win_y:
             self.resize_mode = 'm'
-            return
+            return True
         if self.is_popup:
-            return
+            return False
         win_height, win_width = self.win.getmaxyx()
         if x >= win_x + win_width - 1:
             self.resize_mode += 'e'
@@ -988,9 +985,13 @@ class View:
             self.resize_mode += 'w'
         if y >= win_y + win_height - 1:
             self.resize_mode += 's'
+        return bool(self.resize_mode)
 
-    def stop_resize(self):
-        self.resize_mode = ''
+    def stop_resize(self) -> bool:
+        if self.resize_mode:
+            self.resize_mode = ''
+            return True
+        return False
 
     def handle_resize(self, rel_x:int, rel_y:int):
         if not self.resize_mode:
@@ -1051,21 +1052,20 @@ class View:
         log_debug(f'View {self.id} deactivated')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        if event_type == 'left-release':
+            self.stop_resize()
         if event_type == 'left-move' and self.view_mode == 'window':
             move_x = Gitkcli.mouse_x - Gitkcli.mouse_click_x
             move_y = Gitkcli.mouse_y - Gitkcli.mouse_click_y
             self.handle_resize(move_x, move_y)
             return True
-        if event_type == 'left-click' and self.view_mode == 'window':
-            self.start_resize(Gitkcli.mouse_x, Gitkcli.mouse_y)
-        if event_type == 'left-release':
-            self.stop_resize()
         if self.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
-            if y == 0 and self.title_item:
-                handled = self.title_item.handle_mouse_input(event_type, x, y)
-                if handled and ('left-click' == event_type or 'double-click' == event_type):
+            if y == 0 and self.title_item and self.title_item.handle_mouse_input(event_type, x, y):
+                if 'left-click' == event_type or 'double-click' == event_type:
                     Gitkcli.clicked_item = self.title_item
-                return handled
+                return True
+            if event_type == 'left-click' and self.start_resize(Gitkcli.mouse_x, Gitkcli.mouse_y):
+                return True
         elif self.is_popup and 'click' in event_type:
             self.hide()
             return True
@@ -1100,12 +1100,10 @@ class View:
 
     def hide(self):
         if len(Gitkcli.showed_views) > 0:
-            deactivated = False
-            if self in Gitkcli.showed_views:
-                deactivated = Gitkcli.showed_views[-1] == self
-                Gitkcli.showed_views.remove(self)
-            else:
+            if not self in Gitkcli.showed_views:
                 return
+            deactivated = Gitkcli.showed_views[-1] == self
+            Gitkcli.showed_views.remove(self)
             self.win.erase()
             self.win.refresh()
             if Gitkcli.get_active_view():
@@ -1235,25 +1233,26 @@ class ListView(View):
                 self.offset_y = max(0, len(self.items) - self.height)
             return True
 
-        view_x = x - self.x
-        view_y = y - self.y
-        index = self.offset_y + view_y
+        if not self.resize_mode:
+            view_x = x - self.x
+            view_y = y - self.y
+            index = self.offset_y + view_y
 
-        if 0 <= view_y < self.height and 0 <= view_x < self.width and 0 <= index < len(self.items):
-            selected = False
-            if 'move' in event_type:
-                if self.selected == index:
-                    return False # do not redraw when hovering over same item
-            if event_type == 'left-click' or event_type == 'double-click' or ('move' in event_type and self in Gitkcli.mouse_movement_capture):
-                if self.items[index].is_selectable:
-                    self.selected = index
-                    selected = True
-            item = self.items[index]
-            handled = item.handle_mouse_input(event_type, view_x + self.offset_x, index)
-            if handled and ('left-click' == event_type or 'double-click' == event_type):
-                Gitkcli.clicked_item = item
-            if selected or handled:
-                return True
+            if 0 <= view_y < self.height and 0 <= view_x < self.width and 0 <= index < len(self.items):
+                selected = False
+                if 'move' in event_type:
+                    if self.selected == index:
+                        return False # do not redraw when hovering over same item
+                if event_type == 'left-click' or event_type == 'double-click' or ('move' in event_type and self in Gitkcli.mouse_movement_capture):
+                    if self.items[index].is_selectable:
+                        self.selected = index
+                        selected = True
+                item = self.items[index]
+                handled = item.handle_mouse_input(event_type, view_x + self.offset_x, index)
+                if handled and ('left-click' == event_type or 'double-click' == event_type):
+                    Gitkcli.clicked_item = item
+                if selected or handled:
+                    return True
 
         return super().handle_mouse_input(event_type, x, y)
 
@@ -1634,6 +1633,7 @@ class LogView(ListView):
         super().__init__(ID_LOG, 'fullscreen') 
 
         self.set_title_item(ListViewTitleItem('Logs', [
+            ButtonSegment("[Clear]", lambda: self.clear(), 30),
             ToggleSegment("[Autoscroll]", False, lambda val: setattr(self, 'autoscroll', val.toggled), 30),
             TextSegment("  Log level:", 30),
             ShowLogLevelSegment(30),
