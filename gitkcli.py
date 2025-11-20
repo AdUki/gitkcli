@@ -508,7 +508,7 @@ class RefListItem(Item):
         if len(line) > width:
             line = line[:width]
 
-        win.addstr(line, curses_color(color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
+        win.addstr(line, curses_color(color, selected, marked))
         win.clrtoeol()
 
     def jump_to_ref(self):
@@ -552,7 +552,7 @@ class TextListItem(Item):
             line = line[:width]
             clear = False
 
-        win.addstr(line, curses_color(16 if matched else self.color, selected, marked, dim = not self.is_selectable or not win == Gitkcli.get_active_view().win))
+        win.addstr(line, curses_color(16 if matched else self.color, selected, marked, dim = not self.is_selectable))
         if clear:
             win.clrtoeol()
 
@@ -610,7 +610,7 @@ class TextSegment(Segment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.get_text()[offset:width]
-        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
+        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked))
         return len(visible_txt)
 
 class RefSegment(TextSegment):
@@ -686,7 +686,7 @@ class ToggleSegment(TextSegment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.txt[offset:width]
-        win.addstr(visible_txt, curses_color(self.color, selected, self.toggled, dim =  not self.enabled or not win == Gitkcli.get_active_view().win))
+        win.addstr(visible_txt, curses_color(self.color, selected, self.toggled, dim =  not self.enabled))
         return len(visible_txt)
 
 class SegmentedListItem(Item):
@@ -755,10 +755,10 @@ class SegmentedListItem(Item):
             if draw_separator and self.segment_separator:
                 draw_separator = False
                 remaining_width -= len(self.segment_separator)
-                win.addstr(self.segment_separator, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
+                win.addstr(self.segment_separator, curses_color(self.bg_color, selected, marked))
             if isinstance(segment, FillerSegment):
                 txt = self.get_fill_txt(width)
-                win.addstr(txt, curses_color(16 if matched else self.bg_color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
+                win.addstr(txt, curses_color(16 if matched else self.bg_color, selected, marked))
                 length = len(txt)
             else:
                 length = segment.draw(win, offset, remaining_width, selected, matched, marked)
@@ -771,7 +771,7 @@ class SegmentedListItem(Item):
 
         if remaining_width > 0:
             if selected or marked:
-                win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
+                win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked))
             else:
                 win.clrtoeol()
 
@@ -833,12 +833,15 @@ class CommitListItem(SegmentedListItem):
 
     def get_segments(self):
         commit = Gitkcli.commits[self.id]
-        segments = [
-            TextSegment(self.id[:7], 4),
-            TextSegment(commit['date'].strftime("%Y-%m-%d %H:%M"), 5),
-            TextSegment(commit['author'].ljust(22), 6),
-            TextSegment(commit['title']),
-        ]
+        segments = []
+
+        if Gitkcli.show_commit_id:
+            segments.append(TextSegment(self.id[:7], 4))
+        if Gitkcli.show_commit_date:
+            segments.append(TextSegment(commit['date'].strftime("%Y-%m-%d %H:%M"), 5))
+        if Gitkcli.show_commit_author:
+            segments.append(TextSegment(commit['author'].ljust(22), 6))
+        segments.append(TextSegment(commit['title']))
 
         head_position = len(segments) + 1 # +1, because we want to skip 'HEAD ->' segment
         for ref in Gitkcli.refs.get(self.id, []):
@@ -1030,6 +1033,7 @@ class View:
 
     def draw(self):
         if self.view_mode == 'window':
+            self.win.attrset(curses.color_pair(5 if self.is_active() else 18))
             self.win.box()
 
         # draw title bar
@@ -1348,15 +1352,16 @@ class ListView(View):
         super().draw()
 
         if separator_items:
+            color = 5 if self.is_active() else 16
             for i in separator_items:
                 if self.view_mode == 'window':
                     self.win.move(self.y + i, self.x-1)
-                    self.win.addstr('├', curses_color(1))
-                    self.win.addstr('─' * self.width, curses_color(1))
-                    self.win.addstr('┤', curses_color(1))
+                    self.win.addstr('├', curses_color(color))
+                    self.win.addstr('─' * self.width, curses_color(color))
+                    self.win.addstr('┤', curses_color(color))
                 else:
                     self.win.move(self.y + i, self.x)
-                    self.win.addstr('─' * self.width, curses_color(1))
+                    self.win.addstr('─' * self.width, curses_color(color))
             self.win.refresh()
 
 class GitLogView(ListView):
@@ -1373,6 +1378,18 @@ class GitLogView(ListView):
             ]))
 
         self.set_search_dialog(GitSearchDialogPopup());
+
+    def toggle_show_commit_id(self):
+        Gitkcli.show_commit_id = not Gitkcli.show_commit_id
+        self.dirty = True
+
+    def toggle_show_commit_date(self):
+        Gitkcli.show_commit_date = not Gitkcli.show_commit_date
+        self.dirty = True
+
+    def toggle_show_commit_author(self):
+        Gitkcli.show_commit_author = not Gitkcli.show_commit_author
+        self.dirty = True
 
     def check_uncommitted_changes(self):
         to_remove = 0
@@ -1707,6 +1724,10 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Refresh <F5>", item.refresh_head, []))
                 self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_refs_commits, []))
                 self.append(SeparatorItem())
+                self.append(ContextMenuItem("Show/Hide commit ID", view.toggle_show_commit_id, []))
+                self.append(ContextMenuItem("Show/Hide commit date", view.toggle_show_commit_date, []))
+                self.append(ContextMenuItem("Show/Hide commit author", view.toggle_show_commit_author, []))
+                self.append(SeparatorItem())
             elif view_id == 'git-refs':
                 self.append(ContextMenuItem("Reread references", item.reload_refs, []))
                 self.append(SeparatorItem())
@@ -1894,10 +1915,10 @@ class UserInputListItem(Item):
         left_txt = self.txt[self.offset:self.offset+self.cursor_pos]
         right_txt = self.txt[self.offset+self.cursor_pos:self.offset+width-1]
 
-        win.addstr(left_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
+        win.addstr(left_txt, curses_color(16 if matched else self.color, selected, marked))
         win.addch(ord(' '), curses.A_REVERSE | curses.A_BLINK)
-        win.addstr(right_txt, curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
-        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(16 if matched else self.color, selected, marked, dim = not win == Gitkcli.get_active_view().win))
+        win.addstr(right_txt, curses_color(16 if matched else self.color, selected, marked))
+        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(16 if matched else self.color, selected, marked))
 
 class RefPushDialogPopup(ListView):
     def __init__(self):
@@ -2210,6 +2231,9 @@ class Gitkcli:
     rename_limit = 1570
     log_level = 4
     ignore_whitespace = False
+    show_commit_id = True
+    show_commit_date = True
+    show_commit_author = True
 
     unlinked_parent_ids = {}
 
