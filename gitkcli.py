@@ -792,6 +792,15 @@ class ListViewTitleItem(SegmentedListItem):
     def set_title(self, txt:str):
         self.title_segment.set_text(txt)
 
+    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        handled = super().handle_mouse_input(event_type, x, y)
+        if handled:
+            return True
+        if 'double-click' == event_type:
+            Gitkcli.get_active_view().toggle_view_mode()
+            return True
+        return False
+
 class UncommittedChangesListItem(TextListItem):
     def __init__(self, staged:bool = False):
         self._staged = staged
@@ -867,22 +876,24 @@ class CommitListItem(SegmentedListItem):
 
 class View:
     def __init__(self, id:str,
-                 view_position:str = 'fullscreen',
+                 view_mode:str = 'fullscreen',
                  x:typing.Optional[int] = None, y:typing.Optional[int] = None,
                  height:typing.Optional[int] = None, width:typing.Optional[int] = None):
 
         self.id:str = id
-        self.view_position:str = view_position
+        self.view_mode:str = view_mode
         self.title_item:typing.Any = None
         self.is_popup:bool = False
 
-        # coordinates and sizes when view is 'floating'
+        # coordinates and sizes when view is 'window'
         self.fixed_x = x
         self.fixed_y = y
         self.fixed_height = height
         self.fixed_width = width
 
         self.dirty:bool = True
+        self.resized:bool = False
+        self.resize_mode:str = ''
         
         stdscr_lines, stdscr_cols = Gitkcli.stdscr.getmaxyx()
         height, width, y, x = self._calculate_dimensions(stdscr_lines, stdscr_cols)
@@ -897,13 +908,13 @@ class View:
         win_y = 0
         win_x = 0
 
-        if self.view_position == 'top':
+        if self.view_mode == 'top':
             win_height = int(lines / 2)
-        elif self.view_position == 'bottom':
+        elif self.view_mode == 'bottom':
             top_height = lines - int(lines / 2)
             win_height = lines - top_height
             win_y = top_height - 1
-        elif self.view_position == 'floating':
+        elif self.view_mode == 'window':
             win_height = min(lines, self.fixed_height if self.fixed_height else int(lines / 2))
             win_width = min(cols, self.fixed_width if self.fixed_width else int(cols / 2))
             win_y = min(lines - win_height, int((lines - win_height) / 2) if self.fixed_y is None else self.fixed_y)
@@ -915,7 +926,7 @@ class View:
         self.y = 1
         self.x = 0
 
-        if self.view_position == 'floating':
+        if self.view_mode == 'window':
             # substract "box"
             self.height -= 1
             self.width -= 2
@@ -926,8 +937,21 @@ class View:
     def set_title_item(self, title_item):
         self.title_item = title_item
 
+    def toggle_view_mode(self):
+        if self.view_mode == 'window':
+            self.view_mode = 'fullscreen'
+        else:
+            self.view_mode = 'window'
+            self.resized = True
+        self.dirty = True
+        stdscr_height, stdscr_width = Gitkcli.stdscr.getmaxyx()
+        height, width, y, x = self._calculate_dimensions(stdscr_height, stdscr_width)
+        self.win.resize(height, width)
+        self.win.mvwin(y, x)
+
     def move(self, rel_x, rel_y):
         self.dirty = True
+        self.resized = True
         stdscr_height, stdscr_width = Gitkcli.stdscr.getmaxyx()
         win_y, win_x = self.win.getbegyx()
         win_height, win_width = self.win.getmaxyx()
@@ -941,13 +965,58 @@ class View:
         self.fixed_height = height
         self.fixed_width = width
         self.dirty = True
+        self.resized = True
         stdscr_height, stdscr_width = Gitkcli.stdscr.getmaxyx()
         height, width, y, x = self._calculate_dimensions(stdscr_height, stdscr_width)
         self.win.resize(height, width)
         self.win.mvwin(y, x)
-            
+
+    def start_resize(self, x:int, y:int):
+        self.resize_mode = ''
+        if self.view_mode != 'window':
+            return
+        win_y, win_x = self.win.getbegyx()
+        if y <= win_y:
+            self.resize_mode = 'm'
+            return
+        if self.is_popup:
+            return
+        win_height, win_width = self.win.getmaxyx()
+        if x >= win_x + win_width - 1:
+            self.resize_mode += 'e'
+        if x <= win_x:
+            self.resize_mode += 'w'
+        if y >= win_y + win_height - 1:
+            self.resize_mode += 's'
+
+    def stop_resize(self):
+        self.resize_mode = ''
+
+    def handle_resize(self, rel_x:int, rel_y:int):
+        if not self.resize_mode:
+            return
+        if 'm' in self.resize_mode:
+            self.move(rel_x, rel_y)
+            return
+        stdscr_height, stdscr_width = Gitkcli.stdscr.getmaxyx()
+        win_y, win_x = self.win.getbegyx()
+        win_height, win_width = self.win.getmaxyx()
+        new_x = win_x
+        new_y = win_y
+        new_width = win_width
+        new_height = win_height
+        if 'w' in self.resize_mode:
+            new_x = max(0, win_x + rel_x)
+            new_width = win_width - (new_x - win_x)
+        if 'e' in self.resize_mode:
+            new_width = max(5, min(stdscr_width - new_x, win_width + rel_x))
+        if 's' in self.resize_mode:
+            new_height = max(5, min(stdscr_height - new_y, win_height + rel_y))
+        self.set_dimensions(new_x, new_y, new_height, new_width)
+
     def screen_size_changed(self, lines, cols):
         self.dirty = True
+        self.resized = True
         height, width, y, x = self._calculate_dimensions(lines, cols)
         self.win.resize(height, width)
         self.win.mvwin(y, x)
@@ -955,13 +1024,14 @@ class View:
     def redraw(self, force=False):
         if self.dirty or force:
             self.dirty = False
+            self.resized = False
             self.draw()
             return True
         else:
             return False
 
     def draw(self):
-        if self.view_position == 'floating':
+        if self.view_mode == 'window':
             self.win.box()
 
         # draw title bar
@@ -981,11 +1051,15 @@ class View:
         log_debug(f'View {self.id} deactivated')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-move' and self.view_position == 'floating':
+        if event_type == 'left-move' and self.view_mode == 'window':
             move_x = Gitkcli.mouse_x - Gitkcli.mouse_click_x
             move_y = Gitkcli.mouse_y - Gitkcli.mouse_click_y
-            self.move(move_x, move_y)
+            self.handle_resize(move_x, move_y)
             return True
+        if event_type == 'left-click' and self.view_mode == 'window':
+            self.start_resize(Gitkcli.mouse_x, Gitkcli.mouse_y)
+        if event_type == 'left-release':
+            self.stop_resize()
         if self.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
             if y == 0 and self.title_item:
                 handled = self.title_item.handle_mouse_input(event_type, x, y)
@@ -1040,11 +1114,11 @@ class View:
                 self.on_deactivated()
 
 class ListView(View):
-    def __init__(self, id:str, view_position='fullscreen',
+    def __init__(self, id:str, view_mode='fullscreen',
                  x:typing.Optional[int] = None, y:typing.Optional[int] = None,
                  height:typing.Optional[int] = None, width:typing.Optional[int] = None):
 
-        super().__init__(id, view_position, x, y, height, width)
+        super().__init__(id, view_mode, x, y, height, width)
         self.items = []
         self.selected:int = 0
         self.offset_y:int = 0
@@ -1278,7 +1352,7 @@ class ListView(View):
 
         if separator_items:
             for i in separator_items:
-                if self.view_position == 'floating':
+                if self.view_mode == 'window':
                     self.win.move(self.y + i, self.x-1)
                     self.win.addstr('├', curses_color(1))
                     self.win.addstr('─' * self.width, curses_color(1))
@@ -1601,7 +1675,7 @@ class ContextMenuItem(TextListItem):
 
 class ContextMenu(ListView):
     def __init__(self):
-        super().__init__(ID_CONTEXT_MENU, 'floating')
+        super().__init__(ID_CONTEXT_MENU, 'window')
         self.is_popup = True
 
     def on_activated(self):
@@ -1623,8 +1697,9 @@ class ContextMenu(ListView):
         x = Gitkcli.mouse_x
         y = Gitkcli.mouse_y
         if item == Gitkcli: # main menu
-            x = 0
-            y = 1
+            win_y, win_x = view.win.getbegyx()
+            x = win_x + view.x
+            y = win_y + view.y
             self.append(ContextMenuItem("Show Git commit log <F1>", item.view_git_log.show, []))
             self.append(ContextMenuItem("Show Git references <F2>", item.view_git_refs.show, []))
             self.append(ContextMenuItem("Show Git commit diff <F3>", item.view_git_diff.show, []))
@@ -1828,7 +1903,7 @@ class UserInputListItem(Item):
 
 class RefPushDialogPopup(ListView):
     def __init__(self):
-        super().__init__(ID_GIT_REF_PUSH, 'floating', height = 6)
+        super().__init__(ID_GIT_REF_PUSH, 'window', height = 6)
         self.set_title_item(TextListItem('', 30, expand = True))
         self.append(SpacerListItem())
         self.is_popup = True
@@ -1898,7 +1973,7 @@ class RefPushDialogPopup(ListView):
 
 class UserInputDialogPopup(ListView):
     def __init__(self, id:str, title:str, header_item:Item, bottom_item:typing.Optional[Item] = None):
-        super().__init__(id, 'floating', height = 7)
+        super().__init__(id, 'window', height = 7)
         self.set_title_item(TextListItem(title, 30, expand = True))
         self.input = UserInputListItem()
         self.is_popup = True
@@ -2184,7 +2259,7 @@ class Gitkcli:
         cls.view_git_log = GitLogView()
         cls.view_new_ref = NewRefDialogPopup()
         cls.view_git_diff = GitDiffView()
-        cls.view_git_refs = ListView(ID_GIT_REFS)
+        cls.view_git_refs = ListView(ID_GIT_REFS, 'window')
         cls.view_git_refs.set_title_item(ListViewTitleItem('Git references'))
         cls.view_git_refs.set_search_dialog(SearchDialogPopup(ID_GIT_REFS_SEARCH))
         cls.view_branch_rename = BranchRenameDialogPopup()
@@ -2281,13 +2356,6 @@ class Gitkcli:
             job.process_items()
 
     @classmethod
-    def redraw_all_views(cls):
-        for view in reversed(cls.showed_views):
-            view.dirty = True
-            if view.view_position == 'fullscreen':
-                break
-
-    @classmethod
     def get_job(cls) -> typing.Optional[SubprocessJob]:
         if len(cls.showed_views) > 0:
             id = cls.showed_views[-1].id
@@ -2314,23 +2382,37 @@ class Gitkcli:
     @classmethod
     def draw_visible_views(cls):
         positions = {}
+        windows = []
         for view in cls.showed_views:
-            positions.pop('floating', None)
-            if view.view_position == 'fullscreen':
+            if view.view_mode == 'fullscreen':
                 positions.clear()
-            positions[view.view_position] = view
+                windows.clear()
+            if view.view_mode == 'window':
+                windows.append(view)
+            else:
+                positions[view.view_mode] = view
             if 'top' in positions and 'bottom' in positions:
                 positions.pop('fullscreen', None)
 
         force_redraw = False
+
+        resized = False
+        for view in windows:
+            resized = resized or view.resized
+        if resized:
+            force_redraw = True
+            if not 'fullscreen' in positions:
+                Gitkcli.stdscr.clear()
+                Gitkcli.stdscr.refresh()
+
         if 'fullscreen' in positions:
             force_redraw = positions['fullscreen'].redraw(force_redraw)
         if 'top' in positions:
             force_redraw = positions['top'].redraw(force_redraw)
         if 'bottom' in positions:
             force_redraw = positions['bottom'].redraw(force_redraw)
-        if 'floating' in positions:
-            force_redraw = positions['floating'].redraw(force_redraw)
+        for view in windows:
+            force_redraw = view.redraw(force_redraw)
 
     @classmethod
     def draw_status_bar(cls, stdscr):
@@ -2434,7 +2516,6 @@ def process_mouse_event(event_type:str, active_view:View):
     if 'left-move' == event_type and not Gitkcli.clicked_item:
         Gitkcli.mouse_click_x = Gitkcli.mouse_x
         Gitkcli.mouse_click_y = Gitkcli.mouse_y
-        Gitkcli.redraw_all_views()
 
     if 'release' in event_type:
         Gitkcli.clicked_view = None
@@ -2499,8 +2580,8 @@ def launch_curses(stdscr, cmd_args):
             stdscr.refresh()
 
             try:
-                Gitkcli.draw_status_bar(stdscr)
                 Gitkcli.draw_visible_views()
+                Gitkcli.draw_status_bar(stdscr)
             except curses.error as e:
                 log_warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
 
