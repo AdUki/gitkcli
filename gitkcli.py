@@ -54,7 +54,14 @@ def log_error(txt):
 def curses_ctrl(key):
     return ord(key) & 0x1F
 
-def curses_color(number, selected = False, highlighted = False, bold = None, reverse = False, dim = False, underline = False):
+def curses_color(number, selected = False, highlighted = False, matched = False, bold = None, reverse = False, dim = False, underline = False):
+    if matched:
+        bold = True
+        if number == 1:
+            number = 16
+        elif number == 18:
+            number = 16
+            dim = True
     if selected and highlighted:
         color = curses.color_pair(150 + number)
     elif selected:
@@ -515,14 +522,12 @@ class RefListItem(Item):
         line = self.get_text()
         line = line[offset:]
         color, _ = get_ref_color_and_title(self.data)
-        if matched:
-            color = 16
         if selected or marked:
             line += ' ' * (width - len(line))
         if len(line) > width:
             line = line[:width]
 
-        win.addstr(line, curses_color(color, selected, marked))
+        win.addstr(line, curses_color(color, selected, marked, matched))
         win.clrtoeol()
 
     def jump_to_ref(self):
@@ -566,7 +571,7 @@ class TextListItem(Item):
             line = line[:width]
             clear = False
 
-        win.addstr(line, curses_color(16 if matched else self.color, selected, marked, dim = not self.is_selectable))
+        win.addstr(line, curses_color(self.color, selected, marked, matched, dim = not self.is_selectable))
         if clear:
             win.clrtoeol()
 
@@ -687,7 +692,7 @@ class TextSegment(Segment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.get_text()[offset:width]
-        win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked))
+        win.addstr(visible_txt, curses_color(self.color, selected, marked, matched))
         return len(visible_txt)
 
 class RefSegment(TextSegment):
@@ -736,7 +741,7 @@ class ButtonSegment(TextSegment):
             else:
                 bold = True
                 dim = True
-            win.addstr(visible_txt, curses_color(16 if matched else self.color, selected, marked, bold = bold, dim = dim))
+            win.addstr(visible_txt, curses_color(self.color, selected, marked, bold = bold, dim = dim))
             return len(visible_txt)
         return super().draw(win, offset, width, selected, matched, marked)
 
@@ -763,7 +768,7 @@ class ToggleSegment(TextSegment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.txt[offset:width]
-        win.addstr(visible_txt, curses_color(self.color, selected, self.toggled, dim =  not self.enabled))
+        win.addstr(visible_txt, curses_color(self.color, selected, self.toggled, dim = not self.enabled))
         return len(visible_txt)
 
 class SegmentedListItem(Item):
@@ -832,10 +837,10 @@ class SegmentedListItem(Item):
             if draw_separator and self.segment_separator:
                 draw_separator = False
                 remaining_width -= len(self.segment_separator)
-                win.addstr(self.segment_separator, curses_color(self.bg_color, selected, marked))
+                win.addstr(self.segment_separator, curses_color(self.bg_color, selected, marked, matched))
             if isinstance(segment, FillerSegment):
                 txt = self.get_fill_txt(width)
-                win.addstr(txt, curses_color(16 if matched else self.bg_color, selected, marked))
+                win.addstr(txt, curses_color(self.bg_color, selected, marked, matched, matched))
                 length = len(txt)
             else:
                 length = segment.draw(win, offset, remaining_width, selected, matched, marked)
@@ -848,7 +853,7 @@ class SegmentedListItem(Item):
 
         if remaining_width > 0:
             if selected or marked:
-                win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked))
+                win.addstr(' ' * remaining_width, curses_color(self.bg_color, selected, marked, matched))
             else:
                 win.clrtoeol()
 
@@ -1950,10 +1955,10 @@ class UserInputListItem(Item):
         left_txt = self.txt[self.offset:self.offset+self.cursor_pos]
         right_txt = self.txt[self.offset+self.cursor_pos:self.offset+width-1]
 
-        win.addstr(left_txt, curses_color(16 if matched else self.color, selected, marked))
+        win.addstr(left_txt, curses_color(self.color, selected, marked, matched))
         win.addch(ord(' '), curses.A_REVERSE | curses.A_BLINK)
-        win.addstr(right_txt, curses_color(16 if matched else self.color, selected, marked))
-        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(16 if matched else self.color, selected, marked))
+        win.addstr(right_txt, curses_color(self.color, selected, marked, matched))
+        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), curses_color(self.color, selected, marked, matched))
 
 class RefPushDialogPopup(ListView):
     def __init__(self):
@@ -2599,7 +2604,7 @@ def launch_curses(stdscr, cmd_args):
     init_color(13, curses.COLOR_BLUE)    # head
     init_color(14, curses.COLOR_CYAN)    # stash
     init_color(15, curses.COLOR_RED)     # remote ref
-    init_color(16, curses.COLOR_MAGENTA) # search match
+    init_color(16, curses.COLOR_YELLOW) # search match
     init_color(17, curses.COLOR_BLUE)    # diff info lines
     init_color(18, 245)                  # debug text
 
