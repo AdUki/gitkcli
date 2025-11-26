@@ -264,6 +264,7 @@ class GitDiffJob(SubprocessJob):
         self.cmd = 'git'
 
         self.pattern = re.compile(r'^(?:( )|(?:\+\+\+ b/(.*))|(?:--- a/(.*))|(\+\+\+|---|diff|index)|(\+)|(-)|(@@ -(\d+),\d+ \+(\d+),\d+ @@))')
+        self.stat_pattern = re.compile(r' (?:\.\.\.)?(?:.* => )?(.*?)}? +\| +\d+ \+*-*')
 
         self.commit_id: typing.Optional[str] = None
         self.tag_id: typing.Optional[str] = None
@@ -373,39 +374,42 @@ class GitDiffJob(SubprocessJob):
                 if self.old_file_line < 0 and self.new_file_line < 0: # commit message or stats line
                     if line.startswith(' ') and not line.startswith('    '): # stats line
                         color = 10
-                    return (self.line_count, line, color, None, None, None, None)
+                    stat_match = self.stat_pattern.match(line)
+                    if stat_match: # stats line
+                        return StatListItem(line, color, stat_match.group(1))
+                    return TextListItem(line, color)
                 self.old_file_line += 1
                 self.new_file_line += 1
-                return (self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line)
+                return DiffListItem(self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line)
             elif match.group(2): # '+++' new file
                 color = 17
                 self.new_file_path = str(match.group(2))
-                return (self.line_count, line, color, None, None, None, None)
+                return TextListItem(line, color)
             elif match.group(3): # '---' old file
                 color = 17
                 self.old_file_path = str(match.group(3))
-                return (self.line_count, line, color, None, None, None, None)
+                return TextListItem(line, color)
             elif match.group(4): # infos
                 color = 17
-                return (self.line_count, line, color, None, None, None, None)
+                return TextListItem(line, color)
             elif match.group(5): # '+' added code lines
                 color = 9
                 self.new_file_line += 1
-                return (self.line_count, line, color, None, None, self.new_file_path, self.new_file_line)
+                return DiffListItem(self.line_count, line, color, None, None, self.new_file_path, self.new_file_line)
             elif match.group(6): # '-' remove code lines
                 color = 8
                 self.old_file_line += 1
-                return (self.line_count, line, color, self.old_file_path, self.old_file_line, None, None)
+                return DiffListItem(self.line_count, line, color, self.old_file_path, self.old_file_line, None, None)
             elif match.group(7): # diff numbers
                 color = 10
                 self.old_file_line = int(match.group(8)) - 1
                 self.new_file_line = int(match.group(9)) - 1
-                return (self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line)
+                return DiffListItem(self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line)
 
-        return (self.line_count, line, color, None, None, None, None)
+        return TextListItem(line, color)
 
     def process_item(self, item):
-        Gitkcli.view_git_diff.append(DiffListItem(*item))
+        Gitkcli.view_git_diff.append(item)
 
 class GitSearchJob(SubprocessJob):
     def __init__(self, args = []):
@@ -574,17 +578,80 @@ class SpacerListItem(Item):
     def draw_line(self, win, offset, width, selected, matched, marked):
         win.clrtoeol()
 
+class StatListItem(TextListItem):
+    def __init__(self, txt:str, color:int, stat_file_path:str):
+        self.stat_file_path = stat_file_path
+        super().__init__(txt, color)
+
+    def jump_to_file(self):
+        for i, item in enumerate(Gitkcli.view_git_diff.items):
+            if item.get_text().startswith('diff') and self.stat_file_path in item.get_text():
+                Gitkcli.view_git_diff.select_item(i)
+                break
+
+    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        if event_type == 'double-click':
+            self.jump_to_file()
+            return True
+        else:
+            return super().handle_mouse_input(event_type, x, y)
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
+            self.jump_to_file()
+            return True
+        else:
+            return super().handle_input(key)
+
 class DiffListItem(TextListItem):
     def __init__(self, line:int, txt:str, color:int,
                  old_file_path:typing.Optional[str] = None, old_file_line:typing.Optional[int] = None,
                  new_file_path:typing.Optional[str] = None, new_file_line:typing.Optional[int] = None):
         self.line = line
-        self.color = color
         self.old_file_line = old_file_line
         self.old_file_path = old_file_path
         self.new_file_line = new_file_line
         self.new_file_path = new_file_path
         super().__init__(txt, color)
+
+    def jump_to_origin(self):
+        if self.old_file_path and self.old_file_line:
+            args = ['git', 'blame', '-lsfn', '-L',
+                    f'{self.old_file_line},{self.old_file_line}',
+                    f'{Gitkcli.view_git_diff.commit_id}^', # get parent commit-id
+                    '--', self.old_file_path]
+
+            result = Gitkcli.run_job(args)
+            if result.returncode == 0:
+                # Example output:
+                # a42cadebfe42d85cbf36f4887be166b34077b3e2 test test.txt 1 1) aaa
+                match = re.search(r'^(\S+) ([^)]+) ([0-9]+) ', result.stdout)
+                if match:
+                    id = str(match.group(1))
+                    file_path = str(match.group(2))
+                    file_line = int(match.group(3))
+
+                    # When commit id starts with '^' it means this is initial git-id and is 1 char shorer
+                    # ^1af87e6c2614c1aea4a81476df0deb8206d5489 451)         except Exception:
+                    if id.startswith('^'):
+                        id = Gitkcli.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
+                    commit = Gitkcli.view_git_log.select_commit(id)
+                    if commit:
+                        Gitkcli.job_git_diff.show_commit(commit.id, on_finished = lambda: Gitkcli.view_git_diff.select_line(file_path, file_line))
+
+    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        if event_type == 'double-click':
+            self.jump_to_origin()
+            return True
+        else:
+            return super().handle_mouse_input(event_type, x, y)
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
+            self.jump_to_origin()
+            return True
+        else:
+            return super().handle_input(key)
 
 class Segment:
     def __init__(self):
@@ -1600,49 +1667,8 @@ class GitDiffView(ListView):
 
     def select_line(self, file:str, line:int):
         for item in self.items:
-            if item.new_file_path == file and item.new_file_line == line:
+            if isinstance(item, DiffListItem) and item.new_file_path == file and item.new_file_line == line:
                 self.select_item(item.line)
-
-    def show_origin_of_line(self, line_index = None):
-        if line_index is None:
-            line_index = self.selected
-
-        if line_index >= len(self.items) or self.items[line_index].get_text().startswith('+'):
-            return
-
-        old_file_path = self.items[line_index].old_file_path
-        old_file_line = self.items[line_index].old_file_line
-        
-        if old_file_path and old_file_line:
-            args = ['git', 'blame', '-lsfn', '-L',
-                    f'{old_file_line},{old_file_line}',
-                    f'{self.commit_id}^', # get parent commit-id
-                    '--', old_file_path]
-
-            result = Gitkcli.run_job(args)
-            if result.returncode == 0:
-                # Example output:
-                # a42cadebfe42d85cbf36f4887be166b34077b3e2 test test.txt 1 1) aaa
-                match = re.search(r'^(\S+) ([^)]+) ([0-9]+) ', result.stdout)
-                if match:
-                    id = str(match.group(1))
-                    file_path = str(match.group(2))
-                    file_line = int(match.group(3))
-
-                    # When commit id starts with '^' it means this is initial git-id and is 1 char shorer
-                    # ^1af87e6c2614c1aea4a81476df0deb8206d5489 451)         except Exception:
-                    if id.startswith('^'):
-                        id = Gitkcli.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
-                    commit = Gitkcli.view_git_log.select_commit(id)
-                    if commit:
-                        Gitkcli.job_git_diff.show_commit(commit.id, on_finished = lambda: self.select_line(file_path, file_line))
-
-    def handle_input(self, key):
-        if key == curses.KEY_ENTER or key == 10 or key == 13:  # Enter key
-            self.show_origin_of_line()
-            return True
-        else:
-            return super().handle_input(key)
 
 class ShowLogLevelSegment(TextSegment):
     def __init__(self, color):
@@ -1764,8 +1790,9 @@ class ContextMenu(ListView):
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
                 self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id)))
-        elif view_id == 'git-diff' and hasattr(item, 'line'):
-            self.append(ContextMenuItem("Show origin of this line", view.show_origin_of_line, [item.line], item.old_file_path and item.old_file_line is not None))
+        elif view_id == 'git-diff':
+            self.append(ContextMenuItem("Jump to file", StatListItem.jump_to_file, [item], isinstance(item, StatListItem)))
+            self.append(ContextMenuItem("Show origin of this line", DiffListItem.jump_to_origin, [item], isinstance(item, DiffListItem) and item.old_file_path and item.old_file_line is not None))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         elif view_id == 'git-refs' and hasattr(item, 'data'):
             if item.data['type'] == 'heads':
