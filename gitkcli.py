@@ -240,6 +240,16 @@ class GitRefreshHeadJob(GitLogJob):
         super().__init__(ID_GIT_REFRESH_HEAD, []) 
 
     def start_job(self, args = [], on_finished = None):
+        # check if HEAD commit is actually in view
+        head_found = False
+        for item in Gitkcli.view_git_log.items:
+            if item.id == Gitkcli.head_id:
+                head_found = True
+                break
+        if not head_found:
+            # no HEAD commit found, don't do anything
+            return
+
         # skip calling Gitkcli.commits.clear()
         SubprocessJob.start_job(self, args, on_finished) 
 
