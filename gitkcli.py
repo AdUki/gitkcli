@@ -785,7 +785,7 @@ class SegmentedListItem(Item):
             else:
                 win.clrtoeol()
 
-class ListViewTitleItem(SegmentedListItem):
+class WindowTopBarItem(SegmentedListItem):
     def __init__(self, title:str, additional_segments = [], color = 30):
         self.title_segment = TextSegment(title, color)
         segments = [ButtonSegment('[Menu]', lambda: Gitkcli.view_context_menu.show_context_menu(Gitkcli), color),
@@ -804,7 +804,7 @@ class ListViewTitleItem(SegmentedListItem):
         if handled:
             return True
         if 'double-click' == event_type:
-            Gitkcli.get_active_view().toggle_view_mode()
+            Gitkcli.get_active_view().toggle_window_mode()
             return True
         return False
 
@@ -947,17 +947,20 @@ class View:
     def set_title_item(self, title_item):
         self.title_item = title_item
 
-    def toggle_view_mode(self):
-        if self.view_mode == 'window':
-            self.view_mode = 'fullscreen'
-        else:
-            self.view_mode = 'window'
-            self.resized = True
+    def set_view_mode(self, view_mode:str):
+        if self.view_mode == view_mode:
+            return
+        self.view_mode = view_mode
         self.dirty = True
+        if self.view_mode == 'window':
+            self.resized = True
         stdscr_height, stdscr_width = Gitkcli.stdscr.getmaxyx()
         height, width, y, x = self._calculate_dimensions(stdscr_height, stdscr_width)
         self.win.resize(height, width)
         self.win.mvwin(y, x)
+
+    def toggle_window_mode(self):
+        self.set_view_mode('fullscreen' if self.view_mode == 'window' else 'window')
 
     def set_dimensions(self, x, y, height, width):
         self.fixed_x = x
@@ -996,18 +999,15 @@ class View:
             return True
         return False
 
-    def handle_resize(self, rel_x:int, rel_y:int):
-        if not self.resize_mode:
-            return
-
+    def handle_resize(self):
         stdscr_height, stdscr_width = Gitkcli.stdscr.getmaxyx()
         stdscr_height -= 1 # status bar
         win_y, win_x = self.win.getbegyx()
         win_height, win_width = self.win.getmaxyx()
 
         if 'm' in self.resize_mode:
-            new_x = max(0, min(win_x + rel_x, stdscr_width - win_width))
-            new_y = max(0, min(win_y + rel_y, stdscr_height - win_height))
+            new_x = max(0, min(win_x + Gitkcli.mouse_rel_x, stdscr_width - win_width))
+            new_y = max(0, min(win_y + Gitkcli.mouse_rel_y, stdscr_height - win_height))
             self.win.mvwin(new_y, new_x)
             self.dirty = True
             self.resized = True
@@ -1017,12 +1017,12 @@ class View:
             new_width = win_width
             new_height = win_height
             if 'w' in self.resize_mode:
-                new_x = max(0, win_x + rel_x)
+                new_x = max(0, win_x + Gitkcli.mouse_rel_x)
                 new_width = win_width - (new_x - win_x)
             if 'e' in self.resize_mode:
-                new_width = max(5, min(stdscr_width - new_x, win_width + rel_x))
+                new_width = max(5, min(stdscr_width - new_x, win_width + Gitkcli.mouse_rel_x))
             if 's' in self.resize_mode:
-                new_height = max(5, min(stdscr_height - new_y, win_height + rel_y))
+                new_height = max(5, min(stdscr_height - new_y, win_height + Gitkcli.mouse_rel_y))
             self.set_dimensions(new_x, new_y, new_height, new_width)
 
     def screen_size_changed(self, lines, cols):
@@ -1065,10 +1065,8 @@ class View:
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'left-release':
             self.stop_resize()
-        if event_type == 'left-move' and self.view_mode == 'window':
-            move_x = Gitkcli.mouse_x - Gitkcli.mouse_click_x
-            move_y = Gitkcli.mouse_y - Gitkcli.mouse_click_y
-            self.handle_resize(move_x, move_y)
+        if event_type == 'left-move' and self.resize_mode:
+            self.handle_resize()
             return True
         if self.win.enclose(Gitkcli.mouse_y, Gitkcli.mouse_x):
             if y == 0 and self.title_item and self.title_item.handle_mouse_input(event_type, x, y):
@@ -1382,7 +1380,7 @@ class GitLogView(ListView):
         self.jump_index = 0
 
         repo_name = os.path.basename(Gitkcli.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
-        self.set_title_item(ListViewTitleItem('Repository: ' + repo_name, [
+        self.set_title_item(WindowTopBarItem('Repository: ' + repo_name, [
                 ButtonSegment("[<---]", lambda: self.move_in_jump_list(+1), 30),
                 ButtonSegment("[--->]", lambda: self.move_in_jump_list(-1), 30)
             ]))
@@ -1583,7 +1581,7 @@ class GitDiffView(ListView):
         self.commit_id = ''
         self.is_diff = False
 
-        self.set_title_item(ListViewTitleItem('Git commit diff', [
+        self.set_title_item(WindowTopBarItem('Git commit diff', [
             ToggleSegment("[Ignore space change]", Gitkcli.ignore_whitespace, lambda val: Gitkcli.job_git_diff.change_ignore_whitespace(val.toggled), 30),
             TextSegment("  Lines of context:", 30),
             ShowContextSegment(30),
@@ -1657,7 +1655,7 @@ class LogView(ListView):
     def __init__(self):
         super().__init__(ID_LOG, 'fullscreen') 
 
-        self.set_title_item(ListViewTitleItem('Logs', [
+        self.set_title_item(WindowTopBarItem('Logs', [
             ButtonSegment("[Clear]", lambda: self.clear(), 30),
             ToggleSegment("[Autoscroll]", False, lambda val: setattr(self, 'autoscroll', val.toggled), 30),
             TextSegment("  Log level:", 30),
@@ -2261,6 +2259,8 @@ class Gitkcli:
     mouse_state = 0
     mouse_click_x = 0
     mouse_click_y = 0
+    mouse_rel_x = 0
+    mouse_rel_y = 0
     mouse_click_time = time.time()
     mouse_left_pressed = False
     mouse_right_pressed = False
@@ -2293,7 +2293,7 @@ class Gitkcli:
         cls.view_new_ref = NewRefDialogPopup()
         cls.view_git_diff = GitDiffView()
         cls.view_git_refs = ListView(ID_GIT_REFS, 'window')
-        cls.view_git_refs.set_title_item(ListViewTitleItem('Git references'))
+        cls.view_git_refs.set_title_item(WindowTopBarItem('Git references'))
         cls.view_git_refs.set_search_dialog(SearchDialogPopup(ID_GIT_REFS_SEARCH))
         cls.view_branch_rename = BranchRenameDialogPopup()
         cls.view_ref_push = RefPushDialogPopup()
@@ -2545,10 +2545,6 @@ def process_mouse_event(event_type:str, active_view:View):
         if send_event_to.handle_mouse_input(event_type, win_x - item_x, win_y - item_y):
             view_to_process.dirty = True
 
-    if 'left-move' == event_type and not Gitkcli.clicked_item:
-        Gitkcli.mouse_click_x = Gitkcli.mouse_x
-        Gitkcli.mouse_click_y = Gitkcli.mouse_y
-
     if 'release' in event_type:
         Gitkcli.clicked_view = None
         Gitkcli.clicked_item = None
@@ -2648,7 +2644,11 @@ def launch_curses(stdscr, cmd_args):
                 log_debug('Key: ' + str(key))
 
             if key == curses.KEY_MOUSE:
-                _, Gitkcli.mouse_x, Gitkcli.mouse_y, _, Gitkcli.mouse_state = curses.getmouse()
+                _, mouse_x, mouse_y, _, Gitkcli.mouse_state = curses.getmouse()
+                Gitkcli.mouse_rel_x = mouse_x - Gitkcli.mouse_x
+                Gitkcli.mouse_rel_y = mouse_y - Gitkcli.mouse_y
+                Gitkcli.mouse_x = mouse_x
+                Gitkcli.mouse_y = mouse_y
                 log_debug('Mouse state: ' + str(Gitkcli.mouse_state))
 
                 event_type = None
