@@ -33,7 +33,7 @@ pip install gitkcli
 ```bash
 gitkcli
 # Same arguments as 'git log' are supported
-gitkcli --all --graph
+gitkcli --grep fix
 gitkcli origin/main..HEAD
 ```
 
