@@ -68,6 +68,36 @@ def copy_to_clipboard(txt:str):
 def curses_ctrl(key):
     return ord(key) & 0x1F
 
+def subtract_rect(rect, subtract):
+    """Subtract a rectangle from another, returning list of non-overlapping rects"""
+    y1, x1, y2, x2 = rect
+    sy1, sx1, sy2, sx2 = subtract
+
+    # No overlap
+    if x2 <= sx1 or x1 >= sx2 or y2 <= sy1 or y1 >= sy2:
+        return [rect]
+
+    result = []
+
+    # Top part (above subtract)
+    if y1 < sy1:
+        result.append((y1, x1, sy1, x2))
+
+    # Bottom part (below subtract)
+    if y2 > sy2:
+        result.append((sy2, x1, y2, x2))
+
+    # Left part (left of subtract, between top and bottom)
+    if x1 < sx1:
+        result.append((max(y1, sy1), x1, min(y2, sy2), sx1))
+
+    # Right part (right of subtract, between top and bottom)
+    if x2 > sx2:
+        result.append((max(y1, sy1), sx2, min(y2, sy2), x2))
+
+    return result
+
+
 def curses_color(number, selected = False, highlighted = False, matched = False, bold = None, reverse = False, dim = False, underline = False):
     if matched:
         bold = True
@@ -149,15 +179,17 @@ class SubprocessJob:
                 self.on_finished()
                 self.on_finished = None
 
-    def process_items(self):
+    def process_items(self) -> bool:
+        processed = False
         try:
             while True:
                 item = self.items.get_nowait()
                 self.items.task_done()
                 if not item:
-                    return;
+                    return processed;
                 if not self.stop:
                     self.process_item(item)
+                    processed = True
         except queue.Empty:
             pass
         try:
@@ -165,11 +197,13 @@ class SubprocessJob:
                 message = self.messages.get_nowait()
                 self.messages.task_done()
                 if not message:
-                    return
+                    return processed
                 if not self.stop:
                     self.process_message(message)
+                    processed = True
         except queue.Empty:
             pass
+        return processed
 
     def stop_job(self):
         self.stop = True
@@ -996,13 +1030,7 @@ class View:
         win_y = 0
         win_x = 0
 
-        if self.view_mode == 'top':
-            win_height = int(lines / 2)
-        elif self.view_mode == 'bottom':
-            top_height = lines - int(lines / 2)
-            win_height = lines - top_height
-            win_y = top_height - 1
-        elif self.view_mode == 'window':
+        if self.view_mode == 'window':
             win_height = min(lines, self.fixed_height if self.fixed_height else int(lines / 2))
             win_width = min(cols, self.fixed_width if self.fixed_width else int(cols / 2))
             win_y = min(lines - win_height, int((lines - win_height) / 2) if self.fixed_y is None else self.fixed_y)
@@ -1021,6 +1049,11 @@ class View:
             self.x += 1
 
         return win_height, win_width, win_y, win_x
+
+    def get_rect(self):
+        y, x = self.win.getbegyx()
+        h, w = self.win.getmaxyx()
+        return (y, x, y + h, x + w)
 
     def set_title_item(self, title_item):
         self.title_item = title_item
@@ -2515,9 +2548,13 @@ class Gitkcli:
             job.stop_job()
 
     @classmethod
-    def process_all_jobs(cls):
+    def process_all_jobs(cls) -> bool:
+        update = False
         for job in cls.jobs.values():
-            job.process_items()
+            processed = job.process_items()
+            if processed or job.running:
+                update = True
+        return update
 
     @classmethod
     def get_job(cls) -> typing.Optional[SubprocessJob]:
@@ -2544,37 +2581,49 @@ class Gitkcli:
                 cls.get_active_view().dirty = True
 
     @classmethod
-    def draw_visible_views(cls):
-        positions = {}
-        windows = []
+    def get_visible_views(cls):
+        visible_views = []
         for view in cls.showed_views:
             if view.view_mode == 'fullscreen':
-                positions.clear()
-                windows.clear()
-            if view.view_mode == 'window':
-                windows.append(view)
-            else:
-                positions[view.view_mode] = view
-            if 'top' in positions and 'bottom' in positions:
-                positions.pop('fullscreen', None)
+                visible_views.clear()
+            visible_views.append(view)
+        
+        # Compute visible regions for each window
+        result = []
+        for i, view in enumerate(visible_views):
+            # Start with single rectangle region
+            regions = [view.get_rect()]
+            
+            # Subtract all occluding windows
+            for j in range(i + 1, len(visible_views)):
+                new_regions = []
+                for rect in regions:
+                    new_regions.extend(subtract_rect(rect, visible_views[j].get_rect()))
+                regions = new_regions
+                
+                if not regions:
+                    break
+            
+            if regions:
+                result.append(view)
+        
+        return result
+
+    @classmethod
+    def draw_visible_views(cls):
+        visible_views = cls.get_visible_views()
 
         force_redraw = False
-        for view in windows:
+        for view in visible_views:
             if view.resized:
                 force_redraw = True
                 break
 
-        if force_redraw and not 'fullscreen' in positions:
+        if force_redraw and visible_views[0].view_mode != 'fullscreen':
                 Gitkcli.stdscr.clear()
                 Gitkcli.stdscr.refresh()
 
-        if 'fullscreen' in positions:
-            force_redraw = positions['fullscreen'].redraw(force_redraw)
-        if 'top' in positions:
-            force_redraw = positions['top'].redraw(force_redraw)
-        if 'bottom' in positions:
-            force_redraw = positions['bottom'].redraw(force_redraw)
-        for view in windows:
+        for view in visible_views:
             force_redraw = view.redraw(force_redraw)
 
     @classmethod
@@ -2733,23 +2782,31 @@ def launch_curses(stdscr, cmd_args):
     Gitkcli.view_git_log.show()
 
     try:
+        user_input = True
+
         while Gitkcli.running:
-            Gitkcli.process_all_jobs()
 
-            stdscr.refresh()
+            update_jobs = Gitkcli.process_all_jobs()
 
-            try:
-                Gitkcli.draw_visible_views()
-                Gitkcli.draw_status_bar(stdscr)
-            except curses.error as e:
-                log_warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
+            if update_jobs or user_input:
 
-            active_view = Gitkcli.get_active_view()
-            if not active_view:
-                break;
+                stdscr.refresh()
+
+                try:
+                    Gitkcli.draw_visible_views()
+                    Gitkcli.draw_status_bar(stdscr)
+                except curses.error as e:
+                    log_warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
+
+                active_view = Gitkcli.get_active_view()
+                if not active_view:
+                    break;
             
+            stdscr.timeout(5 if update_jobs else 100)
+
             key = stdscr.getch()
-            if key < 0:
+            user_input = key >= 0
+            if not user_input:
                 # no key pressed
                 continue
 
