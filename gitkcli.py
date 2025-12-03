@@ -12,6 +12,9 @@ import time
 import traceback
 import typing
 
+
+HORIZONTAL_OFFSET_JUMP = 1
+
 KEY_SHIFT_F5 = -100
 KEY_CTRL_LEFT = -101
 KEY_CTRL_RIGHT = -102
@@ -384,14 +387,12 @@ class GitDiffJob(SubprocessJob):
         self.cached = False
         self.old_commit_id = None
         self.new_commit_id = None
-        if Gitkcli.view_git_diff.commit_id and Gitkcli.view_git_diff.is_diff == False:
-            self.selected_line_map[Gitkcli.view_git_diff.commit_id] = Gitkcli.view_git_diff.selected
         Gitkcli.view_git_diff.clear()
         Gitkcli.view_git_diff.commit_id = commit_id
         Gitkcli.view_git_diff.is_diff = False
         Gitkcli.view_git_diff.title_item.set_title(f'Commit {commit_id[:7]}')
         if on_finished == None and commit_id in self.selected_line_map:
-            on_finished = lambda: Gitkcli.view_git_diff.select_item(self.selected_line_map[commit_id])
+            on_finished = lambda: Gitkcli.view_git_diff.set_selected(self.selected_line_map[commit_id])
         self.start_job(self._get_args(), on_finished = on_finished)
         if add_to_jump_list:
             Gitkcli.view_git_log.add_to_jump_list(commit_id)
@@ -633,7 +634,7 @@ class StatListItem(TextListItem):
         super().__init__(txt, color)
 
     def jump_to_file(self):
-        Gitkcli.view_git_diff.select_item(re.compile(f'diff.*{self.stat_file_path}'), 'top')
+        Gitkcli.view_git_diff.set_selected(re.compile(f'diff.*{self.stat_file_path}'), 'top')
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'double-click':
@@ -929,21 +930,22 @@ class UncommittedChangesListItem(TextListItem):
         else:
             super().__init__('Uncommitted changes (working directory)', 2)
 
-    def show_changes(self):
+    def load_to_view(self):
         Gitkcli.job_git_diff.show_diff('HEAD', cached = self._staged, title = self.txt)
-        Gitkcli.view_git_diff.show()
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if super().handle_mouse_input(event_type, x, y):
             return True
         if event_type == 'double-click':
-            self.show_changes()
+            self.load_to_view()
+            Gitkcli.view_git_diff.show()
             return True
         return False
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.show_changes()
+            self.load_to_view()
+            Gitkcli.view_git_diff.show()
         else:
             return False
         return True
@@ -974,24 +976,23 @@ class CommitListItem(SegmentedListItem):
     def draw_line(self, win, offset, width, selected, matched, marked):
         super().draw_line(win, offset, width, selected, matched, Gitkcli.view_git_log.marked_commit_id == self.id)
 
-    def show_commit(self):
-        if Gitkcli.view_git_diff.commit_id == self.id and Gitkcli.view_git_diff.is_diff == False:
-            Gitkcli.view_git_diff.show()
-        else:
+    def load_to_view(self):
+        if Gitkcli.view_git_diff.commit_id != self.id or Gitkcli.view_git_diff.is_diff:
             Gitkcli.job_git_diff.show_commit(self.id)
-            Gitkcli.view_git_diff.show()
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if super().handle_mouse_input(event_type, x, y):
             return True
         if event_type == 'double-click':
-            self.show_commit()
+            self.load_to_view()
+            Gitkcli.view_git_diff.show()
             return True
         return False
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.show_commit()
+            self.load_to_view()
+            Gitkcli.view_git_diff.show()
         else:
             return False
         return True
@@ -1203,7 +1204,7 @@ class View:
             return True
         return False
 
-    def handle_input(self, key):
+    def handle_input(self, key) -> bool:
         return False
 
     def get_parent(self):
@@ -1251,9 +1252,9 @@ class ListView(View):
 
         super().__init__(id, view_mode, x, y, height, width)
         self.items = []
-        self.selected:int = 0
-        self.offset_y:int = 0
-        self.offset_x:int = 0
+        self._selected:int = 0
+        self._offset_y:int = 0
+        self._offset_x:int = 0
         self.autoscroll:bool = False
         self._search_dialog:typing.Optional[SearchDialogPopup] = None
 
@@ -1275,9 +1276,9 @@ class ListView(View):
         for i, item in enumerate(self.items):
             if not found and item == to_item:
                 found = True
-            if found or i >= self.selected:
+            if found or i >= self._selected:
                 text += "\n" + item.get_text()
-            if found and i >= self.selected:
+            if found and i >= self._selected:
                 break
         copy_to_clipboard(text)
 
@@ -1287,84 +1288,93 @@ class ListView(View):
     def append(self, item):
         """Add item to end of list"""
         self.items.append(item)
-        if len(self.items) - self.offset_y < self.height:
+        if len(self.items) - self._offset_y < self.height:
             self.dirty = True
         if self.autoscroll:
-            self.offset_y = max(0, len(self.items) - self.height)
+            self._offset_y = max(0, len(self.items) - self.height)
         
     def insert(self, item, position=None):
         """Insert item at position or selected position"""
-        pos = position if position is not None else self.selected
+        pos = position if position is not None else self._selected
         self.items.insert(pos, item)
-        if pos <= self.selected:
-            self.selected += 1
-        if pos <= self.offset_y:
-            self.offset_y += 1
+        if pos <= self._selected:
+            self._selected += 1
+        if pos <= self._offset_y:
+            self._offset_y += 1
         self.dirty = True
 
     def clear(self):
         log_debug(f'Clear view {self.id}')
         self.items = []
-        self.selected = 0
-        self.offset_y = 0
-        self.offset_x = 0
+        self.set_selected(0)
+        self._offset_y = 0
+        self._offset_x = 0
         self.dirty = True
 
-    def select_item(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
-        found = False
+    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'default') -> bool:
+        new_index = None
+
         if isinstance(what, int):
-            if 0 <= what < len(self.items):
-                self.selected = what
-                found = True
+            if (0 <= what < len(self.items)) or (what <= 0 and len(self.items) == 0):
+                new_index = what
         elif isinstance(what, str):
             for i, item in enumerate(Gitkcli.view_git_diff.items):
                 if what in item.get_text():
-                    self.selected = i
-                    found = True
+                    new_index = i
                     break
         elif isinstance(what, re.Pattern):
             for i, item in enumerate(Gitkcli.view_git_diff.items):
                 if what.match(item.get_text()):
-                    self.selected = i
-                    found = True
+                    new_index = i
                     break
-        if found:
-            self._ensure_selection_is_visible(visible_mode)
 
-        return found
+        if new_index is not None:
+            if self._selected != new_index:
 
-    def _ensure_selection_is_visible(self, mode = 'center'):
-        self.dirty = True
-        if mode == 'center':
-            # this mode will not change view offset when item is already visible
-            if self.selected < self.offset_y:
-                if self.offset_y - self.selected > 1:
-                    self.offset_y = max(0, self.selected - int(self.height / 2))
-                else:
-                    self.offset_y = self.selected
-            elif self.selected >= self.offset_y + self.height:
-                if self.selected - self.offset_y - self.height > 1:
-                    self.offset_y = min(max(0, len(self.items) - self.height), self.selected - int(self.height / 2))
-                else:
-                    self.offset_y = self.selected - self.height + 1
-        elif mode == 'top':
-            self.offset_y = max(0, self.selected)
-        elif mode == 'bottom':
-            self.offset_y = max(0, self.selected - self.height + 1)
+                # skip non-selectable items
+                direction = 1 if new_index > self._selected else -1
+                if 0 <= new_index < len(self.items) and not self.items[new_index].is_selectable:
+                    for dir in [direction, -direction]:
+                        i = new_index + dir
+                        while 0 <= i < len(self.items) and i != self._selected:
+                            if self.items[i].is_selectable:
+                                new_index = i
+                                break
+                            i += dir
+                    if not self.items[new_index].is_selectable:
+                        return False
 
-    def _skip_non_selectable_items(self, direction):
-        if not self.items:
-            return
-        new_selected = self.selected
-        while True:
-            if self.items[new_selected].is_selectable:
-                break
-            new_selected += direction
-            self.dirty = True
-            if new_selected < 0 or new_selected >= len(self.items):
-                new_selected = self.selected - direction
-                break
-        self.selected = new_selected
+                self._selected = new_index
+                self.dirty = True
+
+                if visible_mode == 'default':
+                    # this mode will:
+                    # - does not change view offset when item is already visible
+                    # - when item is just above/below view, we will move view just by 1
+                    # - when item is completely away from view, we will center it
+                    if self._selected < self._offset_y:
+                        if self._offset_y - self._selected > 1:
+                            self._offset_y = max(0, self._selected - int(self.height / 2))
+                        else:
+                            self._offset_y = self._selected
+                    elif self._selected >= self._offset_y + self.height:
+                        if self._selected - self._offset_y - self.height > 1:
+                            self._offset_y = min(max(0, len(self.items) - self.height), self._selected - int(self.height / 2))
+                        else:
+                            self._offset_y = self._selected - self.height + 1
+                elif visible_mode == 'top':
+                    self._offset_y = max(0, self._selected)
+                elif visible_mode == 'bottom':
+                    self._offset_y = max(0, self._selected - self.height + 1)
+            return True
+
+        return False
+
+    def get_selected(self) -> typing.Any:
+        if 0 <= self._selected < len(self.items):
+            return self.items[self._selected]
+        else:
+            return None
 
     def search(self, backward:bool = False, repeat:bool = False):
         if not self._search_dialog:
@@ -1372,49 +1382,48 @@ class ListView(View):
 
         ranges = []
         if not backward:
-            ranges.append(range(self.selected + 1, len(self.items)))
+            ranges.append(range(self._selected + 1, len(self.items)))
             if repeat:
-                ranges.append(range(0, self.selected + 1))
+                ranges.append(range(0, self._selected + 1))
         else:
-            ranges.append(range(self.selected - 1, -1, -1))
+            ranges.append(range(self._selected - 1, -1, -1))
             if repeat:
-                ranges.append(range(len(self.items) - 1, self.selected - 1, -1))
+                ranges.append(range(len(self.items) - 1, self._selected - 1, -1))
 
         for search_range in ranges:
             for i in search_range:
                 if self._search_dialog.matches(self.items[i]):
-                    self.selected = i
-                    self._ensure_selection_is_visible()
+                    self.set_selected(i)
                     return
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'wheel-up':
-            self.offset_y -= 5
-            if self.offset_y < 0:
-                self.offset_y = 0
+            self._offset_y -= 5
+            if self._offset_y < 0:
+                self._offset_y = 0
             return True
         if event_type == 'wheel-down':
-            self.offset_y += 5
-            if self.offset_y >= len(self.items) - self.height:
-                self.offset_y = max(0, len(self.items) - self.height)
+            self._offset_y += 5
+            if self._offset_y >= len(self.items) - self.height:
+                self._offset_y = max(0, len(self.items) - self.height)
             return True
 
         if not self.resize_mode:
             view_x = x - self.x
             view_y = y - self.y
-            index = self.offset_y + view_y
+            index = self._offset_y + view_y
 
             if 0 <= view_y < self.height and 0 <= view_x < self.width and 0 <= index < len(self.items):
                 selected = False
                 if 'move' in event_type:
-                    if self.selected == index:
+                    if self._selected == index:
                         return False # do not redraw when hovering over same item
                 if event_type == 'left-click' or event_type == 'double-click' or ('move' in event_type and self in Gitkcli.mouse_movement_capture):
                     if self.items[index].is_selectable:
-                        self.selected = index
+                        self.set_selected(index)
                         selected = True
                 item = self.items[index]
-                handled = item.handle_mouse_input(event_type, view_x + self.offset_x, index)
+                handled = item.handle_mouse_input(event_type, view_x + self._offset_x, index)
                 if handled and ('left-click' == event_type or 'double-click' == event_type):
                     Gitkcli.clicked_item = item
                 if selected or handled:
@@ -1426,60 +1435,37 @@ class ListView(View):
         if not self.items:
             return super().handle_input(key)
 
-        offset_jump = int(self.width / 4)
-
-        if self.selected < len(self.items) and self.items[self.selected].handle_input(key):
+        selected_item = self.get_selected()
+        if selected_item and selected_item.handle_input(key):
             return True
 
         if key == curses.KEY_UP or key == ord('k'):
-            if self.selected > 0:
-                self.selected -= 1
-                self._skip_non_selectable_items(-1)
-                self._ensure_selection_is_visible()
+            self.set_selected(self._selected - 1)
         elif key == curses.KEY_DOWN or key == ord('j'):
-            if self.selected < len(self.items) - 1:
-                self.selected += 1
-                self._skip_non_selectable_items(1)
-                self._ensure_selection_is_visible()
+            self.set_selected(self._selected + 1)
         elif key == curses.KEY_LEFT or key == ord('h'):
-            if self.offset_x - offset_jump >= 0:
-                self.offset_x -= offset_jump
+            if self._offset_x - HORIZONTAL_OFFSET_JUMP >= 0:
+                self._offset_x -= HORIZONTAL_OFFSET_JUMP
             else:
-                self.offset_x = 0
+                self._offset_x = 0
         elif key == curses.KEY_RIGHT or key == ord('l'):
             max_length = 0
-            for i in range(self.offset_y, min(self.offset_y + self.height, len(self.items))):
+            for i in range(self._offset_y, min(self._offset_y + self.height, len(self.items))):
                 length = len(self.items[i].get_text())
                 if length > max_length:
                     max_length = length
-            if self.offset_x + self.width < max_length:
-                self.offset_x += offset_jump
+            if self._offset_x + self.width < max_length:
+                self._offset_x += HORIZONTAL_OFFSET_JUMP
         elif key == curses.KEY_PPAGE or key == curses_ctrl('b'):
-            self.selected -= self.height
-            self.offset_y -= self.height
-            if self.selected < 0:
-                self.selected = 0
-            if self.offset_y < 0:
-                self.offset_y = 0
-            self._skip_non_selectable_items(-1)
-            self._ensure_selection_is_visible()
+            self._offset_y = max(0, self._offset_y - self.height)
+            self.set_selected(max(0, self._selected - self.height))
         elif key == curses.KEY_NPAGE or key == curses_ctrl('f'):
-            self.selected += self.height
-            self.offset_y += self.height
-            if self.selected >= len(self.items):
-                self.selected = max(0, len(self.items) - 1)
-            if self.offset_y >= len(self.items) - self.height:
-                self.offset_y = max(0, len(self.items) - self.height)
-            self._skip_non_selectable_items(1)
-            self._ensure_selection_is_visible()
+            self._offset_y = min(self._offset_y + self.height, max(0, len(self.items) - self.height))
+            self.set_selected(min(self._selected + self.height, max(0, len(self.items) - 1)))
         elif key == curses.KEY_HOME or key == ord('g'):
-            self.selected = 0
-            self._skip_non_selectable_items(-1)
-            self._ensure_selection_is_visible()
+            self.set_selected(0)
         elif key == curses.KEY_END or key == ord('G'):
-            self.selected = max(0, len(self.items) - 1)
-            self._skip_non_selectable_items(1)
-            self._ensure_selection_is_visible()
+            self.set_selected(max(0, len(self.items) - 1))
         elif key == ord('/'):
             if self._search_dialog:
                 self._search_dialog.clear()
@@ -1495,10 +1481,10 @@ class ListView(View):
 
     def draw(self):
         separator_items = []
-        for i in range(0, min(self.height, len(self.items) - self.offset_y)):
-            idx = i + self.offset_y
+        for i in range(0, min(self.height, len(self.items) - self._offset_y)):
+            idx = i + self._offset_y
             item = self.items[idx]
-            selected = idx == self.selected
+            selected = idx == self._selected
             matched = self._search_dialog.matches(item) if self._search_dialog else False
 
             # curses throws exception if you want to write a character in bottom left corner
@@ -1510,7 +1496,7 @@ class ListView(View):
                 separator_items.append(i)
             else:
                 self.win.move(self.y + i, self.x)
-                item.draw_line(self.win, self.offset_x, width, selected, matched, False)
+                item.draw_line(self.win, self._offset_x, width, selected, matched, False)
 
         self.win.clrtobot()
         super().draw()
@@ -1543,6 +1529,14 @@ class GitLogView(ListView):
 
         self.set_search_dialog(GitSearchDialogPopup());
 
+    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'default') -> bool:
+        ret = super().set_selected(what, visible_mode)
+        if Gitkcli.view_git_diff in Gitkcli.get_visible_views():
+            item = self.get_selected()
+            if item:
+                item.load_to_view()
+        return ret
+
     def toggle_show_commit_id(self):
         Gitkcli.show_commit_id = not Gitkcli.show_commit_id
         self.dirty = True
@@ -1562,10 +1556,10 @@ class GitLogView(ListView):
                 to_remove += 1
         for _ in range(to_remove):
             self.items.pop(0)
-            if self.selected > 0:
-                self.selected -= 1
-            if self.offset_y > 0:
-                self.offset_y -= 1
+            if self._selected > 0:
+                self._selected -= 1
+            if self._offset_y > 0:
+                self._offset_y -= 1
 
         # Check for staged changes
         result = Gitkcli.run_job(['git', 'diff', '--cached', '--quiet'])
@@ -1589,25 +1583,22 @@ class GitLogView(ListView):
             elif self.items[i].id.startswith('local'):
                 offset += 1
         self.items.insert(offset, item)
-        self.selected += 1
-        if self.offset_y > 0:
-            self.offset_y += 1
-        else:
-            self._ensure_selection_is_visible()
+        if self._offset_y > 0:
+            self._offset_y += 1
+        self.set_selected(self._selected + 1)
 
     def select_commit(self, id:str) -> typing.Optional[CommitListItem]:
         idx = 0
         for item in self.items:
             if id == item.id:
-                self.selected = idx
-                if self.selected < self.offset_y or self.selected >= self.offset_y + self.height:
-                    self.offset_y = max(0, self.selected - int(self.height / 2))
-                self._ensure_selection_is_visible()
+                self.set_selected(idx)
                 return self.items[idx]
             idx += 1
         return None
 
     def add_to_jump_list(self, id:str):
+        if len(self.jump_list) > 0 and id == self.jump_list[self.jump_index]:
+            return
         self.jump_list = self.jump_list[self.jump_index:]
         if id in self.jump_list:
             self.jump_list.remove(id)
@@ -1615,19 +1606,20 @@ class GitLogView(ListView):
         self.jump_index = 0
 
     def move_in_jump_list(self, jump:int):
-        new_index = self.jump_index + jump
-        if 0 <= new_index < len(self.jump_list):
-            self.jump_index = new_index
-            if self.select_commit(self.jump_list[new_index]):
-                Gitkcli.job_git_diff.show_commit(self.jump_list[new_index], add_to_jump_list = False)
-            else:
-                # when commit id not found, go to next item
-                self.move_in_jump_list(jump)
+        if len(self.jump_list) > 0:
+            new_index = self.jump_index + jump
+            if 0 <= new_index < len(self.jump_list):
+                self.jump_index = new_index
+                if self.select_commit(self.jump_list[new_index]):
+                    pass
+                else:
+                    # when commit id not found, go to next item
+                    self.move_in_jump_list(jump)
         return True
 
     def get_selected_commit_id(self):
-        if len(self.items) > 0:
-            selected_item = self.items[self.selected]
+        selected_item = self.get_selected()
+        if selected_item:
             return selected_item.id
         return ''
 
@@ -1748,14 +1740,20 @@ class GitDiffView(ListView):
         self.set_search_dialog(SearchDialogPopup(ID_GIT_DIFF_SEARCH))
 
     def clear(self):
-        super().clear()
         self.commit_id = ''
         self.is_diff = False
+        super().clear()
+
+    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'default') -> bool:
+        ret = super().set_selected(what, visible_mode)
+        if self.commit_id and self.is_diff == False:
+            Gitkcli.job_git_diff.selected_line_map[self.commit_id] = self._selected
+        return ret
 
     def select_line(self, file:str, line:int):
         for item in self.items:
             if isinstance(item, DiffListItem) and item.new_file_path == file and item.new_file_line == line:
-                self.select_item(item.line)
+                self.set_selected(item.line)
 
     def change_context(self, size:int):
         Gitkcli.context_size = max(0, Gitkcli.context_size + size)
@@ -1866,7 +1864,7 @@ class ContextMenu(ListView):
         if Gitkcli.showed_views[-1] == self:
             return True
         self.clear()
-        self.selected = -1
+        self._selected = -1
         if not view_id:
             view_id = Gitkcli.showed_views[-1].id
         view = Gitkcli.get_active_view()
@@ -2183,7 +2181,7 @@ class UserInputDialogPopup(ListView):
         self.append(self.input)
         self.append(SpacerListItem())
         self.append(bottom_item)
-        self.selected = 2
+        self._selected = 2
 
     def execute(self):
         pass
@@ -2651,7 +2649,7 @@ class Gitkcli:
         else:
             job_status = f"Exited with code {job.get_exit_code()}"
 
-        stdscr.addstr(lines-1, 0, f"Line {view.selected+1}/{len(view.items)} - Offset {view.offset_x} - Process '{cls.showed_views[-1].id}' {job_status}".ljust(cols - 1), curses_color(200))
+        stdscr.addstr(lines-1, 0, f"Line {view._selected+1}/{len(view.items)} - Offset {view._offset_x} - Process '{cls.showed_views[-1].id}' {job_status}".ljust(cols - 1), curses_color(200))
 
 def init_color(pair_number: int, nfg:int, nbg:int = -1, hfg:int = -1, hbg:int = -1, sfg:int = -1, sbg:int = -1, shfg:int = -1, shbg:int = -1) -> None:
     # normal
