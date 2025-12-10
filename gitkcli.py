@@ -1599,7 +1599,7 @@ class GitLogView(ListView):
     def select_commit(self, id:str) -> typing.Optional[CommitListItem]:
         idx = 0
         for item in self.items:
-            if id == item.id:
+            if isinstance(item, CommitListItem) and id == item.id:
                 self.set_selected(idx)
                 return self.items[idx]
             idx += 1
