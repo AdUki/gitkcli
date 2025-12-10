@@ -964,7 +964,7 @@ class CommitListItem(SegmentedListItem):
         if Gitkcli.show_commit_date:
             segments.append(TextSegment(commit['date'].strftime("%Y-%m-%d %H:%M"), 5))
         if Gitkcli.show_commit_author:
-            segments.append(TextSegment(commit['author'].ljust(22), 6))
+            segments.append(TextSegment(commit['author'], 6))
         segments.append(TextSegment(commit['title']))
 
         head_position = len(segments) + 1 # +1, because we want to skip 'HEAD ->' segment
