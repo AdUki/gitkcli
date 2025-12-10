@@ -271,7 +271,7 @@ class SubprocessJob:
 class GitLogJob(SubprocessJob):
     def __init__(self, id:str, args = []):
         super().__init__(id) 
-        self.cmd = 'git log --format=%H|%P|%aI|%an|%s'
+        self.cmd = 'git log --format=#%H#%P#%aI#%an#%s'
         self.args = args
 
     def start_job(self, args = [], on_finished = None):
@@ -279,18 +279,25 @@ class GitLogJob(SubprocessJob):
         super().start_job(args, on_finished) 
 
     def process_line(self, line) -> typing.Any:
-        id, parents_str, date_str, author, title = line.split('|', 4)
-        return (id, {
-            'parents': parents_str.split(' '),
-            'date': datetime.datetime.fromisoformat(date_str),
-            'author': author,
-            'title': title,
-        })
+        try:
+            prefix, id, parents_str, date_str, author, title = line.split('#', 5)
+            return (id, {
+                'prefix': prefix,
+                'parents': parents_str.split(' '),
+                'date': datetime.datetime.fromisoformat(date_str),
+                'author': author,
+                'title': title,
+            })
+        except ValueError:
+            return str(line)
 
     def process_item(self, item):
-        id, commit = item
-        if Gitkcli.add_commit(id, commit):
-            Gitkcli.view_git_log.append(CommitListItem(id))
+        if isinstance(item, str):
+            Gitkcli.view_git_log.append(TextListItem(item))
+        else:
+            id, commit = item
+            if Gitkcli.add_commit(id, commit):
+                Gitkcli.view_git_log.append(CommitListItem(id))
 
 # NOTE: Temporary class, until we have proper git tree
 class GitRefreshHeadJob(GitLogJob):
@@ -301,7 +308,7 @@ class GitRefreshHeadJob(GitLogJob):
         # check if HEAD commit is actually in view
         head_found = False
         for item in Gitkcli.view_git_log.items:
-            if item.id == Gitkcli.head_id:
+            if hasattr(item, 'id') and item.id == Gitkcli.head_id:
                 head_found = True
                 break
         if not head_found:
@@ -959,6 +966,8 @@ class CommitListItem(SegmentedListItem):
         commit = Gitkcli.commits[self.id]
         segments = []
 
+        if commit['prefix']:
+            segments.append(TextSegment(commit['prefix']))
         if Gitkcli.show_commit_id:
             segments.append(TextSegment(self.id[:7], 4))
         if Gitkcli.show_commit_date:
