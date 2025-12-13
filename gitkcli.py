@@ -68,7 +68,7 @@ def copy_to_clipboard(txt:str):
     except Exception as e:
         log_error(f"Error copying to clipboard: {str(e)}")
 
-def curses_ctrl(key):
+def KEY_CTRL(key):
     return ord(key) & 0x1F
 
 def subtract_rect(rect, subtract):
@@ -1465,10 +1465,10 @@ class ListView(View):
                     max_length = length
             if self._offset_x + self.width < max_length:
                 self._offset_x += HORIZONTAL_OFFSET_JUMP
-        elif key == curses.KEY_PPAGE or key == curses_ctrl('b'):
+        elif key == curses.KEY_PPAGE or key == KEY_CTRL('b'):
             self._offset_y = max(0, self._offset_y - self.height)
             self.set_selected(max(0, self._selected - self.height))
-        elif key == curses.KEY_NPAGE or key == curses_ctrl('f'):
+        elif key == curses.KEY_NPAGE or key == KEY_CTRL('f'):
             self._offset_y = min(self._offset_y + self.height, max(0, len(self.items) - self.height))
             self.set_selected(min(self._selected + self.height, max(0, len(self.items) - 1)))
         elif key == curses.KEY_HOME or key == ord('g'):
@@ -1778,6 +1778,15 @@ class GitDiffView(ListView):
 
         Gitkcli.job_git_diff.selected_line_map.clear()
         Gitkcli.job_git_diff.restart_job()
+
+    def handle_input(self, key) -> bool:
+        if key == KEY_CTRL('n'):
+            Gitkcli.view_git_log.handle_input(curses.KEY_DOWN)
+        elif key == KEY_CTRL('p'):
+            Gitkcli.view_git_log.handle_input(curses.KEY_UP)
+        else:
+            return super().handle_input(key)
+        return True
 
 class ShowLogLevelSegment(TextSegment):
     def __init__(self, color):
@@ -2219,12 +2228,12 @@ class UserInputDialogPopup(ListView):
             self.cursor_pos = 0
             self.hide()
                 
-        elif key == curses.KEY_DOWN:
+        elif key == curses.KEY_DOWN or key == KEY_CTRL('n'):
             if self.history_index > 0:
                 self.history_index -= 1
                 self.input.set_text(self.history_queries[self.history_index])
                 
-        elif key == curses.KEY_UP:
+        elif key == curses.KEY_UP or key == KEY_CTRL('p'):
             if self.history_index + 1 < len(self.history_queries):
                 self.history_index += 1
                 self.input.set_text(self.history_queries[self.history_index])
@@ -2935,9 +2944,9 @@ def launch_curses(stdscr, cmd_args):
             else:
                 if key == ord('q') or key == curses.KEY_EXIT:
                     Gitkcli.hide_active_view()
-                elif key == KEY_CTRL_LEFT or key == KEY_CTRL_O:
+                elif key == KEY_CTRL_LEFT or key == KEY_CTRL('o'):
                     Gitkcli.view_git_log.move_in_jump_list(+1)
-                elif key == KEY_CTRL_RIGHT or key == KEY_CTRL_I:
+                elif key == KEY_CTRL_RIGHT or key == KEY_CTRL('i'):
                     Gitkcli.view_git_log.move_in_jump_list(-1)
                 elif key == curses.KEY_F1:
                     Gitkcli.view_git_log.show()
