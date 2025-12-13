@@ -2312,12 +2312,17 @@ class SearchDialogPopup(UserInputDialogPopup):
         self.use_regexp = ToggleSegment("<Regexp>")
         self.header = SegmentedListItem([FillerSegment(), TextSegment("Flags:"), self.case_sensitive, self.use_regexp, FillerSegment()])
         buttons = SegmentedListItem([FillerSegment(),
-                                     ButtonSegment("[Search Next]", lambda: self.parent_list_view.search()),
-                                     ButtonSegment("[Search Previous]", lambda: self.parent_list_view.search(backward = True)),
+                                     ButtonSegment("[Search Next]", lambda: self.do_search(backward = False)),
+                                     ButtonSegment("[Search Previous]", lambda: self.do_search(backward = True)),
                                      ButtonSegment("[Close]", lambda: self.handle_input(curses.KEY_EXIT)),
                                      FillerSegment()])
         buttons.is_selectable = False
         super().__init__(id, ' Search', self.header, buttons)
+
+    def do_search(self, backward:bool):
+        self.parent_list_view.search(backward)
+        self.dirty = True
+        super().execute()
 
     def matches(self, item):
         if self.input.txt:
