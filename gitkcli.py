@@ -2049,6 +2049,11 @@ class UserInputListItem(Item):
 
     def get_text(self):
         return self.txt
+
+    def set_text(self, txt:str):
+        self.txt = txt
+        self.offset = 0
+        self.cursor_pos = len(txt)
                 
     def handle_input(self, key):
         if key == curses.KEY_BACKSPACE or key == 127:  # Backspace
@@ -2059,7 +2064,7 @@ class UserInputListItem(Item):
         elif key == curses.KEY_DC:  # Delete key
             if self.cursor_pos < len(self.txt):
                 self.txt = self.txt[:self.cursor_pos] + self.txt[self.cursor_pos+1:]
-                
+
         elif key == curses.KEY_LEFT:  # Left arrow
             if self.cursor_pos > 0:
                 self.cursor_pos -= 1
@@ -2091,6 +2096,8 @@ class UserInputListItem(Item):
             return super().handle_mouse_input(event_type, x, y)
 
     def draw_line(self, win, offset, width, selected, matched, marked):
+        # TODO: update self.offset according to offset so that cursor is always visible
+
         left_txt = self.txt[self.offset:self.offset+self.cursor_pos]
         right_txt = self.txt[self.offset+self.cursor_pos:self.offset+width-1]
 
@@ -2175,6 +2182,8 @@ class UserInputDialogPopup(ListView):
         self.set_title_item(TextListItem(title, 30, expand = True))
         self.input = UserInputListItem()
         self.is_popup = True
+        self.history_queries = []
+        self.history_index = -1
 
         if not bottom_item:
             bottom_item = SegmentedListItem([FillerSegment(),
@@ -2193,10 +2202,12 @@ class UserInputDialogPopup(ListView):
         self._selected = 2
 
     def execute(self):
-        pass
+        if len(self.history_queries) == 0 or self.history_queries[0] != self.input.txt:
+            self.history_queries.insert(0, self.input.txt)
 
     def clear(self):
         self.input.clear()
+        self.history_index = -1
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
@@ -2207,6 +2218,16 @@ class UserInputDialogPopup(ListView):
             self.input.txt = ""
             self.cursor_pos = 0
             self.hide()
+                
+        elif key == curses.KEY_DOWN:
+            if self.history_index > 0:
+                self.history_index -= 1
+                self.input.set_text(self.history_queries[self.history_index])
+                
+        elif key == curses.KEY_UP:
+            if self.history_index + 1 < len(self.history_queries):
+                self.history_index += 1
+                self.input.set_text(self.history_queries[self.history_index])
 
         else:
             return super().handle_input(key)
@@ -2234,6 +2255,8 @@ class BranchRenameDialogPopup(UserInputDialogPopup):
             log_success(f'Branch renamed from {self.old_branch_name} to {self.input.txt}')
         else:
             log_error(f"Error renaming branch: {result.stderr}")
+
+        super().execute()
 
 class NewRefDialogPopup(UserInputDialogPopup):
     def __init__(self):
@@ -2271,6 +2294,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
             log_success(f'{self.ref_type} {self.input.txt} created successfully')
         else:
             log_error(f"Error creating {self.ref_type}: " + result.stderr)
+        super().execute()
 
 class SearchDialogPopup(UserInputDialogPopup):
     def __init__(self, id:str):
@@ -2314,6 +2338,7 @@ class SearchDialogPopup(UserInputDialogPopup):
 
     def execute(self):
         self.parent_list_view.search(repeat = True)
+        super().execute()
 
 class GitSearchDialogPopup(SearchDialogPopup):
     def __init__(self):
