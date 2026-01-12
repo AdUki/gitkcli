@@ -2412,8 +2412,9 @@ class GitSearchDialogPopup(SearchDialogPopup):
     def matches(self, item):
         if self.search_type == "txt":
             return super().matches(item)
-        else:
+        elif hasattr(item, 'id'):
             return item.id in Gitkcli.git_log.job_git_search.found_ids
+        return False
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
