@@ -1,12 +1,12 @@
 #!/usr/bin/python
 
-import argparse
 import curses
 import datetime
+import os
 import queue
 import re
-import os
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -1482,7 +1482,7 @@ class ListView(View):
             self.win.refresh()
 
 class GitLogView(ListView):
-    def __init__(self, cmd_args):
+    def __init__(self, git_args:typing.List, cmd_args:typing.List):
         super().__init__(ID_GIT_LOG, 'fullscreen');
 
         self.commits = {} # map: git_id --> { parents, date, author, title }
@@ -1497,7 +1497,7 @@ class GitLogView(ListView):
         self.show_commit_date = True
         self.show_commit_author = True
 
-        self.job = GitLogJob(ID_GIT_LOG, cmd_args)
+        self.job = GitLogJob(ID_GIT_LOG, git_args + cmd_args)
         self.job_git_refresh_head = GitRefreshHeadJob()
         self.job_git_search = GitSearchJob(cmd_args)
 
@@ -2829,12 +2829,12 @@ class Gitkcli:
         for job in Job.jobs.values():
             job.stop_job()
 
-def launch_curses(stdscr, cmd_args):
+def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
     Gitkcli.screen = Screen(stdscr)
     Gitkcli.mouse = Mouse()
     Gitkcli.log = Log()
-    Gitkcli.git_log = GitLogView(cmd_args)
+    Gitkcli.git_log = GitLogView(git_args, cmd_args)
     Gitkcli.git_diff = GitDiffView()
     Gitkcli.git_refs = GitRefsView()
     Gitkcli.context_menu = ContextMenu()
@@ -2995,10 +2995,26 @@ def launch_curses(stdscr, cmd_args):
     Gitkcli.log.info('Application ended')
 
 def main():
-    parser = argparse.ArgumentParser(description='')
-    args, cmd_args = parser.parse_known_args()
+    args = sys.argv[1:]
 
-    curses.wrapper(lambda stdscr: launch_curses(stdscr, cmd_args))
+    # Check for help flags
+    if '-h' in args:
+        subprocess.run(['git', 'log', '-h'])
+        sys.exit(0)
+    if '--help' in args:
+        subprocess.run(['git', 'log', '--help'])
+        sys.exit(0)
+
+    git_args = []
+    cmd_args = []
+    
+    for arg in args:
+        if arg == '--graph':
+            git_args.append(arg)
+        else:
+            cmd_args.append(arg)
+
+    curses.wrapper(lambda stdscr: launch_curses(stdscr, git_args, cmd_args))
 
 if __name__ == "__main__":
     main()
