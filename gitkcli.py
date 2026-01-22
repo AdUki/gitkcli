@@ -2017,7 +2017,7 @@ class ContextMenu(ListView):
         Gitkcli.git_refs.view_ref_push.show()
 
     def remove_branch(self, branch_name):
-        result = Job.run_job(['git', 'branch', '-d', branch_name])
+        result = Job.run_job(['git', 'branch', '-D', branch_name])
         if result.returncode == 0:
             Gitkcli.git_refs.reload_refs()
             Gitkcli.log.success(f'Deleted branch {branch_name}')
