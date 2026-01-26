@@ -1278,7 +1278,7 @@ class ListView(View):
         self._offset_x = 0
         self.dirty = True
 
-    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'default') -> bool:
+    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
         new_index = None
 
         if isinstance(what, int):
@@ -1314,21 +1314,12 @@ class ListView(View):
                 self._selected = new_index
                 self.dirty = True
 
-                if visible_mode == 'default':
-                    # this mode will:
-                    # - does not change view offset when item is already visible
-                    # - when item is just above/below view, we will move view just by 1
-                    # - when item is completely away from view, we will center it
-                    if self._selected < self._offset_y:
-                        if self._offset_y - self._selected > 1:
-                            self._offset_y = max(0, self._selected - int(self.height / 2))
-                        else:
-                            self._offset_y = self._selected
-                    elif self._selected >= self._offset_y + self.height:
-                        if self._selected - self._offset_y - self.height > 1:
-                            self._offset_y = min(max(0, len(self.items) - self.height), self._selected - int(self.height / 2))
-                        else:
-                            self._offset_y = self._selected - self.height + 1
+                if self._offset_y <= self._selected < self._offset_y + self.height:
+                    # do not change view offset when item is already visible
+                    return True
+
+                if visible_mode == 'center':
+                    self._offset_y = max(0, min(self._selected - int(self.height / 2), len(self.items) - self.height))
                 elif visible_mode == 'top':
                     self._offset_y = max(0, self._selected)
                 elif visible_mode == 'bottom':
@@ -1407,9 +1398,9 @@ class ListView(View):
             return True
 
         if key == curses.KEY_UP or key == ord('k'):
-            self.set_selected(self._selected - 1)
+            self.set_selected(self._selected - 1, visible_mode = 'top')
         elif key == curses.KEY_DOWN or key == ord('j'):
-            self.set_selected(self._selected + 1)
+            self.set_selected(self._selected + 1, visible_mode = 'bottom')
         elif key == curses.KEY_LEFT or key == ord('h'):
             if self._offset_x - HORIZONTAL_OFFSET_JUMP >= 0:
                 self._offset_x -= HORIZONTAL_OFFSET_JUMP
@@ -1526,7 +1517,7 @@ class GitLogView(ListView):
         self.job.start_job()
         self.check_uncommitted_changes()
 
-    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'default') -> bool:
+    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
         ret = super().set_selected(what, visible_mode)
         if Gitkcli.git_diff in Gitkcli.screen.get_visible_views():
             item = self.get_selected()
@@ -1732,7 +1723,7 @@ class GitDiffView(ListView):
         self.is_diff = False
         super().clear()
 
-    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'default') -> bool:
+    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
         ret = super().set_selected(what, visible_mode)
         if self.commit_id and self.is_diff == False:
             self.job.selected_line_map[self.commit_id] = self._selected
