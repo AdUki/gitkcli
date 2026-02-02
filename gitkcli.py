@@ -170,13 +170,7 @@ class Job:
         stderr_thread.start()
 
     def get_exit_code(self):
-        exit_code = None
-        if self.job:
-            exit_code = self.job.poll()
-        return exit_code
-
-    def job_running(self):
-        return self.running
+        return self.job.poll() if self.job else None
 
     def _reader_thread(self, stream, is_stderr=False):
         if not is_stderr:
@@ -642,9 +636,6 @@ class DiffListItem(TextListItem):
             return super().handle_input(key)
 
 class Segment:
-    def __init__(self):
-        pass
-
     def get_text(self) -> str:
         return ''
 
@@ -658,8 +649,7 @@ class Segment:
         return False
 
 class FillerSegment(Segment):
-    def __init__(self):
-        super().__init__()
+    pass
 
 class TextSegment(Segment):
     def __init__(self, txt, color = 1):
@@ -736,10 +726,7 @@ class ToggleSegment(TextSegment):
         self.enabled = True
 
     def toggle(self):
-        if self.toggled:
-            self.toggled = False
-        else:
-            self.toggled = True
+        self.toggled = not self.toggled
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'left-click' or event_type == 'double-click':
@@ -1249,9 +1236,6 @@ class ListView(View):
                 break
         copy_to_clipboard(text)
 
-    def size(self) -> int:
-        return len(self.items)
-
     def append(self, item):
         """Add item to end of list"""
         self.items.append(item)
@@ -1575,12 +1559,10 @@ class GitLogView(ListView):
         self.set_selected(self._selected + 1)
 
     def select_commit(self, id:str) -> typing.Optional[CommitListItem]:
-        idx = 0
-        for item in self.items:
+        for idx, item in enumerate(self.items):
             if isinstance(item, CommitListItem) and id == item.id:
                 self.set_selected(idx)
-                return self.items[idx]
-            idx += 1
+                return item
         return None
 
     def add_to_jump_list(self, id:str):
@@ -1597,9 +1579,7 @@ class GitLogView(ListView):
             new_index = self.jump_index + jump
             if 0 <= new_index < len(self.jump_list):
                 self.jump_index = new_index
-                if self.select_commit(self.jump_list[new_index]):
-                    pass
-                else:
+                if not self.select_commit(self.jump_list[new_index]):
                     # when commit id not found, go to next item
                     self.move_in_jump_list(jump)
         return True
@@ -1671,7 +1651,7 @@ class GitLogView(ListView):
         if key == ord('q') or key == curses.KEY_EXIT:
             Gitkcli.exit_program()
         elif key == ord('b'):
-            Gitkcli.git_refs.view_new_ref.create_branch(self.get_selected_commit_id())
+            Gitkcli.git_refs.view_new_ref.create_ref(self.get_selected_commit_id())
         elif key == ord('r'):
             self.reset(False)
         elif key == ord('R'):
@@ -1818,8 +1798,7 @@ class LogView(ListView):
         self.set_search_dialog(SearchDialogPopup(ID_LOG_SEARCH))
 
     def change_log_level(self, value):
-        if 0 <= Gitkcli.log.level + value <= 5:
-            Gitkcli.log.level += value
+        Gitkcli.log.level = max(0, min(5, Gitkcli.log.level + value))
         self.dirty = True
 
 class ContextMenuItem(TextListItem):
@@ -1940,8 +1919,8 @@ class ContextMenu(ListView):
             elif item.id == 'local-working':
                 self.append(ContextMenuItem("Clear unstaged changes", view.clean_uncommitted_changes, [False]))
             else:
-                self.append(ContextMenuItem("Create new branch", Gitkcli.git_refs.view_new_ref.create_branch, [item.id]))
-                self.append(ContextMenuItem("Create new tag", Gitkcli.git_refs.view_new_ref.create_tag, [item.id]))
+                self.append(ContextMenuItem("Create new branch", Gitkcli.git_refs.view_new_ref.create_ref, [item.id]))
+                self.append(ContextMenuItem("Create new tag", Gitkcli.git_refs.view_new_ref.create_ref, [item.id, 'tag']))
                 self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
                 self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
                 self.append(SeparatorItem())
@@ -1964,7 +1943,7 @@ class ContextMenu(ListView):
         elif view_id == 'git-refs' and hasattr(item, 'data'):
             if item.data['type'] == 'heads':
                 self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
-                self.append(ContextMenuItem("Rename this branch", Gitkcli.git_refs.view_new_ref.create_branch, [item.data['name']]))
+                self.append(ContextMenuItem("Rename this branch", Gitkcli.git_refs.view_new_ref.create_ref, [item.data['name']]))
                 self.append(ContextMenuItem("Copy branch name", copy_to_clipboard, [item.data['name']]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Push branch to remote", self.push_ref_to_remote, [item.data['name']]))
@@ -2003,7 +1982,8 @@ class ContextMenu(ListView):
             Gitkcli.log.error(f"Error checking out branch: {result.stderr}")
 
     def push_ref_to_remote(self, branch_name):
-        Gitkcli.git_refs.view_ref_push.set_ref_name(branch_name)
+        Gitkcli.git_refs.view_ref_push.ref_name = branch_name
+        Gitkcli.git_refs.view_ref_push.header_item.set_text(f"Push ref: {branch_name}")
         Gitkcli.git_refs.view_ref_push.clear()
         Gitkcli.git_refs.view_ref_push.show()
 
@@ -2043,9 +2023,6 @@ class ContextMenu(ListView):
         else:
             Gitkcli.log.error(f"Error deleting remote branch: {result.stderr}")
     
-    def copy_ref_name(self, ref_name):
-        copy_to_clipboard(ref_name)
-
 class UserInputListItem(Item):
     def __init__(self, color = 1):
         super().__init__()
@@ -2150,10 +2127,6 @@ class RefPushDialogPopup(ListView):
 
     def clear(self):
         self.force.toggled = False
-
-    def set_ref_name(self, name):
-        self.ref_name = name
-        self.header_item.set_text(f"Push ref: {self.ref_name}")
 
     def push_ref(self):
         args = ['git', 'push']
@@ -2281,20 +2254,11 @@ class NewRefDialogPopup(UserInputDialogPopup):
         super().__init__(ID_NEW_GIT_REF, ' New Branch',
             SegmentedListItem([TextSegment(f"Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()])) 
 
-    def _set_ref_type(self, ref_type):
-        self.title = f' New {ref_type}'
+    def create_ref(self, commit_id, ref_type='branch'):
+        self.commit_id = commit_id
         self.ref_type = ref_type
+        self.title = f' New {ref_type}'
         self.title_segment.txt = f"Specify the new {ref_type} name:"
-    
-    def create_branch(self, commit_id):
-        self.commit_id = commit_id
-        self._set_ref_type('branch')
-        self.clear()
-        self.show()
-    
-    def create_tag(self, commit_id):
-        self.commit_id = commit_id
-        self._set_ref_type('tag')
         self.clear()
         self.show()
 
@@ -2656,7 +2620,7 @@ class Screen:
             return
 
         job_status = ''
-        if job.job_running():
+        if job.running:
             job_status = 'Running'
         elif job.get_exit_code() == None:
             job_status = f"Not started"
