@@ -16,7 +16,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/AdUki/gitkcli",
-    py_modules=["gitkcli"],  # Use py_modules instead of packages for a single file
+    packages=find_packages(),
+    py_modules=["gitkcli"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",

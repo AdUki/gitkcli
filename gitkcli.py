@@ -12,6 +12,17 @@ import time
 import traceback
 import typing
 
+# Import UI library
+from ui import (
+    UIContext,
+    Item, SeparatorItem, SpacerListItem,
+    TextListItem, UserInputListItem,
+    Segment, FillerSegment, TextSegment, ButtonSegment, ToggleSegment,
+    SegmentedListItem, WindowTopBarItem,
+    View, ListView,
+    Screen, Mouse
+)
+
 
 HORIZONTAL_OFFSET_JUMP = 1
 
@@ -219,11 +230,11 @@ class GitLogJob(Job):
 
     def process_item(self, item):
         if isinstance(item, str):
-            Gitkcli.git_log.append(TextListItem(item, selectable = False))
+            Gitkcli.git_log.append(TextListItem(item, selectable=False, ui_context=Gitkcli.ui_context))
         else:
             id, commit = item
             if Gitkcli.git_log.add_commit(id, commit):
-                Gitkcli.git_log.append(CommitListItem(id))
+                Gitkcli.git_log.append(CommitListItem(id, ui_context=Gitkcli.ui_context))
 
 class GitRefreshHeadJob(GitLogJob):
     def __init__(self):
@@ -246,7 +257,7 @@ class GitRefreshHeadJob(GitLogJob):
     def process_item(self, item):
         (id, commit) = item
         if Gitkcli.git_log.add_commit(id, commit):
-            Gitkcli.git_log.prepend_commit(CommitListItem(id))
+            Gitkcli.git_log.prepend_commit(CommitListItem(id, ui_context=Gitkcli.ui_context))
 
 class GitDiffJob(Job):
     def __init__(self):
@@ -355,37 +366,37 @@ class GitDiffJob(Job):
                         color = 10
                     stat_match = self.stat_pattern.match(line)
                     if stat_match: # stats line
-                        return StatListItem(line, color, stat_match.group(1))
-                    return TextListItem(line, color)
+                        return StatListItem(line, color, stat_match.group(1), ui_context=Gitkcli.ui_context)
+                    return TextListItem(line, color, ui_context=Gitkcli.ui_context)
                 self.old_file_line += 1
                 self.new_file_line += 1
-                return DiffListItem(self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line)
+                return DiffListItem(self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line, ui_context=Gitkcli.ui_context)
             elif match.group(2): # '+++' new file
                 color = 17
                 self.new_file_path = str(match.group(2))
-                return TextListItem(line, color)
+                return TextListItem(line, color, ui_context=Gitkcli.ui_context)
             elif match.group(3): # '---' old file
                 color = 17
                 self.old_file_path = str(match.group(3))
-                return TextListItem(line, color)
+                return TextListItem(line, color, ui_context=Gitkcli.ui_context)
             elif match.group(4): # infos
                 color = 17
-                return TextListItem(line, color)
+                return TextListItem(line, color, ui_context=Gitkcli.ui_context)
             elif match.group(5): # '+' added code lines
                 color = 9
                 self.new_file_line += 1
-                return DiffListItem(self.line_count, line, color, None, None, self.new_file_path, self.new_file_line)
+                return DiffListItem(self.line_count, line, color, None, None, self.new_file_path, self.new_file_line, ui_context=Gitkcli.ui_context)
             elif match.group(6): # '-' remove code lines
                 color = 8
                 self.old_file_line += 1
-                return DiffListItem(self.line_count, line, color, self.old_file_path, self.old_file_line, None, None)
+                return DiffListItem(self.line_count, line, color, self.old_file_path, self.old_file_line, None, None, ui_context=Gitkcli.ui_context)
             elif match.group(7): # diff numbers
                 color = 10
                 self.old_file_line = int(match.group(8)) - 1
                 self.new_file_line = int(match.group(9)) - 1
-                return DiffListItem(self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line)
+                return DiffListItem(self.line_count, line, color, self.old_file_path, self.old_file_line, self.new_file_path, self.new_file_line, ui_context=Gitkcli.ui_context)
 
-        return TextListItem(line, color)
+        return TextListItem(line, color, ui_context=Gitkcli.ui_context)
 
     def process_item(self, item):
         Gitkcli.git_diff.append(item)
@@ -448,47 +459,16 @@ class GitRefsJob(Job):
             last_item_data['id'] = id
             item = last_item_data
         else:
-            Gitkcli.git_refs.append(RefListItem(item))
+            Gitkcli.git_refs.append(RefListItem(item, Gitkcli.ui_context))
 
         Gitkcli.git_refs.refs.setdefault(id,[]).append(item)
         Gitkcli.git_log.dirty = True
         if item['type'] == 'head':
             Gitkcli.git_log.head_id = id
 
-class Item:
-    def __init__(self):
-        self.is_selectable = True
-        self.is_separator = False
-
-    def get_text(self) -> str:
-        return ''
-
-    def copy_text_to_clipboard(self):
-        copy_to_clipboard(self.get_text())
-
-    def set_text(self, txt:str):
-        pass
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        pass
-
-    def handle_input(self, key) -> bool:
-        return False
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'right-click':
-            return Gitkcli.context_menu.show_context_menu(self)
-        return False
-
-class SeparatorItem(Item):
-    def __init__(self):
-        super().__init__()
-        self.is_selectable = False
-        self.is_separator = True
-
 class RefListItem(Item):
-    def __init__(self, data):
-        super().__init__()
+    def __init__(self, data, ui_context):
+        super().__init__(ui_context)
         self.data = data
 
     def get_text(self):
@@ -526,47 +506,10 @@ class RefListItem(Item):
         else:
             return False
 
-class TextListItem(Item):
-    def __init__(self, txt, color = 1, expand = False, selectable = True, dim = False):
-        super().__init__()
-        self.txt = txt
-        self.color = color
-        self.expand = expand
-        self.is_selectable = selectable
-        self.dim = dim
-
-    def get_text(self):
-        return self.txt
-
-    def set_text(self, txt:str):
-        self.txt = txt
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        line = self.get_text()[offset:]
-        clear = True
-        if selected or marked or self.expand:
-            line += ' ' * (width - len(line))
-            clear = False
-        if len(line) >= width:
-            line = line[:width]
-            clear = False
-
-        win.addstr(line, Screen.color(self.color, selected, marked, matched, dim = self.dim))
-        if clear:
-            win.clrtoeol()
-
-class SpacerListItem(Item):
-    def __init__(self):
-        super().__init__()
-        self.is_selectable = False
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        win.clrtoeol()
-
 class StatListItem(TextListItem):
-    def __init__(self, txt:str, color:int, stat_file_path:str):
+    def __init__(self, txt:str, color:int, stat_file_path:str, ui_context=None):
         self.stat_file_path = stat_file_path
-        super().__init__(txt, color)
+        super().__init__(txt, color, ui_context=ui_context)
 
     def jump_to_file(self):
         Gitkcli.git_diff.set_selected(re.compile(f'diff.*{self.stat_file_path}'), 'top')
@@ -588,13 +531,14 @@ class StatListItem(TextListItem):
 class DiffListItem(TextListItem):
     def __init__(self, line:int, txt:str, color:int,
                  old_file_path:typing.Optional[str] = None, old_file_line:typing.Optional[int] = None,
-                 new_file_path:typing.Optional[str] = None, new_file_line:typing.Optional[int] = None):
+                 new_file_path:typing.Optional[str] = None, new_file_line:typing.Optional[int] = None,
+                 ui_context=None):
         self.line = line
         self.old_file_line = old_file_line
         self.old_file_path = old_file_path
         self.new_file_line = new_file_line
         self.new_file_path = new_file_path
-        super().__init__(txt, color)
+        super().__init__(txt, color, ui_context=ui_context)
 
     def jump_to_origin(self):
         if self.old_file_path and self.old_file_line:
@@ -635,228 +579,29 @@ class DiffListItem(TextListItem):
         else:
             return super().handle_input(key)
 
-class Segment:
-    def get_text(self) -> str:
-        return ''
-
-    def set_text(self, txt:str):
-        pass
-
-    def draw(self, win, offset, width, selected, matched, marked) -> int:
-        return 0
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        return False
-
-class FillerSegment(Segment):
-    pass
-
-class TextSegment(Segment):
-    def __init__(self, txt, color = 1):
-        super().__init__()
-        self.txt = txt
-        self.color = color
-
-    def get_text(self):
-        return self.txt
-
-    def set_text(self, txt:str):
-        self.txt = txt
-
-    def draw(self, win, offset, width, selected, matched, marked) -> int:
-        visible_txt = self.get_text()[offset:width]
-        win.addstr(visible_txt, Screen.color(self.color, selected, marked, matched))
-        return len(visible_txt)
-
 class RefSegment(TextSegment):
-    def __init__(self, ref):
+    def __init__(self, ref, ui_context):
         self.ref = ref
         color, txt = GitRefsView.get_ref_color_and_title(ref)
-        super().__init__(txt, color)
+        super().__init__(txt, color, ui_context)
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'right-click':
-            return Gitkcli.context_menu.show_context_menu(RefListItem(self.ref), 'git-refs')
+            return Gitkcli.context_menu.show_context_menu(RefListItem(self.ref, self._ui_context), 'git-refs')
         elif event_type == 'double-click' and 'tag_id' in self.ref:
             Gitkcli.git_diff.job.show_tag_annotation(self.ref['tag_id'])
             return True
         else:
             return super().handle_mouse_input(event_type, x, y)
 
-class ButtonSegment(TextSegment):
-    def __init__(self, txt, callback, color = 1):
-        super().__init__(txt, color)
-        self.callback = callback
-        self.is_pressed = False
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click' or event_type == 'left-move-in':
-            self.is_pressed = True
-            return True
-
-        if event_type == 'left-move-out':
-            self.is_pressed = False
-            return True
-
-        if event_type == 'left-release':
-            self.is_pressed = False
-            return self.callback()
-        else:
-            return super().handle_mouse_input(event_type, x, y)
-
-    def draw(self, win, offset, width, selected, matched, marked) -> int:
-        if self.is_pressed:
-            visible_txt = self.get_text()[offset:width]
-            dim = False
-            bold = False
-            if not selected:
-                selected = True
-            else:
-                bold = True
-                dim = True
-            win.addstr(visible_txt, Screen.color(self.color, selected, marked, bold = bold, dim = dim))
-            return len(visible_txt)
-        return super().draw(win, offset, width, selected, matched, marked)
-
-class ToggleSegment(TextSegment):
-    def __init__(self, txt, toggled = False, callback = lambda val: None, color = 1):
-        super().__init__(txt, color)
-        self.callback = callback
-        self.toggled = toggled
-        self.enabled = True
-
-    def toggle(self):
-        self.toggled = not self.toggled
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click':
-            self.toggle()
-            self.callback(self)
-            return True
-        else:
-            return super().handle_mouse_input(event_type, x, y)
-
-    def draw(self, win, offset, width, selected, matched, marked) -> int:
-        visible_txt = self.txt[offset:width]
-        win.addstr(visible_txt, Screen.color(self.color, selected, self.toggled, dim = not self.enabled))
-        return len(visible_txt)
-
-class SegmentedListItem(Item):
-    def __init__(self, segments = [], bg_color = 1):
-        super().__init__()
-        self.segment_separator = ' '
-        self.segments = segments
-        self.filler_width = 0
-        self.bg_color = bg_color
-        self.clicked_segment = None
-
-    def get_segments(self):
-        return self.segments
-
-    def get_text(self):
-        text = ''
-        first = True
-        for segment in self.get_segments():
-            if first:
-                first = False
-            elif self.segment_separator:
-                text += self.segment_separator
-            text += segment.get_text()
-
-        return text
-
-    def get_segment_on_offset(self, offset) -> Segment:
-        segment_pos = 0
-        for segment in self.get_segments():
-            if isinstance(segment, FillerSegment):
-                length = self.fill_width
-            else:
-                length = len(segment.get_text())
-            if segment_pos <= offset < segment_pos + length:
-                return segment
-            segment_pos += length + len(self.segment_separator)
-        return Segment()
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        segment = self.clicked_segment or self.get_segment_on_offset(x)
-        if 'left-click' == event_type or 'double-click' == event_type:
-            self.clicked_segment = segment
-        elif self.clicked_segment:
-            if 'release' in event_type:
-                self.clicked_segment = None
-            if 'move-in' in event_type and self.clicked_segment != self.get_segment_on_offset(x):
-                event_type = event_type.replace('in', 'out')
-        if segment and segment.handle_mouse_input(event_type, x, y):
-            return True
-        return super().handle_mouse_input(event_type, x, y)
-
-    def get_fill_txt(self, width):
-        fillers_count = 0
-        for segment in self.get_segments():
-            if isinstance(segment, FillerSegment):
-                fillers_count += 1
-        if fillers_count:
-            self.fill_width = int((width - len(self.get_text())) / fillers_count)
-            return self.fill_width * ' '
-        return ''
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        draw_separator = False
-        remaining_width = width
-        for segment in self.get_segments():
-            if draw_separator and self.segment_separator:
-                draw_separator = False
-                remaining_width -= len(self.segment_separator)
-                win.addstr(self.segment_separator, Screen.color(self.bg_color, selected, marked, matched))
-            if isinstance(segment, FillerSegment):
-                txt = self.get_fill_txt(width)
-                win.addstr(txt, Screen.color(self.bg_color, selected, marked, matched, matched))
-                length = len(txt)
-            else:
-                length = segment.draw(win, offset, remaining_width, selected, matched, marked)
-                txt = segment.get_text()
-            draw_separator = length > 0
-            remaining_width -= length
-            if remaining_width <= 0:
-                break
-            offset -= len(txt) - length
-
-        if remaining_width > 0:
-            if selected or marked:
-                win.addstr(' ' * remaining_width, Screen.color(self.bg_color, selected, marked, matched))
-            else:
-                win.clrtoeol()
-
-class WindowTopBarItem(SegmentedListItem):
-    def __init__(self, title:str, additional_segments = [], color = 30):
-        self.title_segment = TextSegment(title, color)
-        segments = [ButtonSegment('[Menu]', lambda: Gitkcli.context_menu.show_context_menu(Gitkcli), color),
-                    self.title_segment,
-                    FillerSegment()]
-        segments.extend(additional_segments)
-        segments.append(ButtonSegment("[X]", lambda: Gitkcli.screen.hide_active_view(), color))
-        super().__init__(segments, color)
-
-    def set_title(self, txt:str):
-        self.title_segment.set_text(txt)
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        handled = super().handle_mouse_input(event_type, x, y)
-        if handled:
-            return True
-        if 'double-click' == event_type:
-            Gitkcli.screen.get_active_view().toggle_window_mode()
-            return True
-        return False
-
 class UncommittedChangesListItem(TextListItem):
-    def __init__(self, staged:bool = False):
+    def __init__(self, staged:bool = False, ui_context=None):
         self._staged = staged
         self.id = 'local-staged' if staged else 'local-working'
         if self._staged:
-            super().__init__('Uncommitted changes (staged)', 3)
+            super().__init__('Uncommitted changes (staged)', 3, ui_context=ui_context)
         else:
-            super().__init__('Uncommitted changes (working directory)', 2)
+            super().__init__('Uncommitted changes (working directory)', 2, ui_context=ui_context)
 
     def load_to_view(self):
         Gitkcli.git_diff.job.show_diff('HEAD', cached = self._staged, title = self.txt)
@@ -879,8 +624,8 @@ class UncommittedChangesListItem(TextListItem):
         return True
 
 class CommitListItem(SegmentedListItem):
-    def __init__(self, id:str):
-        super().__init__()
+    def __init__(self, id:str, ui_context=None):
+        super().__init__(ui_context=ui_context)
         self.id = id
 
     def get_segments(self):
@@ -888,18 +633,18 @@ class CommitListItem(SegmentedListItem):
         segments = []
 
         if commit['prefix']:
-            segments.append(TextSegment(commit['prefix']))
+            segments.append(TextSegment(commit['prefix'], ui_context=self._ui_context))
         if Gitkcli.git_log.show_commit_id:
-            segments.append(TextSegment(self.id[:7], 4))
+            segments.append(TextSegment(self.id[:7], 4, ui_context=self._ui_context))
         if Gitkcli.git_log.show_commit_date:
-            segments.append(TextSegment(commit['date'].strftime("%Y-%m-%d %H:%M"), 5))
+            segments.append(TextSegment(commit['date'].strftime("%Y-%m-%d %H:%M"), 5, ui_context=self._ui_context))
         if Gitkcli.git_log.show_commit_author:
-            segments.append(TextSegment(commit['author'], 6))
-        segments.append(TextSegment(commit['title']))
+            segments.append(TextSegment(commit['author'], 6, ui_context=self._ui_context))
+        segments.append(TextSegment(commit['title'], ui_context=self._ui_context))
 
         head_position = len(segments) + 1 # +1, because we want to skip 'HEAD ->' segment
         for ref in Gitkcli.git_refs.refs.get(self.id, []):
-            segments.insert(head_position if ref['name'] == Gitkcli.git_log.head_branch else len(segments), RefSegment(ref))
+            segments.insert(head_position if ref['name'] == Gitkcli.git_log.head_branch else len(segments), RefSegment(ref, self._ui_context))
 
         return segments
 
@@ -927,538 +672,9 @@ class CommitListItem(SegmentedListItem):
             return False
         return True
 
-class View:
-
-    def __init__(self, id:str,
-                 view_mode:str = 'fullscreen',
-                 x:typing.Optional[int] = None, y:typing.Optional[int] = None,
-                 height:typing.Optional[int] = None, width:typing.Optional[int] = None):
-
-        self.id:str = id
-        self.view_mode:str = view_mode
-        self.header_item:typing.Any = None
-        self.footer_item:typing.Any = None
-        self.is_popup:bool = False
-
-        # coordinates and sizes when view is 'window'
-        self.fixed_x = x
-        self.fixed_y = y
-        self.fixed_height = height
-        self.fixed_width = width
-
-        self.dirty:bool = True
-        self.resized:bool = False
-        self.resize_mode:str = ''
-        
-        height, width, y, x = self._calculate_dimensions()
-        self.win = curses.newwin(height, width, y, x)
-
-        Gitkcli.screen.add_view(id, self)
-        
-    def _calculate_dimensions(self, lines = None, cols = None):
-        if lines is None or cols is None:
-            lines, cols = Gitkcli.screen.getmaxyx()
-
-        # fullscreen dimensions
-        win_height = lines
-        win_width = cols
-        win_y = 0
-        win_x = 0
-
-        if self.view_mode == 'window':
-            win_height = min(lines, self.fixed_height if self.fixed_height else int(lines / 2))
-            win_width = min(cols, self.fixed_width if self.fixed_width else int(cols / 2))
-            win_y = min(lines - win_height, int((lines - win_height) / 2) if self.fixed_y is None else self.fixed_y)
-            win_x = min(cols - win_width, int((cols - win_width) / 2) if self.fixed_x is None else self.fixed_x)
-
-        self.y = 0
-        self.x = 0
-        self.width = win_width
-        self.height = win_height
-
-        if self.header_item or self.view_mode == 'window':
-            # substract header or window "box"
-            self.height -= 1
-            self.y += 1
-
-        if self.footer_item or self.view_mode == 'window':
-            # substract footer or window "box"
-            self.height -= 1
-
-        if self.view_mode == 'window':
-            # substract window "box" width
-            self.x += 1
-            self.width -= 2
-
-        return win_height, win_width, win_y, win_x
-
-    def get_rect(self):
-        y, x = self.win.getbegyx()
-        h, w = self.win.getmaxyx()
-        return (y, x, y + h, x + w)
-
-    def set_header_item(self, item):
-        self.header_item = item
-        self._calculate_dimensions()
-
-    def set_footer_item(self, item):
-        self.footer_item = item
-        self._calculate_dimensions()
-
-    def set_view_mode(self, view_mode:str):
-        if self.view_mode == view_mode:
-            return
-        stdscr_height, stdscr_width = Gitkcli.screen.getmaxyx()
-        if view_mode == 'left':
-            view_mode = 'window'
-            self.set_dimensions(0, 0, stdscr_height, int(stdscr_width/2))
-        if view_mode == 'right':
-            view_mode = 'window'
-            self.set_dimensions(int(stdscr_width/2), 0, stdscr_height, int(stdscr_width/2))
-        if view_mode == 'top':
-            view_mode = 'window'
-            self.set_dimensions(0, 0, int(stdscr_height/2), stdscr_width)
-        if view_mode == 'bottom':
-            view_mode = 'window'
-            self.set_dimensions(0, int(stdscr_height/2), int(stdscr_height/2), stdscr_width)
-        self.view_mode = view_mode
-        self.dirty = True
-        if self.view_mode == 'window':
-            self.resized = True
-        height, width, y, x = self._calculate_dimensions(stdscr_height, stdscr_width)
-        self.win.resize(height, width)
-        self.win.mvwin(y, x)
-
-    def toggle_window_mode(self):
-        self.set_view_mode('fullscreen' if self.view_mode == 'window' else 'window')
-
-    def set_dimensions(self, x, y, height, width):
-        self.fixed_x = x
-        self.fixed_y = y
-        self.fixed_height = height
-        self.fixed_width = width
-        self.dirty = True
-        self.resized = True
-        height, width, y, x = self._calculate_dimensions()
-        self.win.resize(height, width)
-        self.win.mvwin(y, x)
-
-    def start_resize(self, x:int, y:int) -> bool:
-        self.resize_mode = ''
-        if self.view_mode != 'window':
-            return False
-        win_y, win_x = self.win.getbegyx()
-        if y <= win_y:
-            self.resize_mode = 'm'
-            return True
-        if self.is_popup:
-            return False
-        win_height, win_width = self.win.getmaxyx()
-        if x >= win_x + win_width - 1:
-            self.resize_mode += 'e'
-        if x <= win_x:
-            self.resize_mode += 'w'
-        if y >= win_y + win_height - 1:
-            self.resize_mode += 's'
-        return bool(self.resize_mode)
-
-    def stop_resize(self) -> bool:
-        if self.resize_mode:
-            self.resize_mode = ''
-            return True
-        return False
-
-    def handle_resize(self):
-        stdscr_height, stdscr_width = Gitkcli.screen.getmaxyx()
-        win_y, win_x = self.win.getbegyx()
-        win_height, win_width = self.win.getmaxyx()
-
-        if 'm' in self.resize_mode:
-            new_x = max(0, min(win_x + Gitkcli.mouse.mouse_rel_x, stdscr_width - win_width))
-            new_y = max(0, min(win_y + Gitkcli.mouse.mouse_rel_y, stdscr_height - win_height))
-            self.win.mvwin(new_y, new_x)
-            self.dirty = True
-            self.resized = True
-        else:
-            new_x = win_x
-            new_y = win_y
-            new_width = win_width
-            new_height = win_height
-            if 'w' in self.resize_mode:
-                new_x = max(0, win_x + Gitkcli.mouse.mouse_rel_x)
-                new_width = win_width - (new_x - win_x)
-            if 'e' in self.resize_mode:
-                new_width = max(5, min(stdscr_width - new_x, win_width + Gitkcli.mouse.mouse_rel_x))
-            if 's' in self.resize_mode:
-                new_height = max(5, min(stdscr_height - new_y, win_height + Gitkcli.mouse.mouse_rel_y))
-            self.set_dimensions(new_x, new_y, new_height, new_width)
-
-    def screen_size_changed(self, lines, cols):
-        self.dirty = True
-        self.resized = True
-        height, width, y, x = self._calculate_dimensions(lines, cols)
-        self.win.resize(height, width)
-        self.win.mvwin(y, x)
-
-    def redraw(self, force=False):
-        if self.dirty or force:
-            self.dirty = False
-            self.resized = False
-            self.draw()
-            return True
-        else:
-            return False
-
-    def draw(self):
-        if self.view_mode == 'window':
-            self.win.attrset(curses.color_pair(5 if self.is_active() else 18))
-            self.win.box()
-
-        # draw header
-        if self.header_item:
-            _, cols = self.win.getmaxyx()
-            self.win.move(0, 0)
-            self.header_item.draw_line(self.win, 0, cols, self.is_active(), False, False)
-
-        # draw footer
-        if self.footer_item:
-            rows, cols = self.win.getmaxyx()
-            self.win.move(rows - 1, 0)
-            self.footer_item.draw_line(self.win, 0, cols, self.is_active(), False, False)
-
-        self.win.refresh()
-        if self != Gitkcli.log.view and self.get_parent() != Gitkcli.log.view:
-            Gitkcli.log.debug(f'Draw view {self.id}')
-
-    def on_activated(self):
-        Gitkcli.log.debug(f'View {self.id} activated')
-
-    def on_deactivated(self):
-        Gitkcli.log.debug(f'View {self.id} deactivated')
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-release':
-            self.stop_resize()
-        if event_type == 'left-move' and self.resize_mode:
-            self.handle_resize()
-            return True
-        if self.win.enclose(Gitkcli.mouse.mouse_y, Gitkcli.mouse.mouse_x):
-            if y == 0 and self.header_item and self.header_item.handle_mouse_input(event_type, x, y):
-                if 'left-click' == event_type or 'double-click' == event_type:
-                    Gitkcli.mouse.clicked_item = self.header_item
-                return True
-            if y == self.y + self.height - 1 and self.footer_item and self.footer_item.handle_mouse_input(event_type, x, y):
-                if 'left-click' == event_type or 'double-click' == event_type:
-                    Gitkcli.mouse.clicked_item = self.footer_item
-                return True
-            if event_type == 'left-click' and self.start_resize(Gitkcli.mouse.mouse_x, Gitkcli.mouse.mouse_y):
-                return True
-        elif self.is_popup and 'click' in event_type:
-            self.hide()
-            return True
-        return False
-
-    def handle_input(self, key) -> bool:
-        return False
-
-    def get_parent(self):
-        try:
-            index = Gitkcli.screen.showed_views.index(self)
-            if index > 0:
-                return Gitkcli.screen.showed_views[index - 1]
-        except ValueError:
-            pass
-        return None
-    
-    def is_active(self) -> bool:
-        return len(Gitkcli.screen.showed_views) > 0 and Gitkcli.screen.showed_views[-1] == self
-
-    def show(self):
-        if self.is_active():
-            return
-        prev_view = Gitkcli.screen.get_active_view()
-        if self in Gitkcli.screen.showed_views:
-            Gitkcli.screen.showed_views.remove(self)
-        Gitkcli.screen.showed_views.append(self)
-        self.dirty = True
-        self.resized = True
-        if prev_view:
-            prev_view.on_deactivated()
-        self.on_activated()
-
-    def hide(self):
-        if len(Gitkcli.screen.showed_views) > 0:
-            if not self in Gitkcli.screen.showed_views:
-                return
-            deactivated = Gitkcli.screen.showed_views[-1] == self
-            Gitkcli.screen.showed_views.remove(self)
-            active_view = Gitkcli.screen.get_active_view()
-            if active_view:
-                active_view.dirty = True
-                active_view.resized = True
-            if deactivated:
-                self.on_deactivated()
-
-class ListView(View):
-    def __init__(self, id:str, view_mode:str = 'fullscreen',
-                 x:typing.Optional[int] = None, y:typing.Optional[int] = None,
-                 height:typing.Optional[int] = None, width:typing.Optional[int] = None):
-
-        super().__init__(id, view_mode, x, y, height, width)
-        self.items = []
-        self._selected:int = 0
-        self._offset_y:int = 0
-        self._offset_x:int = 0
-        self.autoscroll:bool = False
-        self._search_dialog:typing.Optional[SearchDialogPopup] = None
-
-    def toggle_autoscroll(self):
-        self.autoscroll = not self.autoscroll
-
-    def set_search_dialog(self, search_dialog:"SearchDialogPopup"):
-        self._search_dialog = search_dialog
-        self._search_dialog.parent_list_view = self
-
-    def copy_text_to_clipboard(self):
-        text = "\n".join(item.get_text() for item in self.items)
-        if text:
-            copy_to_clipboard(text)
-
-    def copy_text_range_to_clipboard(self, to_item):
-        text = ""
-        found = False
-        for i, item in enumerate(self.items):
-            if not found and item == to_item:
-                found = True
-            if found or i >= self._selected:
-                text += "\n" + item.get_text()
-            if found and i >= self._selected:
-                break
-        copy_to_clipboard(text)
-
-    def append(self, item):
-        """Add item to end of list"""
-        self.items.append(item)
-        if len(self.items) - self._offset_y < self.height:
-            self.dirty = True
-        if self.autoscroll:
-            self._offset_y = max(0, len(self.items) - self.height)
-        
-    def insert(self, item, position=None):
-        """Insert item at position or selected position"""
-        pos = position if position is not None else self._selected
-        self.items.insert(pos, item)
-        if pos <= self._selected:
-            self._selected += 1
-        if pos <= self._offset_y:
-            self._offset_y += 1
-        self.dirty = True
-
-    def clear(self):
-        Gitkcli.log.debug(f'Clear view {self.id}')
-        self.items = []
-        self.set_selected(0)
-        self._offset_y = 0
-        self._offset_x = 0
-        self.dirty = True
-
-    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
-        new_index = None
-
-        if isinstance(what, int):
-            if (0 <= what < len(self.items)) or (what <= 0 and len(self.items) == 0):
-                new_index = what
-        elif isinstance(what, str):
-            for i, item in enumerate(Gitkcli.git_diff.items):
-                if what in item.get_text():
-                    new_index = i
-                    break
-        elif isinstance(what, re.Pattern):
-            for i, item in enumerate(Gitkcli.git_diff.items):
-                if what.match(item.get_text()):
-                    new_index = i
-                    break
-
-        if new_index is not None:
-            if self._selected != new_index:
-
-                # skip non-selectable items
-                direction = 1 if new_index > self._selected else -1
-                if 0 <= new_index < len(self.items) and not self.items[new_index].is_selectable:
-                    for dir in [direction, -direction]:
-                        i = new_index + dir
-                        while 0 <= i < len(self.items) and i != self._selected:
-                            if self.items[i].is_selectable:
-                                new_index = i
-                                break
-                            i += dir
-                    if not self.items[new_index].is_selectable:
-                        return False
-
-                self._selected = new_index
-                self.dirty = True
-
-                if self._offset_y <= self._selected < self._offset_y + self.height:
-                    # do not change view offset when item is already visible
-                    return True
-
-                if visible_mode == 'center':
-                    self._offset_y = max(0, min(self._selected - int(self.height / 2), len(self.items) - self.height))
-                elif visible_mode == 'top':
-                    self._offset_y = max(0, self._selected)
-                elif visible_mode == 'bottom':
-                    self._offset_y = max(0, self._selected - self.height + 1)
-            return True
-
-        return False
-
-    def get_selected(self) -> typing.Any:
-        if 0 <= self._selected < len(self.items):
-            return self.items[self._selected]
-        else:
-            return None
-
-    def search(self, backward:bool = False, repeat:bool = False):
-        if not self._search_dialog:
-            return
-
-        ranges = []
-        if not backward:
-            ranges.append(range(self._selected + 1, len(self.items)))
-            if repeat:
-                ranges.append(range(0, self._selected + 1))
-        else:
-            ranges.append(range(self._selected - 1, -1, -1))
-            if repeat:
-                ranges.append(range(len(self.items) - 1, self._selected - 1, -1))
-
-        for search_range in ranges:
-            for i in search_range:
-                if self._search_dialog.matches(self.items[i]):
-                    self.set_selected(i)
-                    return
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'wheel-up':
-            self._offset_y -= 5
-            if self._offset_y < 0:
-                self._offset_y = 0
-            return True
-        if event_type == 'wheel-down':
-            self._offset_y += 5
-            if self._offset_y >= len(self.items) - self.height:
-                self._offset_y = max(0, len(self.items) - self.height)
-            return True
-
-        if not self.resize_mode:
-            view_x = x - self.x
-            view_y = y - self.y
-            index = self._offset_y + view_y
-
-            if 0 <= view_y < self.height and 0 <= view_x < self.width and 0 <= index < len(self.items):
-                selected = False
-                if 'move' in event_type:
-                    if self._selected == index:
-                        return False # do not redraw when hovering over same item
-                if event_type == 'left-click' or event_type == 'double-click' or ('move' in event_type and self in Gitkcli.mouse.mouse_movement_capture):
-                    if self.items[index].is_selectable:
-                        self.set_selected(index)
-                        selected = True
-                item = self.items[index]
-                handled = item.handle_mouse_input(event_type, view_x + self._offset_x, index)
-                if handled and ('left-click' == event_type or 'double-click' == event_type):
-                    Gitkcli.mouse.clicked_item = item
-                if selected or handled:
-                    return True
-
-        return super().handle_mouse_input(event_type, x, y)
-
-    def handle_input(self, key):
-        if not self.items:
-            return super().handle_input(key)
-
-        selected_item = self.get_selected()
-        if selected_item and selected_item.handle_input(key):
-            return True
-
-        if key == curses.KEY_UP or key == ord('k'):
-            self.set_selected(self._selected - 1, visible_mode = 'top')
-        elif key == curses.KEY_DOWN or key == ord('j'):
-            self.set_selected(self._selected + 1, visible_mode = 'bottom')
-        elif key == curses.KEY_LEFT or key == ord('h'):
-            if self._offset_x - HORIZONTAL_OFFSET_JUMP >= 0:
-                self._offset_x -= HORIZONTAL_OFFSET_JUMP
-            else:
-                self._offset_x = 0
-        elif key == curses.KEY_RIGHT or key == ord('l'):
-            max_length = 0
-            for i in range(self._offset_y, min(self._offset_y + self.height, len(self.items))):
-                length = len(self.items[i].get_text())
-                if length > max_length:
-                    max_length = length
-            if self._offset_x + self.width < max_length:
-                self._offset_x += HORIZONTAL_OFFSET_JUMP
-        elif key == curses.KEY_PPAGE or key == KEY_CTRL('b'):
-            self._offset_y = max(0, self._offset_y - self.height)
-            self.set_selected(max(0, self._selected - self.height))
-        elif key == curses.KEY_NPAGE or key == KEY_CTRL('f'):
-            self._offset_y = min(self._offset_y + self.height, max(0, len(self.items) - self.height))
-            self.set_selected(min(self._selected + self.height, max(0, len(self.items) - 1)))
-        elif key == curses.KEY_HOME or key == ord('g'):
-            self.set_selected(0)
-        elif key == curses.KEY_END or key == ord('G'):
-            self.set_selected(max(0, len(self.items) - 1))
-        elif key == ord('/'):
-            if self._search_dialog:
-                self._search_dialog.clear()
-                self._search_dialog.show()
-        elif key == ord('n'):
-            self.search()
-        elif key == ord('N'):
-            self.search(backward = True)
-        else: 
-            return super().handle_input(key)
-
-        return True
-
-    def draw(self):
-        separator_items = []
-        for i in range(0, min(self.height, len(self.items) - self._offset_y)):
-            idx = i + self._offset_y
-            item = self.items[idx]
-            selected = idx == self._selected
-            matched = self._search_dialog.matches(item) if self._search_dialog else False
-
-            # curses throws exception if you want to write a character in bottom left corner
-            width = self.width
-            if i == self.height - 1:
-                width -= 1
-
-            if item.is_separator:
-                separator_items.append(i)
-            else:
-                self.win.move(self.y + i, self.x)
-                item.draw_line(self.win, self._offset_x, width, selected, matched, False)
-
-        self.win.clrtobot()
-        super().draw()
-
-        if separator_items:
-            color = 5 if self.is_active() else 16
-            for i in separator_items:
-                if self.view_mode == 'window':
-                    self.win.move(self.y + i, self.x-1)
-                    self.win.addstr('├', Screen.color(color))
-                    self.win.addstr('─' * self.width, Screen.color(color))
-                    self.win.addstr('┤', Screen.color(color))
-                else:
-                    self.win.move(self.y + i, self.x)
-                    self.win.addstr('─' * self.width, Screen.color(color))
-            self.win.refresh()
-
 class GitLogView(ListView):
-    def __init__(self, git_args:typing.List, cmd_args:typing.List):
-        super().__init__(ID_GIT_LOG, 'fullscreen');
+    def __init__(self, git_args:typing.List, cmd_args:typing.List, ui_context):
+        super().__init__(ID_GIT_LOG, 'fullscreen', ui_context=ui_context)
 
         self.commits = {} # map: git_id --> { parents, date, author, title }
 
@@ -1477,12 +693,20 @@ class GitLogView(ListView):
         self.job_git_search = GitSearchJob(cmd_args)
 
         repo_name = os.path.basename(Job.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
-        self.set_header_item(WindowTopBarItem('Repository: ' + repo_name, [
-                ButtonSegment("[<---]", lambda: self.move_in_jump_list(+1), 30),
-                ButtonSegment("[--->]", lambda: self.move_in_jump_list(-1), 30)
-            ]))
+        self.set_header_item(WindowTopBarItem(
+            'Repository: ' + repo_name,
+            additional_segments=[
+                ButtonSegment("[<---]", lambda: self.move_in_jump_list(+1), 30, self._ui_context),
+                ButtonSegment("[--->]", lambda: self.move_in_jump_list(-1), 30, self._ui_context)
+            ],
+            color=30,
+            ui_context=self._ui_context,
+            on_menu_click=lambda: self._ui_context.show_context_menu(Gitkcli),
+            on_close_click=lambda: self._ui_context.screen.hide_active_view(),
+            on_double_click=lambda: self.toggle_window_mode()
+        ))
 
-        self.set_search_dialog(GitSearchDialogPopup());
+        self.set_search_dialog(GitSearchDialogPopup(self._ui_context))
 
     def add_commit(self, id, commit):
         if id in self.commits:
@@ -1537,13 +761,13 @@ class GitLogView(ListView):
         result = Job.run_job(['git', 'diff', '--cached', '--quiet'])
         has_staged = result.returncode != 0
         if has_staged:
-            self.prepend_commit(UncommittedChangesListItem(staged = True))
+            self.prepend_commit(UncommittedChangesListItem(staged=True, ui_context=self._ui_context))
 
         # Check for working directory changes
         result = Job.run_job(['git', 'diff', '--quiet'])
         has_working = result.returncode != 0
         if has_working:
-            self.prepend_commit(UncommittedChangesListItem())
+            self.prepend_commit(UncommittedChangesListItem(ui_context=self._ui_context))
 
     def prepend_commit(self, item):
         offset = 0
@@ -1669,15 +893,15 @@ class GitLogView(ListView):
         return True
 
 class ShowContextSegment(TextSegment):
-    def __init__(self, color):
-        super().__init__('', color)
+    def __init__(self, color, ui_context):
+        super().__init__('', color, ui_context)
 
     def get_text(self):
         return str(Gitkcli.git_diff.context_size)
 
 class GitDiffView(ListView):
-    def __init__(self):
-        super().__init__(ID_GIT_DIFF, 'fullscreen')
+    def __init__(self, ui_context):
+        super().__init__(ID_GIT_DIFF, 'fullscreen', ui_context=ui_context)
 
         self.context_size = 3
         self.rename_limit = 1570
@@ -1687,16 +911,24 @@ class GitDiffView(ListView):
         self.commit_id = ''
         self.is_diff = False
 
-        self.set_header_item(WindowTopBarItem('Git commit diff', [
-            TextSegment("Context:", 30),
-            ShowContextSegment(30),
-            ButtonSegment("[ + ]", lambda: self.change_context(+1), 30),
-            ButtonSegment("[ - ]", lambda: self.change_context(-1), 30),
-            ButtonSegment("[<---]", lambda: Gitkcli.git_log.move_in_jump_list(+1), 30),
-            ButtonSegment("[--->]", lambda: Gitkcli.git_log.move_in_jump_list(-1), 30)
-        ]))
+        self.set_header_item(WindowTopBarItem(
+            'Git commit diff',
+            additional_segments=[
+                TextSegment("Context:", 30, self._ui_context),
+                ShowContextSegment(30, self._ui_context),
+                ButtonSegment("[ + ]", lambda: self.change_context(+1), 30, self._ui_context),
+                ButtonSegment("[ - ]", lambda: self.change_context(-1), 30, self._ui_context),
+                ButtonSegment("[<---]", lambda: Gitkcli.git_log.move_in_jump_list(+1), 30, self._ui_context),
+                ButtonSegment("[--->]", lambda: Gitkcli.git_log.move_in_jump_list(-1), 30, self._ui_context)
+            ],
+            color=30,
+            ui_context=self._ui_context,
+            on_menu_click=lambda: self._ui_context.show_context_menu(Gitkcli),
+            on_close_click=lambda: self._ui_context.screen.hide_active_view(),
+            on_double_click=lambda: self.toggle_window_mode()
+        ))
 
-        self.set_search_dialog(SearchDialogPopup(ID_GIT_DIFF_SEARCH))
+        self.set_search_dialog(SearchDialogPopup(ID_GIT_DIFF_SEARCH, self._ui_context))
 
     def clear(self):
         self.commit_id = ''
@@ -1739,17 +971,24 @@ class GitDiffView(ListView):
         return True
 
 class GitRefsView(ListView):
-    def __init__(self):
-        super().__init__(ID_GIT_REFS, 'window') 
+    def __init__(self, ui_context):
+        super().__init__(ID_GIT_REFS, 'window', ui_context=ui_context)
 
         self.refs = {} # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
 
-        self.set_header_item(WindowTopBarItem('Git references'))
-        self.set_search_dialog(SearchDialogPopup(ID_GIT_REFS_SEARCH))
+        self.set_header_item(WindowTopBarItem(
+            'Git references',
+            color=30,
+            ui_context=self._ui_context,
+            on_menu_click=lambda: self._ui_context.show_context_menu(Gitkcli),
+            on_close_click=lambda: self._ui_context.screen.hide_active_view(),
+            on_double_click=lambda: self.toggle_window_mode()
+        ))
+        self.set_search_dialog(SearchDialogPopup(ID_GIT_REFS_SEARCH, self._ui_context))
 
-        self.view_new_ref = NewRefDialogPopup()
-        self.view_branch_rename = BranchRenameDialogPopup()
-        self.view_ref_push = RefPushDialogPopup()
+        self.view_new_ref = NewRefDialogPopup(self._ui_context)
+        self.view_branch_rename = BranchRenameDialogPopup(self._ui_context)
+        self.view_ref_push = RefPushDialogPopup(self._ui_context)
 
         self.job = GitRefsJob()
 
@@ -1778,32 +1017,41 @@ class GitRefsView(ListView):
         return color, title
 
 class ShowLogLevelSegment(TextSegment):
-    def __init__(self, color):
-        super().__init__('', color)
+    def __init__(self, color, ui_context):
+        super().__init__('', color, ui_context)
 
     def get_text(self):
         return str(Gitkcli.log.level)
 
 class LogView(ListView):
-    def __init__(self):
-        super().__init__(ID_LOG, 'fullscreen') 
+    def __init__(self, ui_context):
+        super().__init__(ID_LOG, 'fullscreen', ui_context=ui_context)
 
-        self.set_header_item(WindowTopBarItem('Logs', [
-            ButtonSegment("[Clear]", lambda: self.clear(), 30),
-            TextSegment("  Log level:", 30),
-            ShowLogLevelSegment(30),
-            ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 30),
-            ButtonSegment("[ - ]", lambda: self.change_log_level(-1), 30)]))
+        self.set_header_item(WindowTopBarItem(
+            'Logs',
+            additional_segments=[
+                ButtonSegment("[Clear]", lambda: self.clear(), 30, self._ui_context),
+                TextSegment("  Log level:", 30, self._ui_context),
+                ShowLogLevelSegment(30, self._ui_context),
+                ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 30, self._ui_context),
+                ButtonSegment("[ - ]", lambda: self.change_log_level(-1), 30, self._ui_context)
+            ],
+            color=30,
+            ui_context=self._ui_context,
+            on_menu_click=lambda: self._ui_context.show_context_menu(Gitkcli),
+            on_close_click=lambda: self._ui_context.screen.hide_active_view(),
+            on_double_click=lambda: self.toggle_window_mode()
+        ))
 
-        self.set_search_dialog(SearchDialogPopup(ID_LOG_SEARCH))
+        self.set_search_dialog(SearchDialogPopup(ID_LOG_SEARCH, self._ui_context))
 
     def change_log_level(self, value):
         Gitkcli.log.level = max(0, min(5, Gitkcli.log.level + value))
         self.dirty = True
 
 class ContextMenuItem(TextListItem):
-    def __init__(self, text, action, args=[], is_selectable=True):
-        super().__init__(text, selectable = is_selectable, dim = not is_selectable)
+    def __init__(self, text, action, args=[], is_selectable=True, ui_context=None):
+        super().__init__(text, selectable=is_selectable, dim=not is_selectable, ui_context=ui_context)
         self.action = action
         self.args = args if args else []
 
@@ -1827,12 +1075,12 @@ class ContextMenuItem(TextListItem):
             return super().handle_mouse_input(event_type, x, y)
 
 class ToggleContextMenuItem(TextListItem):
-    def __init__(self, on_text, off_text, do_toggle, is_toggled):
+    def __init__(self, on_text, off_text, do_toggle, is_toggled, ui_context=None):
         self.on_text = on_text
         self.off_text = off_text
         self.do_toggle = do_toggle
         self.is_toggled = is_toggled
-        super().__init__(self.on_text if self.is_toggled() else self.off_text)
+        super().__init__(self.on_text if self.is_toggled() else self.off_text, ui_context=ui_context)
 
     def execute_action(self):
         self.do_toggle()
@@ -1853,8 +1101,8 @@ class ToggleContextMenuItem(TextListItem):
             return super().handle_mouse_input(event_type, x, y)
 
 class ContextMenu(ListView):
-    def __init__(self):
-        super().__init__(ID_CONTEXT_MENU, 'window')
+    def __init__(self, ui_context):
+        super().__init__(ID_CONTEXT_MENU, 'window', ui_context=ui_context)
         self.is_popup = True
 
     def on_activated(self):
@@ -1879,92 +1127,92 @@ class ContextMenu(ListView):
             win_y, win_x = view.win.getbegyx()
             x = win_x + view.x
             y = win_y + view.y
-            self.append(ContextMenuItem("Show Git commit log <F1>", item.git_log.show))
-            self.append(ContextMenuItem("Show Git references <F2>", item.git_refs.show))
-            self.append(ContextMenuItem("Show Git commit diff <F3>", item.git_diff.show))
-            self.append(ContextMenuItem("Show Logs <F4>", item.log.view.show))
-            self.append(SeparatorItem())
-            self.append(ContextMenuItem("Toggle window/fullscreen", view.toggle_window_mode))
-            self.append(ContextMenuItem("Pin to left", view.set_view_mode, ['left']))
-            self.append(ContextMenuItem("Pin to right", view.set_view_mode, ['right']))
-            self.append(ContextMenuItem("Pin to top", view.set_view_mode, ['top']))
-            self.append(ContextMenuItem("Pin to bottom", view.set_view_mode, ['bottom']))
-            self.append(SeparatorItem())
-            self.append(ContextMenuItem("Search </>", view.handle_input, [ord('/')]))
-            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
-            self.append(SeparatorItem())
+            self.append(ContextMenuItem("Show Git commit log <F1>", item.git_log.show, ui_context=self._ui_context))
+            self.append(ContextMenuItem("Show Git references <F2>", item.git_refs.show, ui_context=self._ui_context))
+            self.append(ContextMenuItem("Show Git commit diff <F3>", item.git_diff.show, ui_context=self._ui_context))
+            self.append(ContextMenuItem("Show Logs <F4>", item.log.view.show, ui_context=self._ui_context))
+            self.append(SeparatorItem(self._ui_context))
+            self.append(ContextMenuItem("Toggle window/fullscreen", view.toggle_window_mode, ui_context=self._ui_context))
+            self.append(ContextMenuItem("Pin to left", view.set_view_mode, ['left'], ui_context=self._ui_context))
+            self.append(ContextMenuItem("Pin to right", view.set_view_mode, ['right'], ui_context=self._ui_context))
+            self.append(ContextMenuItem("Pin to top", view.set_view_mode, ['top'], ui_context=self._ui_context))
+            self.append(ContextMenuItem("Pin to bottom", view.set_view_mode, ['bottom'], ui_context=self._ui_context))
+            self.append(SeparatorItem(self._ui_context))
+            self.append(ContextMenuItem("Search </>", view.handle_input, [ord('/')], ui_context=self._ui_context))
+            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard, ui_context=self._ui_context))
+            self.append(SeparatorItem(self._ui_context))
             if view_id == 'git-log':
-                self.append(ContextMenuItem("Refresh <F5>", item.git_log.refresh_head))
-                self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_refs_commits))
-                self.append(SeparatorItem())
+                self.append(ContextMenuItem("Refresh <F5>", item.git_log.refresh_head, ui_context=self._ui_context))
+                self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_refs_commits, ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
                 # def __init__(self, on_text, off_text, do_toggle, is_toggled):
-                self.append(ToggleContextMenuItem("Hide commit ID", "Show commit ID", view.toggle_show_commit_id, lambda: view.show_commit_id))
-                self.append(ToggleContextMenuItem("Hide commit date", "Show commit date", view.toggle_show_commit_date, lambda: view.show_commit_date))
-                self.append(ToggleContextMenuItem("Hide commit author", "Show commit author", view.toggle_show_commit_author, lambda: view.show_commit_author))
-                self.append(SeparatorItem())
+                self.append(ToggleContextMenuItem("Hide commit ID", "Show commit ID", view.toggle_show_commit_id, lambda: view.show_commit_id, ui_context=self._ui_context))
+                self.append(ToggleContextMenuItem("Hide commit date", "Show commit date", view.toggle_show_commit_date, lambda: view.show_commit_date, ui_context=self._ui_context))
+                self.append(ToggleContextMenuItem("Hide commit author", "Show commit author", view.toggle_show_commit_author, lambda: view.show_commit_author, ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
             elif view_id == 'git-diff':
-                self.append(ToggleContextMenuItem("Show space change", "Ignore space change", view.change_ignore_whitespace, lambda: view.ignore_whitespace))
-                self.append(SeparatorItem())
+                self.append(ToggleContextMenuItem("Show space change", "Ignore space change", view.change_ignore_whitespace, lambda: view.ignore_whitespace, ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
             elif view_id == 'git-refs':
-                self.append(ContextMenuItem("Reread references", item.reload_refs))
-                self.append(SeparatorItem())
+                self.append(ContextMenuItem("Reread references", item.reload_refs, ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
             elif view_id == 'log':
-                self.append(ContextMenuItem("Clear log", view.clear))
-                self.append(ToggleContextMenuItem("Disable autoscroll", "Enable autoscroll", view.toggle_autoscroll, lambda: view.autoscroll))
-                self.append(SeparatorItem())
-            self.append(ContextMenuItem("Quit", item.exit_program))
+                self.append(ContextMenuItem("Clear log", view.clear, ui_context=self._ui_context))
+                self.append(ToggleContextMenuItem("Disable autoscroll", "Enable autoscroll", view.toggle_autoscroll, lambda: view.autoscroll, ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
+            self.append(ContextMenuItem("Quit", item.exit_program, ui_context=self._ui_context))
         elif view_id == 'git-log' and hasattr(item, 'id'):
             if item.id == 'local-staged':
-                self.append(ContextMenuItem("Clear staged changes", view.clean_uncommitted_changes, [True]))
+                self.append(ContextMenuItem("Clear staged changes", view.clean_uncommitted_changes, [True], ui_context=self._ui_context))
             elif item.id == 'local-working':
-                self.append(ContextMenuItem("Clear unstaged changes", view.clean_uncommitted_changes, [False]))
+                self.append(ContextMenuItem("Clear unstaged changes", view.clean_uncommitted_changes, [False], ui_context=self._ui_context))
             else:
-                self.append(ContextMenuItem("Create new branch", Gitkcli.git_refs.view_new_ref.create_ref, [item.id]))
-                self.append(ContextMenuItem("Create new tag", Gitkcli.git_refs.view_new_ref.create_ref, [item.id, 'tag']))
-                self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
-                self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
-                self.append(SeparatorItem())
-                self.append(ContextMenuItem("Reset here", view.reset, [False, item.id]))
-                self.append(ContextMenuItem("Hard reset here", view.reset, [True, item.id]))
-                self.append(SeparatorItem())
-                self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()]))
-                self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id]))
-                self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.id, view.marked_commit_id], bool(view.marked_commit_id)))
-                self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.id], bool(view.marked_commit_id)))
-                self.append(SeparatorItem())
-                self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
-                self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id)))
+                self.append(ContextMenuItem("Create new branch", Gitkcli.git_refs.view_new_ref.create_ref, [item.id], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Create new tag", Gitkcli.git_refs.view_new_ref.create_ref, [item.id, 'tag'], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Revert this commit", view.revert, [item.id], ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
+                self.append(ContextMenuItem("Reset here", view.reset, [False, item.id], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Hard reset here", view.reset, [True, item.id], ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
+                self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Diff this --> marked commit", view.diff_commits, [item.id, view.marked_commit_id], bool(view.marked_commit_id), ui_context=self._ui_context))
+                self.append(ContextMenuItem("Diff marked commit --> this", view.diff_commits, [view.marked_commit_id, item.id], bool(view.marked_commit_id), ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
+                self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id), ui_context=self._ui_context))
         elif view_id == 'git-diff':
-            self.append(ContextMenuItem("Jump to file", StatListItem.jump_to_file, [item], isinstance(item, StatListItem)))
-            self.append(ContextMenuItem("Show origin of this line", DiffListItem.jump_to_origin, [item], isinstance(item, DiffListItem) and item.old_file_path and item.old_file_line is not None))
-            self.append(SeparatorItem())
-            self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
-            self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
+            self.append(ContextMenuItem("Jump to file", StatListItem.jump_to_file, [item], isinstance(item, StatListItem), ui_context=self._ui_context))
+            self.append(ContextMenuItem("Show origin of this line", DiffListItem.jump_to_origin, [item], isinstance(item, DiffListItem) and item.old_file_path and item.old_file_line is not None, ui_context=self._ui_context))
+            self.append(SeparatorItem(self._ui_context))
+            self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard, ui_context=self._ui_context))
+            self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item], ui_context=self._ui_context))
         elif view_id == 'git-refs' and hasattr(item, 'data'):
             if item.data['type'] == 'heads':
-                self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
-                self.append(ContextMenuItem("Rename this branch", Gitkcli.git_refs.view_new_ref.create_ref, [item.data['name']]))
-                self.append(ContextMenuItem("Copy branch name", copy_to_clipboard, [item.data['name']]))
-                self.append(SeparatorItem())
-                self.append(ContextMenuItem("Push branch to remote", self.push_ref_to_remote, [item.data['name']]))
-                self.append(SeparatorItem())
-                self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
+                self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Rename this branch", Gitkcli.git_refs.view_new_ref.create_ref, [item.data['name']], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Copy branch name", copy_to_clipboard, [item.data['name']], ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
+                self.append(ContextMenuItem("Push branch to remote", self.push_ref_to_remote, [item.data['name']], ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
+                self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']], ui_context=self._ui_context))
             elif item.data['type'] == 'tags':
-                self.append(ContextMenuItem("Copy tag name", copy_to_clipboard, [item.data['name']]))
-                self.append(ContextMenuItem("Show tag annotation", Gitkcli.git_diff.job.show_tag_annotation, [item.data.get('tag_id')], 'tag_id' in item.data))
-                self.append(SeparatorItem())
-                self.append(ContextMenuItem("Push tag to remote", self.push_ref_to_remote, [item.data['name']]))
-                self.append(SeparatorItem())
-                self.append(ContextMenuItem("Remove this tag", self.remove_tag, [item.data['name']]))
+                self.append(ContextMenuItem("Copy tag name", copy_to_clipboard, [item.data['name']], ui_context=self._ui_context))
+                self.append(ContextMenuItem("Show tag annotation", Gitkcli.git_diff.job.show_tag_annotation, [item.data.get('tag_id')], 'tag_id' in item.data, ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
+                self.append(ContextMenuItem("Push tag to remote", self.push_ref_to_remote, [item.data['name']], ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
+                self.append(ContextMenuItem("Remove this tag", self.remove_tag, [item.data['name']], ui_context=self._ui_context))
             elif item.data['type'] == 'remotes':
-                self.append(ContextMenuItem("Copy remote branch name", copy_to_clipboard, [item.data['name']]))
-                self.append(SeparatorItem())
-                self.append(ContextMenuItem("Remove this remote branch", self.remove_remote_ref, [item.data['name']]))
+                self.append(ContextMenuItem("Copy remote branch name", copy_to_clipboard, [item.data['name']], ui_context=self._ui_context))
+                self.append(SeparatorItem(self._ui_context))
+                self.append(ContextMenuItem("Remove this remote branch", self.remove_remote_ref, [item.data['name']], ui_context=self._ui_context))
             else:
-                self.append(ContextMenuItem("Copy ref name", copy_to_clipboard, [item.data['name']]))
+                self.append(ContextMenuItem("Copy ref name", copy_to_clipboard, [item.data['name']], ui_context=self._ui_context))
         elif view_id == 'log':
-            self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
-            self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
+            self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard, ui_context=self._ui_context))
+            self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item], ui_context=self._ui_context))
         else:
             return False
         self.set_dimensions(x, y, len(self.items) + 2, 30)
@@ -2023,98 +1271,29 @@ class ContextMenu(ListView):
         else:
             Gitkcli.log.error(f"Error deleting remote branch: {result.stderr}")
     
-class UserInputListItem(Item):
-    def __init__(self, color = 1):
-        super().__init__()
-        self.txt = ''
-        self.offset = 0
-        self.cursor_pos = 0
-        self.color = color
-
-    def clear(self):
-        self.txt = ''
-        self.offset = 0
-        self.cursor_pos = 0
-
-    def get_text(self):
-        return self.txt
-
-    def set_text(self, txt:str):
-        self.txt = txt
-        self.offset = 0
-        self.cursor_pos = len(txt)
-                
-    def handle_input(self, key):
-        if key == curses.KEY_BACKSPACE or key == 127:  # Backspace
-            if self.cursor_pos > 0:
-                self.txt = self.txt[:self.cursor_pos-1] + self.txt[self.cursor_pos:]
-                self.cursor_pos -= 1
-                
-        elif key == curses.KEY_DC:  # Delete key
-            if self.cursor_pos < len(self.txt):
-                self.txt = self.txt[:self.cursor_pos] + self.txt[self.cursor_pos+1:]
-
-        elif key == curses.KEY_LEFT:  # Left arrow
-            if self.cursor_pos > 0:
-                self.cursor_pos -= 1
-                
-        elif key == curses.KEY_RIGHT:  # Right arrow
-            if self.cursor_pos < len(self.txt):
-                self.cursor_pos += 1
-                
-        elif key == curses.KEY_HOME:  # Home key
-            self.cursor_pos = 0
-            
-        elif key == curses.KEY_END:  # End key
-            self.cursor_pos = len(self.txt)
-            
-        elif 32 <= key <= 126:  # Printable characters
-            self.txt = self.txt[:self.cursor_pos] + chr(key) + self.txt[self.cursor_pos:]
-            self.cursor_pos += 1
-
-        else:
-            return super().handle_input(key)
-
-        return True
-
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click':
-            self.cursor_pos = x if x < len(self.txt) else len(self.txt)
-            return True
-        else:
-            return super().handle_mouse_input(event_type, x, y)
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        # TODO: update self.offset according to offset so that cursor is always visible
-
-        left_txt = self.txt[self.offset:self.offset+self.cursor_pos]
-        right_txt = self.txt[self.offset+self.cursor_pos:self.offset+width-1]
-
-        win.addstr(left_txt, Screen.color(self.color, selected, marked, matched))
-        win.addch(ord(' '), curses.A_REVERSE | curses.A_BLINK)
-        win.addstr(right_txt, Screen.color(self.color, selected, marked, matched))
-        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), Screen.color(self.color, selected, marked, matched))
-
 class RefPushDialogPopup(ListView):
-    def __init__(self):
-        super().__init__(ID_GIT_REF_PUSH, 'window', height = 6)
-        self.set_header_item(TextListItem('', 30, expand = True))
-        self.append(SpacerListItem())
+    def __init__(self, ui_context):
+        super().__init__(ID_GIT_REF_PUSH, 'window', height=6, ui_context=ui_context)
+        self.set_header_item(TextListItem('', 30, expand=True, ui_context=self._ui_context))
+        self.append(SpacerListItem(self._ui_context))
         self.is_popup = True
 
         self.remotes = []
         for remote in Job.run_job(['git', 'remote']).stdout.rstrip().split('\n'):
-            self.remotes.append(ToggleSegment(remote, callback = lambda val: self.change_remote(val.txt)))
+            self.remotes.append(ToggleSegment(remote, callback=lambda val: self.change_remote(val.txt), ui_context=self._ui_context))
         self.change_remote(self.remotes[0].txt)
 
-        self.force = ToggleSegment("<Force>")
-        self.append(SegmentedListItem([TextSegment(f"Select remote: ")] + self.remotes + [FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]))
+        self.force = ToggleSegment("<Force>", ui_context=self._ui_context)
+        self.append(SegmentedListItem([TextSegment(f"Select remote: ", ui_context=self._ui_context)] + self.remotes +
+                                      [FillerSegment(self._ui_context), TextSegment("Flags:", ui_context=self._ui_context), self.force, FillerSegment(self._ui_context)],
+                                      ui_context=self._ui_context))
 
-        self.append(SpacerListItem())
-        self.append(SegmentedListItem([FillerSegment(),
-                                       ButtonSegment("[Push]", lambda: self.handle_input(curses.KEY_ENTER)),
-                                       ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT)),
-                                       FillerSegment()]))
+        self.append(SpacerListItem(self._ui_context))
+        self.append(SegmentedListItem([FillerSegment(self._ui_context),
+                                       ButtonSegment("[Push]", lambda: self.handle_input(curses.KEY_ENTER), ui_context=self._ui_context),
+                                       ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT), ui_context=self._ui_context),
+                                       FillerSegment(self._ui_context)],
+                                      ui_context=self._ui_context))
         self.ref_name = ''
 
         for item in self.items:
@@ -2162,27 +1341,28 @@ class RefPushDialogPopup(ListView):
         return True
 
 class UserInputDialogPopup(ListView):
-    def __init__(self, id:str, title:str, header_item:Item, bottom_item:typing.Optional[Item] = None):
-        super().__init__(id, 'window', height = 7)
-        self.set_header_item(TextListItem(title, 30, expand = True))
-        self.input = UserInputListItem()
+    def __init__(self, id:str, title:str, header_item:Item, bottom_item:typing.Optional[Item] = None, ui_context=None):
+        super().__init__(id, 'window', height=7, ui_context=ui_context)
+        self.set_header_item(TextListItem(title, 30, expand=True, ui_context=self._ui_context))
+        self.input = UserInputListItem(ui_context=self._ui_context)
         self.is_popup = True
         self.history_queries = []
         self.history_index = -1
 
         if not bottom_item:
-            bottom_item = SegmentedListItem([FillerSegment(),
-                                         ButtonSegment("[Execute]", lambda: self.handle_input(curses.KEY_ENTER)),
-                                         ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT)),
-                                         FillerSegment()])
+            bottom_item = SegmentedListItem([FillerSegment(self._ui_context),
+                                         ButtonSegment("[Execute]", lambda: self.handle_input(curses.KEY_ENTER), ui_context=self._ui_context),
+                                         ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT), ui_context=self._ui_context),
+                                         FillerSegment(self._ui_context)],
+                                        ui_context=self._ui_context)
             bottom_item.is_selectable = False
 
         header_item.is_selectable = False
 
         self.append(header_item)
-        self.append(SpacerListItem())
+        self.append(SpacerListItem(self._ui_context))
         self.append(self.input)
-        self.append(SpacerListItem())
+        self.append(SpacerListItem(self._ui_context))
         self.append(bottom_item)
         self._selected = 2
 
@@ -2220,8 +1400,8 @@ class UserInputDialogPopup(ListView):
         return True
 
 class BranchRenameDialogPopup(UserInputDialogPopup):
-    def __init__(self):
-        super().__init__(ID_BRANCH_RENAME, ' Rename Branch', TextListItem(''))
+    def __init__(self, ui_context):
+        super().__init__(ID_BRANCH_RENAME, ' Rename Branch', TextListItem('', ui_context=ui_context), ui_context=ui_context)
         self.old_branch_name = ''
 
     def rename_branch(self, name):
@@ -2246,13 +1426,16 @@ class BranchRenameDialogPopup(UserInputDialogPopup):
         super().execute()
 
 class NewRefDialogPopup(UserInputDialogPopup):
-    def __init__(self):
-        self.force = ToggleSegment("<Force>")
+    def __init__(self, ui_context):
+        self.force = ToggleSegment("<Force>", ui_context=ui_context)
         self.commit_id = ''
         self.ref_type = '' # branch or tag
-        self.title_segment = TextSegment('')
+        self.title_segment = TextSegment('', ui_context=ui_context)
         super().__init__(ID_NEW_GIT_REF, ' New Branch',
-            SegmentedListItem([TextSegment(f"Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()])) 
+            SegmentedListItem([TextSegment(f"Specify the new branch name:", ui_context=ui_context), FillerSegment(ui_context),
+                             TextSegment("Flags:", ui_context=ui_context), self.force, FillerSegment(ui_context)],
+                            ui_context=ui_context),
+            ui_context=ui_context) 
 
     def create_ref(self, commit_id, ref_type='branch'):
         self.commit_id = commit_id
@@ -2287,18 +1470,21 @@ class NewRefDialogPopup(UserInputDialogPopup):
         super().execute()
 
 class SearchDialogPopup(UserInputDialogPopup):
-    def __init__(self, id:str):
+    def __init__(self, id:str, ui_context):
         self.parent_list_view:ListView
-        self.case_sensitive = ToggleSegment("<Case>", True)
-        self.use_regexp = ToggleSegment("<Regexp>")
-        self.header = SegmentedListItem([FillerSegment(), TextSegment("Flags:"), self.case_sensitive, self.use_regexp, FillerSegment()])
-        buttons = SegmentedListItem([FillerSegment(),
-                                     ButtonSegment("[Search Next]", lambda: self.do_search(backward = False)),
-                                     ButtonSegment("[Search Previous]", lambda: self.do_search(backward = True)),
-                                     ButtonSegment("[Close]", lambda: self.handle_input(curses.KEY_EXIT)),
-                                     FillerSegment()])
+        self.case_sensitive = ToggleSegment("<Case>", True, ui_context=ui_context)
+        self.use_regexp = ToggleSegment("<Regexp>", ui_context=ui_context)
+        self.header = SegmentedListItem([FillerSegment(ui_context), TextSegment("Flags:", ui_context=ui_context),
+                                        self.case_sensitive, self.use_regexp, FillerSegment(ui_context)],
+                                       ui_context=ui_context)
+        buttons = SegmentedListItem([FillerSegment(ui_context),
+                                     ButtonSegment("[Search Next]", lambda: self.do_search(backward=False), ui_context=ui_context),
+                                     ButtonSegment("[Search Previous]", lambda: self.do_search(backward=True), ui_context=ui_context),
+                                     ButtonSegment("[Close]", lambda: self.handle_input(curses.KEY_EXIT), ui_context=ui_context),
+                                     FillerSegment(ui_context)],
+                                    ui_context=ui_context)
         buttons.is_selectable = False
-        super().__init__(id, ' Search', self.header, buttons)
+        super().__init__(id, ' Search', self.header, buttons, ui_context=ui_context)
 
     def do_search(self, backward:bool):
         self.parent_list_view.search(backward)
@@ -2336,16 +1522,16 @@ class SearchDialogPopup(UserInputDialogPopup):
         super().execute()
 
 class GitSearchDialogPopup(SearchDialogPopup):
-    def __init__(self):
-        super().__init__(ID_GIT_LOG_SEARCH) 
+    def __init__(self, ui_context):
+        super().__init__(ID_GIT_LOG_SEARCH, ui_context)
 
-        self.search_type_txt_segment = ToggleSegment("[Txt]", callback = lambda val: self.change_search_type("txt"))
-        self.search_type_id_segment = ToggleSegment("[ID]", callback = lambda val: self.change_search_type("id"))
-        self.search_type_message_segment = ToggleSegment("[Message]", callback = lambda val: self.change_search_type("message"))
-        self.search_type_file_segment = ToggleSegment("[Filepaths]", callback = lambda val: self.change_search_type("path"))
-        self.search_type_diff_segment = ToggleSegment("[Diff]", callback = lambda val: self.change_search_type("diff"))
+        self.search_type_txt_segment = ToggleSegment("[Txt]", callback=lambda val: self.change_search_type("txt"), ui_context=ui_context)
+        self.search_type_id_segment = ToggleSegment("[ID]", callback=lambda val: self.change_search_type("id"), ui_context=ui_context)
+        self.search_type_message_segment = ToggleSegment("[Message]", callback=lambda val: self.change_search_type("message"), ui_context=ui_context)
+        self.search_type_file_segment = ToggleSegment("[Filepaths]", callback=lambda val: self.change_search_type("path"), ui_context=ui_context)
+        self.search_type_diff_segment = ToggleSegment("[Diff]", callback=lambda val: self.change_search_type("diff"), ui_context=ui_context)
 
-        self.header.segments.insert(0, TextSegment("Type:"))
+        self.header.segments.insert(0, TextSegment("Type:", ui_context=ui_context))
         self.header.segments.insert(1, self.search_type_txt_segment)
         self.header.segments.insert(2, self.search_type_id_segment)
         self.header.segments.insert(3, self.search_type_message_segment)
@@ -2419,236 +1605,14 @@ class GitSearchDialogPopup(SearchDialogPopup):
             
         return True
 
-class Screen:
-
-    @classmethod
-    def _subtract_rect(cls, rect, subtract):
-        """Subtract a rectangle from another, returning list of non-overlapping rects"""
-        y1, x1, y2, x2 = rect
-        sy1, sx1, sy2, sx2 = subtract
-
-        # No overlap
-        if x2 <= sx1 or x1 >= sx2 or y2 <= sy1 or y1 >= sy2:
-            return [rect]
-
-        result = []
-
-        # Top part (above subtract)
-        if y1 < sy1:
-            result.append((y1, x1, sy1, x2))
-
-        # Bottom part (below subtract)
-        if y2 > sy2:
-            result.append((sy2, x1, y2, x2))
-
-        # Left part (left of subtract, between top and bottom)
-        if x1 < sx1:
-            result.append((max(y1, sy1), x1, min(y2, sy2), sx1))
-
-        # Right part (right of subtract, between top and bottom)
-        if x2 > sx2:
-            result.append((max(y1, sy1), sx2, min(y2, sy2), x2))
-
-        return result
-
-    @classmethod
-    def _init_color(cls, pair_number: int, nfg:int, nbg:int = -1, hfg:int = -1, hbg:int = -1, sfg:int = -1, sbg:int = -1, shfg:int = -1, shbg:int = -1) -> None:
-        # normal
-        fg = nfg
-        bg = nbg
-        curses.init_pair(pair_number, fg, bg)
-        # highlighted
-        if hfg >= 0: fg = hfg
-        if hbg >= 0: bg = hbg
-        else: bg = 20
-        curses.init_pair(50 + pair_number, fg, bg)
-        # selected
-        if sfg >= 0: fg = sfg
-        if sbg >= 0: bg = sbg
-        else: bg = 235
-        curses.init_pair(100 + pair_number, fg, bg)
-        # selected+highlighted
-        if shfg >= 0: fg = shfg
-        if shbg >= 0: bg = shbg
-        else: bg = 21
-        curses.init_pair(150 + pair_number, fg, bg)
-
-    @classmethod
-    def color(cls, number, selected = False, highlighted = False, matched = False, bold = None, reverse = False, dim = False, underline = False):
-        if matched:
-            bold = True
-            if number == 1:
-                number = 16
-            elif number == 18:
-                number = 16
-                dim = True
-        if selected and highlighted:
-            color = curses.color_pair(150 + number)
-        elif selected:
-            color = curses.color_pair(100 + number)
-        elif highlighted:
-            color = curses.color_pair(50 + number)
-        else:
-            color = curses.color_pair(number)
-        if reverse:
-            color = color | curses.A_REVERSE
-        if bold or (selected and bold is None):
-            color = color | curses.A_BOLD
-        if dim:
-            color = color | curses.A_DIM
-        if underline:
-            color = color | curses.A_UNDERLINE
-        return color
-
-    def __init__(self, stdscr:curses.window):
-
-        # Run with curses
-        curses.use_default_colors()
-
-        curses.start_color()
-
-        Screen._init_color(1, curses.COLOR_WHITE)    # Normal text
-        Screen._init_color(2, curses.COLOR_RED)      # Error text
-        Screen._init_color(3, curses.COLOR_GREEN)    # Status text
-        Screen._init_color(4, curses.COLOR_YELLOW)   # Git ID
-        Screen._init_color(5, curses.COLOR_BLUE)     # Data
-        Screen._init_color(6, curses.COLOR_GREEN)    # Author
-        Screen._init_color(8, curses.COLOR_RED)      # diff -
-        Screen._init_color(9, curses.COLOR_GREEN)    # diff +
-        Screen._init_color(10, curses.COLOR_CYAN)    # diff ranges
-        Screen._init_color(11, curses.COLOR_GREEN)   # local ref
-        Screen._init_color(12, curses.COLOR_YELLOW)  # tag
-        Screen._init_color(13, curses.COLOR_BLUE)    # head
-        Screen._init_color(14, curses.COLOR_CYAN)    # stash
-        Screen._init_color(15, curses.COLOR_RED)     # remote ref
-        Screen._init_color(16, curses.COLOR_YELLOW) # search match
-        Screen._init_color(17, curses.COLOR_BLUE)    # diff info lines
-        Screen._init_color(18, 245)                  # debug text
-
-        Screen._init_color(30,
-                   curses.COLOR_BLACK, 245, -1, 247,              # Inactive window title
-                   curses.COLOR_WHITE, curses.COLOR_BLUE, -1, 20) # Active window title
-
-        curses.init_pair(200, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Status bar normal
-        curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Status bar success
-        curses.init_pair(202, curses.COLOR_BLACK, curses.COLOR_YELLOW)# Status bar warning
-        curses.init_pair(203, curses.COLOR_WHITE, curses.COLOR_RED)   # Status bar error
-
-        curses.curs_set(0)  # Hide cursor
-        stdscr.timeout(5)
-        curses.set_escdelay(20)
-        curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
-        curses.mouseinterval(0)
-
-        self.status_bar_message = ''
-        self.status_bar_color = None
-        self.status_bar_time = time.time()
-
-        self.stdscr = stdscr
-        self.showed_views = []
-        self.views = {}
-
-
-    def getmaxyx(self) -> tuple[int, int]:
-        y, x = self.stdscr.getmaxyx()
-        return y-1, x # substrack status bar
-
-    def add_view(self, id, view):
-        self.views[id] = view
-
-    def get_active_view(self) -> typing.Any:
-        if len(self.showed_views) > 0:
-            return self.showed_views[-1]
-        return None
-
-    def hide_active_view(self):
-        if len(self.showed_views) > 0:
-            view = self.showed_views.pop(-1)
-            view.on_deactivated()
-            view.win.erase()
-            view.win.refresh()
-            if self.get_active_view():
-                self.get_active_view().dirty = True
-
-    def get_visible_views(self):
-        visible_views = []
-        for view in self.showed_views:
-            if view.view_mode == 'fullscreen':
-                visible_views.clear()
-            visible_views.append(view)
-        
-        # Compute visible regions for each window
-        result = []
-        for i, view in enumerate(visible_views):
-            # Start with single rectangle region
-            regions = [view.get_rect()]
-            
-            # Subtract all occluding windows
-            for j in range(i + 1, len(visible_views)):
-                new_regions = []
-                for rect in regions:
-                    new_regions.extend(Screen._subtract_rect(rect, visible_views[j].get_rect()))
-                regions = new_regions
-                
-                if not regions:
-                    break
-            
-            if regions:
-                result.append(view)
-        
-        return result
-
-    def show_status_bar_message(self, message:str, color:int):
-        self.status_bar_message = message
-        self.status_bar_color = color
-        self.status_bar_time = time.time()
-
-    def draw_status_bar(self, stdscr):
-        lines, cols = stdscr.getmaxyx()
-
-        if self.status_bar_message:
-            # show status bar message for 2 seconds
-            if time.time() - self.status_bar_time < 2:
-                stdscr.addstr(lines-1, 0, self.status_bar_message.ljust(cols - 1), Screen.color(self.status_bar_color))
-                return
-            else:
-                self.status_bar_message = ''
-
-        job = Job.get_job()
-        view = self.get_active_view()
-        if not job or not view:
-            return
-
-        job_status = ''
-        if job.running:
-            job_status = 'Running'
-        elif job.get_exit_code() == None:
-            job_status = f"Not started"
-        else:
-            job_status = f"Exited with code {job.get_exit_code()}"
-
-        stdscr.addstr(lines-1, 0, f"Line {view._selected+1}/{len(view.items)} - Offset {view._offset_x} - Process '{self.showed_views[-1].id}' {job_status}".ljust(cols - 1), Screen.color(200))
-
-    def draw_visible_views(self):
-        visible_views = self.get_visible_views()
-
-        force_redraw = False
-        for view in visible_views:
-            if view.resized:
-                force_redraw = True
-                break
-
-        if force_redraw and visible_views[0].view_mode != 'fullscreen':
-                Gitkcli.screen.stdscr.clear()
-                Gitkcli.screen.stdscr.refresh()
-
-        for view in visible_views:
-            force_redraw = view.redraw(force_redraw)
-
 class Log:
     def __init__(self):
-        self.view = LogView()
+        self.view = None  # Will be initialized later with ui_context
         self.level = 4
+
+    def init_view(self, ui_context):
+        """Initialize the log view with UI context."""
+        self.view = LogView(ui_context)
 
     def debug(self, txt):
         if self.level > 4:
@@ -2674,94 +1638,12 @@ class Log:
         now = datetime.datetime.now()
         first_line = ''
         for line in txt.splitlines():
-            self.view.append(TextListItem(f'{now} {line}', color))
+            if self.view:  # Only append if view is initialized
+                self.view.append(TextListItem(f'{now} {line}', color, ui_context=Gitkcli.ui_context if hasattr(Gitkcli, 'ui_context') else None))
             if not first_line:
                 first_line = line
         if status_color:
             Gitkcli.screen.show_status_bar_message(first_line, status_color)
-
-class Mouse:
-    def __init__(self):
-        self.mouse_x = 0
-        self.mouse_y = 0
-        self.mouse_state = 0
-        self.mouse_click_x = 0
-        self.mouse_click_y = 0
-        self.mouse_rel_x = 0
-        self.mouse_rel_y = 0
-        self.mouse_click_time = time.time()
-        self.mouse_left_pressed = False
-        self.mouse_right_pressed = False
-        self.mouse_movement_capture = set()
-
-        self.clicked_view:View|None = None
-        self.clicked_item:Item|None = None
-
-    def capture_mouse_movement(self, enable:bool, id = None):
-        enabled = len(self.mouse_movement_capture) > 0
-        if enable:
-            self.mouse_movement_capture.add(id)
-            if not enabled:
-                print("\033[?1003h", end='', flush=True) # start capturing mouse movement
-        elif id in self.mouse_movement_capture:
-            self.mouse_movement_capture.remove(id)
-            if enabled and len(self.mouse_movement_capture) == 0:
-                print("\033[?1000h", end='', flush=True) # end capturing mouse movement
-
-    def process_mouse_event(self, event_type:str, active_view:View):
-        if 'click' in event_type:
-            self.capture_mouse_movement(True)
-        if 'release' in event_type:
-            self.capture_mouse_movement(False)
-
-        if self.clicked_item:
-            if self.mouse_click_y == self.mouse_y:
-                if event_type == 'left-move':
-                    event_type = 'left-move-in'
-            elif event_type == 'left-move':
-                event_type = 'left-move-out'
-            elif event_type == 'left-release':
-                event_type = 'left-release-out'
-
-        enclosed_view = None
-        for view in reversed(Gitkcli.screen.showed_views):
-            if view.is_popup or view.win.enclose(self.mouse_y, self.mouse_x):
-                enclosed_view = view
-                break
-
-        if enclosed_view and event_type == 'left-click':
-            self.clicked_view = enclosed_view
-            if enclosed_view and enclosed_view != active_view:
-                enclosed_view.show()
-                enclosed_view.dirty = True
-                active_view.dirty = True
-
-        send_event_to = None
-        view_to_process = enclosed_view
-        item_x = 0
-        item_y = 0
-        if 'move' in event_type or 'release' in event_type:
-            if self.clicked_view:
-                view_to_process = self.clicked_view
-            if self.clicked_item:
-                send_event_to = self.clicked_item
-                if self.clicked_view:
-                    item_x = self.clicked_view.x
-                    item_y = self.clicked_view.y
-
-        if not send_event_to:
-            send_event_to = view_to_process
-
-        if view_to_process and send_event_to:
-            begin_y, begin_x = view_to_process.win.getbegyx()
-            win_x = self.mouse_x - begin_x
-            win_y = self.mouse_y - begin_y
-            if send_event_to.handle_mouse_input(event_type, win_x - item_x, win_y - item_y):
-                view_to_process.dirty = True
-
-        if 'release' in event_type:
-            self.clicked_view = None
-            self.clicked_item = None
 
 class Gitkcli:
     running = True
@@ -2787,12 +1669,35 @@ class Gitkcli:
 def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
     Gitkcli.screen = Screen(stdscr)
-    Gitkcli.mouse = Mouse()
+    Gitkcli.mouse = Mouse(screen_manager=Gitkcli.screen)
     Gitkcli.log = Log()
-    Gitkcli.git_log = GitLogView(git_args, cmd_args)
-    Gitkcli.git_diff = GitDiffView()
-    Gitkcli.git_refs = GitRefsView()
-    Gitkcli.context_menu = ContextMenu()
+
+    # Create UI context for the UI library
+    ui_context = UIContext(
+        screen_manager=Gitkcli.screen,
+        logger=Gitkcli.log,
+        mouse_handler=Gitkcli.mouse
+    )
+
+    # Provide callbacks for context menu and clipboard
+    ui_context.set_clipboard_handler(copy_to_clipboard)
+
+    # Store for use by git-specific classes
+    Gitkcli.ui_context = ui_context
+
+    # Initialize log view
+    Gitkcli.log.init_view(ui_context)
+
+    # Initialize views with context
+    Gitkcli.git_log = GitLogView(git_args, cmd_args, ui_context)
+    Gitkcli.git_diff = GitDiffView(ui_context)
+    Gitkcli.git_refs = GitRefsView(ui_context)
+    Gitkcli.context_menu = ContextMenu(ui_context)
+
+    # Set context menu handler after ContextMenu is initialized
+    ui_context.set_context_menu_handler(
+        lambda item, view_id=None: Gitkcli.context_menu.show_context_menu(item, view_id)
+    )
 
     Gitkcli.log.info('Application started')
 
@@ -2815,7 +1720,7 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
                 try:
                     Gitkcli.screen.draw_visible_views()
-                    Gitkcli.screen.draw_status_bar(stdscr)
+                    Gitkcli.screen.draw_status_bar(stdscr, get_job_callback=Job.get_job)
                 except curses.error as e:
                     Gitkcli.log.warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
 
