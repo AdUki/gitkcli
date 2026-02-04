@@ -195,17 +195,19 @@ class WindowTopBarItem(SegmentedListItem):
         self.title_segment = TextSegment(title, color, ui_context)
         self.on_double_click = on_double_click
 
-        # Create segments list
-        menu_btn = ButtonSegment('[Menu]', on_menu_click or (lambda: False), color, ui_context)
-        segments = [menu_btn, self.title_segment, FillerSegment(ui_context)]
+        segments = []
 
-        # Add any additional segments
+        if on_menu_click:
+            segments.append(ButtonSegment('[Menu]', on_menu_click, color, ui_context))
+
+        segments.extend([self.title_segment, FillerSegment(ui_context)])
+
         if additional_segments:
             segments.extend(additional_segments)
 
-        # Add close button
-        close_btn = ButtonSegment("[X]", on_close_click or (lambda: False), color, ui_context)
-        segments.append(close_btn)
+        if on_close_click:
+            close_btn = ButtonSegment("[X]", on_close_click, color, ui_context)
+            segments.append(close_btn)
 
         super().__init__(segments, color, ui_context)
 
