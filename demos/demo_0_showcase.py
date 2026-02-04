@@ -259,6 +259,8 @@ class UIShowcase:
                     if bstate & curses.BUTTON1_PRESSED:
                         event_type = 'left-click'
                         self.mouse.mouse_left_pressed = True
+                        self.mouse.mouse_click_x = self.mouse.mouse_x
+                        self.mouse.mouse_click_y = self.mouse.mouse_y
                     elif bstate & curses.BUTTON1_RELEASED:
                         event_type = 'left-release'
                         self.mouse.mouse_left_pressed = False

@@ -55,7 +55,7 @@ def main(stdscr):
         list_view.append(TextListItem(f"Item #{i+1:03d} - This is a scrollable list item", color=color, ui_context=ui_context))
 
     list_view.append(SeparatorItem(ui_context))
-    list_view.append(TextListItem("🎯 End of list - Press 'q' to quit", color=3, ui_context=ui_context))
+    list_view.append(TextListItem("O End of list - Press 'q' to quit", color=3, ui_context=ui_context))
 
     # Set initial selection
     list_view.set_selected(5)

@@ -41,9 +41,8 @@ class TextInputDemo:
         self.list_view.append(TextListItem("  💬  System: Type a message and press Enter to send", color=10, selectable=False, ui_context=self.ui_context))
         self.messages_start_index = len(self.list_view.items)
 
-        # Spacer to push input to bottom
-        for _ in range(10):
-            self.list_view.append(TextListItem("", selectable=False, ui_context=self.ui_context))
+        # Empty line
+        self.list_view.append(TextListItem("", selectable=False, ui_context=self.ui_context))
 
         self.list_view.append(SeparatorItem(self.ui_context))
 
@@ -77,11 +76,13 @@ class TextInputDemo:
             msg_item = TextListItem(f"  👤  You: {text}", color=6, selectable=False, ui_context=self.ui_context)
             self.list_view.items.insert(self.messages_start_index, msg_item)
             self.messages.append(text)
+            self.messages_start_index += 1
 
             # Bot response
             response = self.get_bot_response(text)
             bot_item = TextListItem(f"  🤖  Bot: {response}", color=3, selectable=False, ui_context=self.ui_context)
-            self.list_view.items.insert(self.messages_start_index + 1, bot_item)
+            self.list_view.items.insert(self.messages_start_index, bot_item)
+            self.messages_start_index += 1
 
             # Update stats
             self.stats_item.set_text(f"  Messages sent: {len(self.messages)}")
