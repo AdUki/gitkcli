@@ -1379,6 +1379,7 @@ class ListView(View):
 
         selected_item = self.get_selected()
         if selected_item and selected_item.handle_input(key):
+            self.dirty = True
             return True
 
         if key == curses.KEY_UP or key == ord('k'):
