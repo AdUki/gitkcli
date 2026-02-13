@@ -1435,7 +1435,7 @@ class ListView(View):
                 width -= 1
 
             if item.is_separator:
-                separator_items.append(i)
+                separator_items.append((i, width))
             else:
                 self.win.move(self.y + i, self.x)
                 item.draw_line(self.win, self._offset_x, width, selected, matched, False)
@@ -1445,15 +1445,16 @@ class ListView(View):
 
         if separator_items:
             color = 5 if self.is_active() else 16
-            for i in separator_items:
+            for pair in separator_items:
+                i, width = pair
                 if self.view_mode == 'window':
                     self.win.move(self.y + i, self.x-1)
                     self.win.addstr('├', Screen.color(color))
-                    self.win.addstr('─' * self.width, Screen.color(color))
+                    self.win.addstr('─' * width, Screen.color(color))
                     self.win.addstr('┤', Screen.color(color))
                 else:
                     self.win.move(self.y + i, self.x)
-                    self.win.addstr('─' * self.width, Screen.color(color))
+                    self.win.addstr('─' * width, Screen.color(color))
             self.win.refresh()
 
 class GitLogView(ListView):
