@@ -2550,6 +2550,8 @@ class Screen:
         self.showed_views = []
         self.views = {}
 
+        stdscr.clear()
+        stdscr.refresh()
 
     def getmaxyx(self) -> tuple[int, int]:
         y, x = self.stdscr.getmaxyx()
