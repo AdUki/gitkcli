@@ -180,7 +180,8 @@ class Job:
                 break
             try:
                 # curses automatically converts tab to spaces, so we will replace it here and cut off newline
-                line = bytearr.decode('utf-8', errors='replace').replace('\t', ' ' * curses.get_tabsize())[:-1]
+                tabsize = curses.get_tabsize() if hasattr(curses, 'get_tabsize') else 8
+                line = bytearr.decode('utf-8', errors='replace').replace('\t', ' ' * tabsize).rstrip('\r\n')
                 if is_stderr:
                     self.messages.put({'type': 'error', 'message': line})
                 else:
@@ -1104,6 +1105,8 @@ class View:
         if self.dirty or force:
             self.dirty = False
             self.resized = False
+            if force:
+                self.win.touchwin()
             self.draw()
             return True
         else:
@@ -2538,7 +2541,8 @@ class Screen:
 
         curses.curs_set(0)  # Hide cursor
         stdscr.timeout(5)
-        curses.set_escdelay(20)
+        if hasattr(curses, 'set_escdelay'):
+            curses.set_escdelay(20)
         curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
         curses.mouseinterval(0)
 
@@ -2573,6 +2577,7 @@ class Screen:
             view.win.refresh()
             if self.get_active_view():
                 self.get_active_view().dirty = True
+                self.get_active_view().resized = True
 
     def get_visible_views(self):
         visible_views = []
@@ -2856,6 +2861,10 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
             else:
                 Gitkcli.log.debug('Key: ' + str(key))
 
+            # Windows PDCurses input normalization
+            if key == 8:
+                key = curses.KEY_BACKSPACE
+
             if key == curses.KEY_MOUSE:
                 _, mouse_x, mouse_y, _, Gitkcli.mouse.mouse_state = curses.getmouse()
                 Gitkcli.mouse.mouse_rel_x = mouse_x - Gitkcli.mouse.mouse_x
@@ -2899,6 +2908,9 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                         event_type = 'right-move'
                     else:
                         event_type = 'move'
+
+                elif Gitkcli.mouse.mouse_state & curses.BUTTON1_DOUBLE_CLICKED:
+                    event_type = 'double-click'
 
                 elif Gitkcli.mouse.mouse_state == curses.BUTTON4_PRESSED:
                     event_type = 'wheel-up'

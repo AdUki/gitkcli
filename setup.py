@@ -24,6 +24,9 @@ setup(
         "Topic :: Software Development :: Version Control :: Git",
     ],
     python_requires=">=3.6",
+    install_requires=[
+        'windows-curses; sys_platform == "win32"',
+    ],
     entry_points={
         "console_scripts": [
             "gitkcli=gitkcli:main",
