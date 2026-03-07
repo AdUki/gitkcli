@@ -1529,7 +1529,7 @@ class GitLogView(ListView):
     def check_uncommitted_changes(self):
         to_remove = 0
         for i in range(min(2, len(self.items))):
-            if self.items[i].id.startswith('local'):
+            if hasattr(self.items[i], 'id') and self.items[i].id.startswith('local'):
                 to_remove += 1
         for _ in range(to_remove):
             self.items.pop(0)
