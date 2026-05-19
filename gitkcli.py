@@ -365,7 +365,8 @@ class GitDiffJob(Job):
         Gitkcli.git_diff.is_diff = False
         Gitkcli.git_diff.header_item.set_title(f'Commit {commit_id[:7]}')
         if on_finished == None and commit_id in self.selected_line_map:
-            on_finished = lambda: Gitkcli.git_diff.set_selected(self.selected_line_map[commit_id])
+            line, offset_y = self.selected_line_map[commit_id]
+            on_finished = lambda: Gitkcli.git_diff.restore_view_position(line, offset_y)
         self.start_job(self._get_args(), on_finished = on_finished)
         if add_to_jump_list:
             Gitkcli.git_log.add_to_jump_list(commit_id)
@@ -610,7 +611,10 @@ class StatListItem(TextListItem):
         super().__init__(txt, color)
 
     def jump_to_file(self):
-        Gitkcli.git_diff.set_selected(re.compile(f'diff.*{self.stat_file_path}'), 'top')
+        diff = Gitkcli.git_diff
+        Gitkcli.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
+        diff.set_selected(re.compile(f'diff.*{self.stat_file_path}'), 'top')
+        Gitkcli.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'double-click':
@@ -660,7 +664,14 @@ class DiffListItem(TextListItem):
                         id = Job.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
                     commit = Gitkcli.git_log.select_commit(id)
                     if commit:
-                        Gitkcli.git_diff.job.show_commit(commit.id, on_finished = lambda: Gitkcli.git_diff.select_line(file_path, file_line))
+                        diff = Gitkcli.git_diff
+                        Gitkcli.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
+
+                        def on_finished():
+                            diff.select_line(file_path, file_line)
+                            Gitkcli.git_log.add_to_jump_list(commit.id, diff._selected, diff._offset_y)
+
+                        diff.job.show_commit(commit.id, on_finished=on_finished, add_to_jump_list=False)
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'double-click':
@@ -1603,23 +1614,50 @@ class GitLogView(ListView):
                 return item
         return None
 
-    def add_to_jump_list(self, id:str):
-        if len(self.jump_list) > 0 and id == self.jump_list[self.jump_index]:
-            return
+    def add_to_jump_list(self, commit_id:str, line:typing.Optional[int] = None, offset_y:typing.Optional[int] = None):
         self.jump_list = self.jump_list[self.jump_index:]
-        if id in self.jump_list:
-            self.jump_list.remove(id)
-        self.jump_list.insert(0, id)
+        entry = (commit_id, line, offset_y)
+        if self.jump_list and self.jump_list[0] == entry:
+            return
+        self.jump_list.insert(0, entry)
         self.jump_index = 0
 
     def move_in_jump_list(self, jump:int):
-        if len(self.jump_list) > 0:
-            new_index = self.jump_index + jump
-            if 0 <= new_index < len(self.jump_list):
-                self.jump_index = new_index
-                if not self.select_commit(self.jump_list[new_index]):
-                    # when commit id not found, go to next item
-                    self.move_in_jump_list(jump)
+        if not self.jump_list:
+            return True
+        new_index = self.jump_index + jump
+        if not (0 <= new_index < len(self.jump_list)):
+            return True
+
+        self.jump_index = new_index
+        commit_id, line, offset_y = self.jump_list[new_index]
+
+        # Locate the commit in git_log; skip the entry if not found
+        idx = None
+        for i, item in enumerate(self.items):
+            if isinstance(item, CommitListItem) and item.id == commit_id:
+                idx = i
+                break
+        if idx is None:
+            self.move_in_jump_list(jump)
+            return True
+
+        if line is not None:
+            Gitkcli.git_diff.job.selected_line_map[commit_id] = (line, offset_y)
+
+        was_same_commit = (Gitkcli.git_diff.commit_id == commit_id
+                           and not Gitkcli.git_diff.is_diff)
+
+        # Move the git_log cursor without going through GitLogView.set_selected →
+        # CommitListItem.load_to_view → show_commit, which would re-push to the
+        # jumplist and clobber forward entries.
+        super().set_selected(idx)
+
+        if was_same_commit:
+            if line is not None:
+                Gitkcli.git_diff.restore_view_position(line, offset_y)
+        else:
+            Gitkcli.git_diff.job.show_commit(commit_id, add_to_jump_list=False)
         return True
 
     def get_selected_commit_id(self):
@@ -1744,8 +1782,15 @@ class GitDiffView(ListView):
     def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
         ret = super().set_selected(what, visible_mode)
         if self.commit_id and self.is_diff == False:
-            self.job.selected_line_map[self.commit_id] = self._selected
+            self.job.selected_line_map[self.commit_id] = (self._selected, self._offset_y)
         return ret
+
+    def restore_view_position(self, line:int, offset_y:typing.Optional[int] = None):
+        self.set_selected(line)
+        if offset_y is not None:
+            self._offset_y = offset_y
+            if self.commit_id and self.is_diff == False:
+                self.job.selected_line_map[self.commit_id] = (self._selected, self._offset_y)
 
     def select_line(self, file:str, line:int):
         for item in self.items:
@@ -1772,6 +1817,14 @@ class GitDiffView(ListView):
             Gitkcli.git_log.handle_input(curses.KEY_DOWN)
         elif key == KEY_CTRL('p'):
             Gitkcli.git_log.handle_input(curses.KEY_UP)
+        elif key in (ord('g'), ord('G'), curses.KEY_HOME, curses.KEY_END):
+            track = self.commit_id and not self.is_diff
+            if track:
+                Gitkcli.git_log.add_to_jump_list(self.commit_id, self._selected, self._offset_y)
+            ret = super().handle_input(key)
+            if track:
+                Gitkcli.git_log.add_to_jump_list(self.commit_id, self._selected, self._offset_y)
+            return ret
         else:
             return super().handle_input(key)
         return True
