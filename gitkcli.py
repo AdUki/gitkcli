@@ -2,6 +2,7 @@
 
 import curses
 import datetime
+import json
 import os
 import queue
 import re
@@ -39,6 +40,45 @@ ID_GIT_REF_PUSH = 'git-ref-push'
 ID_CONTEXT_MENU = 'context-menu'
 ID_GIT_REFRESH_HEAD = 'git-refresh-head'
 ID_GIT_SEARCH = 'git-search'
+ID_PREFERENCES = 'preferences'
+
+DEFAULT_CONFIG = {
+    'git_log': {'show_commit_id': True, 'show_commit_date': True, 'show_commit_author': True, 'flags': ''},
+    'git_diff': {'ignore_whitespace': False},
+    'log': {'autoscroll': False},
+}
+
+def get_config_path() -> str:
+    if sys.platform == 'win32':
+        base = os.environ.get('APPDATA') or os.path.expanduser('~')
+    elif sys.platform == 'darwin':
+        base = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support')
+    else:
+        base = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+    return os.path.join(base, 'gitkcli', 'config.json')
+
+def load_config() -> dict:
+    cfg = {k: dict(v) for k, v in DEFAULT_CONFIG.items()}
+    try:
+        with open(get_config_path(), 'r') as f:
+            data = json.load(f)
+        for section, values in data.items():
+            if section in cfg and isinstance(values, dict):
+                cfg[section].update({k: v for k, v in values.items() if k in cfg[section]})
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    return cfg
+
+def save_config(cfg: dict) -> bool:
+    path = get_config_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            json.dump(cfg, f, indent=2)
+        return True
+    except OSError as e:
+        Gitkcli.log.error(f"Failed to save preferences: {e}")
+        return False
 
 def copy_to_clipboard(txt:str):
     try:
@@ -1127,7 +1167,9 @@ class View:
         if self.footer_item:
             rows, cols = self.win.getmaxyx()
             self.win.move(rows - 1, 0)
-            self.footer_item.draw_line(self.win, 0, cols, self.is_active(), False, False)
+            # cols - 1: writing the final cell on the last row advances curses' cursor
+            # off-screen and raises addwstr() ERR
+            self.footer_item.draw_line(self.win, 0, cols - 1, self.is_active(), False, False)
 
         self.win.refresh()
         if self != Gitkcli.log.view and self.get_parent() != Gitkcli.log.view:
@@ -1214,9 +1256,6 @@ class ListView(View):
         self._offset_x:int = 0
         self.autoscroll:bool = False
         self._search_dialog:typing.Optional[SearchDialogPopup] = None
-
-    def toggle_autoscroll(self):
-        self.autoscroll = not self.autoscroll
 
     def set_search_dialog(self, search_dialog:"SearchDialogPopup"):
         self._search_dialog = search_dialog
@@ -1477,9 +1516,15 @@ class GitLogView(ListView):
         self.show_commit_date = True
         self.show_commit_author = True
 
-        self.job = GitLogJob(ID_GIT_LOG, git_args + cmd_args)
+        self._cli_args = git_args + cmd_args
+        self.pref_flags = ''
+        self.job = GitLogJob(ID_GIT_LOG, list(self._cli_args))
         self.job_git_refresh_head = GitRefreshHeadJob()
         self.job_git_search = GitSearchJob(cmd_args)
+
+    def set_pref_flags(self, flags: str):
+        self.pref_flags = flags
+        self.job.args = list(self._cli_args) + flags.split()
 
         repo_name = os.path.basename(Job.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
         self.set_header_item(WindowTopBarItem('Repository: ' + repo_name, [
@@ -1513,18 +1558,6 @@ class GitLogView(ListView):
             if item:
                 item.load_to_view()
         return ret
-
-    def toggle_show_commit_id(self):
-        self.show_commit_id = not self.show_commit_id
-        self.dirty = True
-
-    def toggle_show_commit_date(self):
-        self.show_commit_date = not self.show_commit_date
-        self.dirty = True
-
-    def toggle_show_commit_author(self):
-        self.show_commit_author = not self.show_commit_author
-        self.dirty = True
 
     def check_uncommitted_changes(self):
         to_remove = 0
@@ -1902,21 +1935,14 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Refresh <F5>", item.git_log.refresh_head))
                 self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_refs_commits))
                 self.append(SeparatorItem())
-                # def __init__(self, on_text, off_text, do_toggle, is_toggled):
-                self.append(ToggleContextMenuItem("Hide commit ID", "Show commit ID", view.toggle_show_commit_id, lambda: view.show_commit_id))
-                self.append(ToggleContextMenuItem("Hide commit date", "Show commit date", view.toggle_show_commit_date, lambda: view.show_commit_date))
-                self.append(ToggleContextMenuItem("Hide commit author", "Show commit author", view.toggle_show_commit_author, lambda: view.show_commit_author))
-                self.append(SeparatorItem())
-            elif view_id == 'git-diff':
-                self.append(ToggleContextMenuItem("Show space change", "Ignore space change", view.change_ignore_whitespace, lambda: view.ignore_whitespace))
-                self.append(SeparatorItem())
             elif view_id == 'git-refs':
                 self.append(ContextMenuItem("Reread references", item.reload_refs))
                 self.append(SeparatorItem())
             elif view_id == 'log':
                 self.append(ContextMenuItem("Clear log", view.clear))
-                self.append(ToggleContextMenuItem("Disable autoscroll", "Enable autoscroll", view.toggle_autoscroll, lambda: view.autoscroll))
                 self.append(SeparatorItem())
+            self.append(ContextMenuItem("Preferences", Gitkcli.preferences.show))
+            self.append(SeparatorItem())
             self.append(ContextMenuItem("Quit", item.exit_program))
         elif view_id == 'git-log' and hasattr(item, 'id'):
             if item.id == 'local-staged':
@@ -1939,6 +1965,9 @@ class ContextMenu(ListView):
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
                 self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id)))
+            self.append(SeparatorItem())
+            self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
+            self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
         elif view_id == 'git-diff':
             self.append(ContextMenuItem("Jump to file", StatListItem.jump_to_file, [item], isinstance(item, StatListItem)))
             self.append(ContextMenuItem("Show origin of this line", DiffListItem.jump_to_origin, [item], isinstance(item, DiffListItem) and item.old_file_path and item.old_file_line is not None))
@@ -2249,6 +2278,106 @@ class BranchRenameDialogPopup(UserInputDialogPopup):
             Gitkcli.log.error(f"Error renaming branch: {result.stderr}")
 
         super().execute()
+
+class OnOffToggleSegment(ToggleSegment):
+    def __init__(self, toggled=False, color=1):
+        super().__init__('<ON>' if toggled else '<OFF>', toggled, color=color)
+
+    def set_toggled(self, value):
+        self.toggled = value
+        self.txt = '<ON>' if self.toggled else '<OFF>'
+
+    def toggle(self):
+        self.set_toggled(not self.toggled)
+
+class PreferencesDialogPopup(ListView):
+    def __init__(self):
+        super().__init__(ID_PREFERENCES, 'window', height=15, width=50)
+        self.is_popup = True
+        self.set_header_item(TextListItem(' Preferences', 30, expand=True))
+
+        self.t_show_id     = OnOffToggleSegment()
+        self.t_show_date   = OnOffToggleSegment()
+        self.t_show_author = OnOffToggleSegment()
+        self.t_ign_ws      = OnOffToggleSegment()
+        self.t_autoscroll  = OnOffToggleSegment()
+        self.input_flags   = UserInputListItem()
+
+        def row(label, toggle):
+            return SegmentedListItem([TextSegment(f'  {label}  '), FillerSegment(), toggle, TextSegment('  ')])
+
+        self.append(row('Show commit ID',           self.t_show_id))
+        self.append(row('Show commit date',         self.t_show_date))
+        self.append(row('Show commit author',       self.t_show_author))
+        self.append(SeparatorItem())
+        self.append(row('Ignore whitespace (diff)', self.t_ign_ws))
+        self.append(SeparatorItem())
+        self.append(row('Autoscroll (log view)',    self.t_autoscroll))
+        self.append(SeparatorItem())
+        self.append(TextListItem('  Git log default flags:', selectable=False))
+        self.append(self.input_flags)
+        self.append(SpacerListItem())
+
+        buttons = SegmentedListItem([
+            FillerSegment(),
+            ButtonSegment('[Save]',   self.on_save),
+            TextSegment('  '),
+            ButtonSegment('[Close]', self.on_cancel),
+            FillerSegment(),
+        ])
+        buttons.is_selectable = False
+        self.append(buttons)
+        self.append(SpacerListItem())
+        self._selected = 0
+
+    def on_activated(self):
+        self.t_show_id.set_toggled(Gitkcli.git_log.show_commit_id)
+        self.t_show_date.set_toggled(Gitkcli.git_log.show_commit_date)
+        self.t_show_author.set_toggled(Gitkcli.git_log.show_commit_author)
+        self.t_ign_ws.set_toggled(Gitkcli.git_diff.ignore_whitespace)
+        self.t_autoscroll.set_toggled(Gitkcli.log.view.autoscroll)
+        self.input_flags.set_text(Gitkcli.git_log.pref_flags)
+        self.dirty = True
+        super().on_activated()
+
+    def on_save(self):
+        Gitkcli.git_log.show_commit_id     = self.t_show_id.toggled
+        Gitkcli.git_log.show_commit_date   = self.t_show_date.toggled
+        Gitkcli.git_log.show_commit_author = self.t_show_author.toggled
+        Gitkcli.log.view.autoscroll        = self.t_autoscroll.toggled
+        Gitkcli.git_log.dirty  = True
+        Gitkcli.log.view.dirty = True
+        if Gitkcli.git_diff.ignore_whitespace != self.t_ign_ws.toggled:
+            job = Gitkcli.git_diff.job
+            if job.commit_id or job.tag_id or job.old_commit_id:
+                Gitkcli.git_diff.change_ignore_whitespace(self.t_ign_ws.toggled)
+            else:
+                Gitkcli.git_diff.ignore_whitespace = self.t_ign_ws.toggled
+
+        new_flags = self.input_flags.txt.strip()
+        if new_flags != Gitkcli.git_log.pref_flags:
+            Gitkcli.git_log.set_pref_flags(new_flags)
+            Gitkcli.git_log.reload_commits()
+
+        cfg = {
+            'git_log':  {'show_commit_id':     self.t_show_id.toggled,
+                         'show_commit_date':   self.t_show_date.toggled,
+                         'show_commit_author': self.t_show_author.toggled,
+                         'flags':              new_flags},
+            'git_diff': {'ignore_whitespace':  self.t_ign_ws.toggled},
+            'log':      {'autoscroll':         self.t_autoscroll.toggled},
+        }
+        if save_config(cfg):
+            Gitkcli.log.success('Preferences saved')
+
+    def on_cancel(self):
+        self.hide()
+
+    def handle_input(self, key):
+        if key == curses.KEY_EXIT:
+            self.on_cancel()
+            return True
+        return super().handle_input(key)
 
 class NewRefDialogPopup(UserInputDialogPopup):
     def __init__(self):
@@ -2781,6 +2910,7 @@ class Gitkcli:
     git_diff:GitDiffView
     git_refs:GitRefsView
     context_menu:ContextMenu
+    preferences:"PreferencesDialogPopup"
 
     @classmethod
     def reload_refs_commits(cls):
@@ -2802,6 +2932,15 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
     Gitkcli.git_diff = GitDiffView()
     Gitkcli.git_refs = GitRefsView()
     Gitkcli.context_menu = ContextMenu()
+    Gitkcli.preferences = PreferencesDialogPopup()
+
+    _cfg = load_config()
+    Gitkcli.git_log.show_commit_id     = _cfg['git_log']['show_commit_id']
+    Gitkcli.git_log.show_commit_date   = _cfg['git_log']['show_commit_date']
+    Gitkcli.git_log.show_commit_author = _cfg['git_log']['show_commit_author']
+    Gitkcli.git_log.set_pref_flags(_cfg['git_log']['flags'])
+    Gitkcli.git_diff.ignore_whitespace = _cfg['git_diff']['ignore_whitespace']
+    Gitkcli.log.view.autoscroll        = _cfg['log']['autoscroll']
 
     Gitkcli.log.info('Application started')
 
