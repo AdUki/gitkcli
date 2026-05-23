@@ -340,19 +340,26 @@ class GitDiffJob(Job):
     def restart_job(self):
         self.start_job(self._get_args())
 
-    def show_diff(self, old_commit_id, new_commit_id = None, cached = False, title = None):
+    def show_diff(self, old_commit_id, new_commit_id = None, cached = False, title = None,
+                  view_id = None, add_to_jump_list = False):
         self.commit_id = None
         self.tag_id = None
         self.cached = cached
         self.old_commit_id = old_commit_id
         self.new_commit_id = new_commit_id
         Gitkcli.git_diff.clear()
-        Gitkcli.git_diff.commit_id = old_commit_id
+        Gitkcli.git_diff.commit_id = view_id or old_commit_id
         Gitkcli.git_diff.is_diff = True
         if not title:
             title = f'Diff {old_commit_id[:7]} {new_commit_id[:7]}'
         Gitkcli.git_diff.header_item.set_title(title)
-        self.start_job(self._get_args())
+        on_finished = None
+        if view_id and view_id in self.selected_line_map:
+            line, offset_y = self.selected_line_map[view_id]
+            on_finished = lambda: Gitkcli.git_diff.restore_view_position(line, offset_y)
+        self.start_job(self._get_args(), on_finished = on_finished)
+        if add_to_jump_list and view_id:
+            Gitkcli.git_log.add_to_jump_list(view_id)
 
     def show_commit(self, commit_id, on_finished = None, add_to_jump_list = True):
         self.commit_id = commit_id
@@ -911,7 +918,10 @@ class UncommittedChangesListItem(TextListItem):
             super().__init__('Uncommitted changes (working directory)', 2)
 
     def load_to_view(self):
-        Gitkcli.git_diff.job.show_diff('HEAD', cached = self._staged, title = self.txt)
+        if Gitkcli.git_diff.commit_id == self.id:
+            return
+        Gitkcli.git_diff.job.show_diff('HEAD', cached = self._staged, title = self.txt,
+                                       view_id = self.id, add_to_jump_list = True)
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if super().handle_mouse_input(event_type, x, y):
@@ -1631,11 +1641,12 @@ class GitLogView(ListView):
 
         self.jump_index = new_index
         commit_id, line, offset_y = self.jump_list[new_index]
+        is_local = commit_id.startswith('local-')
 
-        # Locate the commit in git_log; skip the entry if not found
+        # Locate the item in git_log; skip the entry if not found
         idx = None
         for i, item in enumerate(self.items):
-            if isinstance(item, CommitListItem) and item.id == commit_id:
+            if isinstance(item, (CommitListItem, UncommittedChangesListItem)) and item.id == commit_id:
                 idx = i
                 break
         if idx is None:
@@ -1646,16 +1657,20 @@ class GitLogView(ListView):
             Gitkcli.git_diff.job.selected_line_map[commit_id] = (line, offset_y)
 
         was_same_commit = (Gitkcli.git_diff.commit_id == commit_id
-                           and not Gitkcli.git_diff.is_diff)
+                           and (not Gitkcli.git_diff.is_diff or is_local))
 
         # Move the git_log cursor without going through GitLogView.set_selected →
-        # CommitListItem.load_to_view → show_commit, which would re-push to the
-        # jumplist and clobber forward entries.
+        # *ListItem.load_to_view → show_commit/show_diff, which would re-push to
+        # the jumplist and clobber forward entries.
         super().set_selected(idx)
 
         if was_same_commit:
             if line is not None:
                 Gitkcli.git_diff.restore_view_position(line, offset_y)
+        elif is_local:
+            item = self.items[idx]
+            Gitkcli.git_diff.job.show_diff('HEAD', cached=item._staged, title=item.txt,
+                                            view_id=item.id, add_to_jump_list=False)
         else:
             Gitkcli.git_diff.job.show_commit(commit_id, add_to_jump_list=False)
         return True
@@ -1779,9 +1794,12 @@ class GitDiffView(ListView):
         self.is_diff = False
         super().clear()
 
+    def _tracks_position(self) -> bool:
+        return bool(self.commit_id) and (not self.is_diff or self.commit_id.startswith('local-'))
+
     def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
         ret = super().set_selected(what, visible_mode)
-        if self.commit_id and self.is_diff == False:
+        if self._tracks_position():
             self.job.selected_line_map[self.commit_id] = (self._selected, self._offset_y)
         return ret
 
@@ -1789,7 +1807,7 @@ class GitDiffView(ListView):
         self.set_selected(line)
         if offset_y is not None:
             self._offset_y = offset_y
-            if self.commit_id and self.is_diff == False:
+            if self._tracks_position():
                 self.job.selected_line_map[self.commit_id] = (self._selected, self._offset_y)
 
     def select_line(self, file:str, line:int):
@@ -1818,7 +1836,7 @@ class GitDiffView(ListView):
         elif key == KEY_CTRL('p'):
             Gitkcli.git_log.handle_input(curses.KEY_UP)
         elif key in (ord('g'), ord('G'), curses.KEY_HOME, curses.KEY_END):
-            track = self.commit_id and not self.is_diff
+            track = self._tracks_position()
             if track:
                 Gitkcli.git_log.add_to_jump_list(self.commit_id, self._selected, self._offset_y)
             ret = super().handle_input(key)
