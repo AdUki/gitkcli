@@ -2291,9 +2291,12 @@ class UserInputDialogPopup(ListView):
         self.append(bottom_item)
         self._selected = 2
 
-    def execute(self):
-        if len(self.history_queries) == 0 or self.history_queries[0] != self.input.txt:
+    def add_query_to_history(self):
+        if self.input.txt and (len(self.history_queries) == 0 or self.history_queries[0] != self.input.txt):
             self.history_queries.insert(0, self.input.txt)
+
+    def execute(self):
+        self.add_query_to_history()
 
     def clear(self):
         self.input.clear()
@@ -2314,7 +2317,7 @@ class UserInputDialogPopup(ListView):
                 self.history_index -= 1
                 self.input.set_text(self.history_queries[self.history_index])
                 
-        elif key == curses.KEY_UP or key == KEY_CTRL('p'):
+        elif key == curses.KEY_UP or key == KEY_CTRL('p') or key == KEY_CTRL('o'):
             if self.history_index + 1 < len(self.history_queries):
                 self.history_index += 1
                 self.input.set_text(self.history_queries[self.history_index])
@@ -2500,10 +2503,15 @@ class SearchDialogPopup(UserInputDialogPopup):
         buttons = SegmentedListItem([FillerSegment(),
                                      ButtonSegment("[Search Next]", lambda: self.do_search(backward = False)),
                                      ButtonSegment("[Search Previous]", lambda: self.do_search(backward = True)),
-                                     ButtonSegment("[Close]", lambda: self.handle_input(curses.KEY_EXIT)),
+                                     ButtonSegment("[Clear]", self.clear_input),
                                      FillerSegment()])
         buttons.is_selectable = False
         super().__init__(id, ' Search', self.header, buttons)
+
+    def clear_input(self):
+        self.clear()
+        self.dirty = True
+        self.parent_list_view.dirty = True
 
     def do_search(self, backward:bool):
         self.parent_list_view.search(backward)
@@ -2603,6 +2611,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
                 args.append('--')
                 args.append(f"*{self.input.txt}*")
 
+            self.add_query_to_history()
             self.clear()
             Gitkcli.git_log.job_git_search.start_job(args)
 
