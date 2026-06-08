@@ -19,6 +19,8 @@ HORIZONTAL_OFFSET_JUMP = 1
 KEY_SHIFT_F5 = -100
 KEY_CTRL_LEFT = -101
 KEY_CTRL_RIGHT = -102
+KEY_CTRL_BACKSPACE = -103
+KEY_CTRL_DEL = -104
 KEY_ENTER = 10
 KEY_RETURN = 13
 KEY_TAB = 9
@@ -1478,7 +1480,6 @@ class ListView(View):
             self.set_selected(max(0, len(self.items) - 1))
         elif key == ord('/'):
             if self._search_dialog:
-                self._search_dialog.clear()
                 self._search_dialog.show()
         elif key == ord('n'):
             self.search()
@@ -2152,25 +2153,58 @@ class UserInputListItem(Item):
         self.txt = txt
         self.offset = 0
         self.cursor_pos = len(txt)
-                
+
+    def prev_word_pos(self):
+        pos = self.cursor_pos
+        while pos > 0 and self.txt[pos-1].isspace():
+            pos -= 1
+        while pos > 0 and not self.txt[pos-1].isspace():
+            pos -= 1
+        return pos
+
+    def next_word_pos(self):
+        pos = self.cursor_pos
+        length = len(self.txt)
+        while pos < length and self.txt[pos].isspace():
+            pos += 1
+        while pos < length and not self.txt[pos].isspace():
+            pos += 1
+        return pos
+
     def handle_input(self, key):
         if key == curses.KEY_BACKSPACE or key == 127:  # Backspace
             if self.cursor_pos > 0:
                 self.txt = self.txt[:self.cursor_pos-1] + self.txt[self.cursor_pos:]
                 self.cursor_pos -= 1
-                
+
+        elif key == KEY_CTRL_BACKSPACE:  # Ctrl+Backspace: delete previous word
+            start = self.prev_word_pos()
+            self.txt = self.txt[:start] + self.txt[self.cursor_pos:]
+            self.cursor_pos = start
+
         elif key == curses.KEY_DC:  # Delete key
             if self.cursor_pos < len(self.txt):
                 self.txt = self.txt[:self.cursor_pos] + self.txt[self.cursor_pos+1:]
 
+        elif key == KEY_CTRL_DEL:  # Ctrl+Delete: clear whole text
+            self.txt = ''
+            self.cursor_pos = 0
+            self.offset = 0
+
         elif key == curses.KEY_LEFT:  # Left arrow
             if self.cursor_pos > 0:
                 self.cursor_pos -= 1
-                
+
         elif key == curses.KEY_RIGHT:  # Right arrow
             if self.cursor_pos < len(self.txt):
                 self.cursor_pos += 1
-                
+
+        elif key == KEY_CTRL_LEFT:  # Ctrl+Left: previous word
+            self.cursor_pos = self.prev_word_pos()
+
+        elif key == KEY_CTRL_RIGHT:  # Ctrl+Right: next word
+            self.cursor_pos = self.next_word_pos()
+
         elif key == curses.KEY_HOME:  # Home key
             self.cursor_pos = 0
             
@@ -2312,8 +2346,6 @@ class UserInputDialogPopup(ListView):
             self.execute()
 
         elif key == curses.KEY_EXIT:
-            self.input.txt = ""
-            self.cursor_pos = 0
             self.hide()
                 
         elif key == curses.KEY_DOWN or key == KEY_CTRL('n'):
@@ -2616,7 +2648,6 @@ class GitSearchDialogPopup(SearchDialogPopup):
                 args.append(f"*{self.input.txt}*")
 
             self.add_query_to_history()
-            self.clear()
             Gitkcli.git_log.job_git_search.start_job(args)
 
         elif key == KEY_TAB: # cycle through search types
@@ -3079,14 +3110,17 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                     key = KEY_CTRL_LEFT
                 elif sequence == [27, 91, 49, 59, 53, 67]:
                     key = KEY_CTRL_RIGHT
+                elif sequence == [27, 91, 51, 59, 53, 126]:
+                    key = KEY_CTRL_DEL
                 else:
                     continue
             else:
                 Gitkcli.log.debug('Key: ' + str(key))
 
-            # Windows PDCurses input normalization
+            # Ctrl+Backspace arrives as ^H (8) on most terminals; plain
+            # Backspace arrives as KEY_BACKSPACE / 127
             if key == 8:
-                key = curses.KEY_BACKSPACE
+                key = KEY_CTRL_BACKSPACE
 
             if key == curses.KEY_MOUSE:
                 _, mouse_x, mouse_y, _, Gitkcli.mouse.mouse_state = curses.getmouse()
