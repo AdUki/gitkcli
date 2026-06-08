@@ -441,15 +441,19 @@ class GitDiffJob(Job):
 
 class GitSearchJob(Job):
     def __init__(self, args = []):
-        super().__init__(ID_GIT_SEARCH) 
+        super().__init__(ID_GIT_SEARCH)
         self.cmd = 'git log --format=%H'
-        self.args = args
+        # CLI revision args (e.g. a branch name). These must precede any
+        # '--' pathspec separator added by the search, so keep them out of
+        # self.args (which the base class appends *after* the per-search args)
+        # and instead prepend them to args in start_job.
+        self.revisions = args
         self.found_ids = set()
 
     def start_job(self, args = [], on_finished = None):
         self.found_ids.clear()
         Gitkcli.git_log.dirty = True
-        super().start_job(args, on_finished) 
+        super().start_job(self.revisions + args, on_finished)
 
     def process_item(self, item):
         self.found_ids.add(item)
