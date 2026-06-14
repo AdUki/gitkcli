@@ -342,6 +342,12 @@ class GitDiffJob(Job):
     def restart_job(self):
         self.start_job(self._get_args())
 
+    def get_old_revision(self):
+        """Git revision for the 'old' (---) side of the current diff"""
+        if self.commit_id:
+            return f'{self.commit_id}^'
+        return self.old_commit_id
+
     def show_diff(self, old_commit_id, new_commit_id = None, cached = False, title = None,
                   view_id = None, add_to_jump_list = False):
         self.commit_id = None
@@ -655,10 +661,11 @@ class DiffListItem(TextListItem):
         super().__init__(txt, color)
 
     def jump_to_origin(self):
-        if self.old_file_path and self.old_file_line:
+        blame_revision = Gitkcli.git_diff.job.get_old_revision()
+        if self.old_file_path and self.old_file_line and blame_revision:
             args = ['git', 'blame', '-lsfn', '-L',
                     f'{self.old_file_line},{self.old_file_line}',
-                    f'{Gitkcli.git_diff.commit_id}^', # get parent commit-id
+                    blame_revision,
                     '--', self.old_file_path]
 
             result = Job.run_job(args)
