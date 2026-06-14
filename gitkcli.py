@@ -1480,6 +1480,7 @@ class ListView(View):
             self.set_selected(max(0, len(self.items) - 1))
         elif key == ord('/'):
             if self._search_dialog:
+                self._search_dialog.clear()
                 self._search_dialog.show()
         elif key == ord('n'):
             self.search()
