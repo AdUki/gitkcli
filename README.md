@@ -1,10 +1,34 @@
 # GitkCLI
 
-A terminal-based Git repository viewer with advanced features for exploring commit history, diffs, and references.
+**gitk, in your terminal.**
+
+GitkCLI brings the beloved [gitk](https://git-scm.com/docs/gitk) history-browsing experience to the terminal — no X11, no display server, no GUI. Just `git log --graph` rendered into a fast, mouse-aware, keyboard-driven curses interface that runs anywhere a shell does.
+
+<!-- TODO: replace with a real demo GIF -->
+<!-- ![GitkCLI demo](docs/demo.gif) -->
+> 📽️ *Demo GIF coming soon.*
+
+## Why GitkCLI?
+
+gitk is fantastic — it's part of git itself, rock-solid, and so feature-complete it barely needs changing. There's just one thing it can't do: **run without a graphical display.**
+
+The moment you're on a remote box over SSH, inside tmux, or on a headless server, gitk is out of reach. GitkCLI is for exactly those moments — the gitk experience, where gitk can't go.
+
+| | gitk | GitkCLI |
+|---|:---:|:---:|
+| The gitk graph history experience | ✅ | ✅ |
+| Runs in a terminal / over SSH / headless | ❌ needs X11 | ✅ |
+| Mouse, drag, scroll, context menus | ✅ | ✅ |
+| Commit ops (cherry-pick, revert, reset, branch/tag) | ✅ | ✅ |
+| Blame / trace line origin | ✅ | ✅ |
+
+### The lazy trick that makes it work
+
+The hard part of any gitk clone is the commit graph layout. GitkCLI doesn't reinvent it — it **piggybacks on `git log --graph`** and renders git's own output. Almost zero lines of graph-drawing code, and it stays correct because git does the math.
 
 ## Features
 
-- **Browse commit history** with Vim-like navigation and smooth scrolling
+- **Browse commit history** with a real graph view, Vim-like navigation, and smooth scrolling
 - **View commit diffs** with customizable context size and whitespace handling
 - **Advanced search** with regex support, case sensitivity, and multiple search types (commit ID, message, diff, file paths)
 - **Git references** - browse and manage branches, tags, and remote branches
@@ -13,7 +37,6 @@ A terminal-based Git repository viewer with advanced features for exploring comm
 - **Uncommitted changes** display with quick access to staged/unstaged modifications
 - **Jump history** - navigate back and forth through your exploration with `<---` / `--->` buttons
 - **Context-sensitive menus** - right-click for operations on commits, branches, tags, and more
-- **Real-time logging** - adjustable log levels for debugging
 - **Mouse support** - click to navigate, drag floating windows, scroll with wheel
 
 ## Installation
