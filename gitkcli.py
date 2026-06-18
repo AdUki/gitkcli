@@ -31,6 +31,7 @@ def KEY_CTRL(key):
 ID_LOG = 'log'
 ID_LOG_SEARCH = 'log-search'
 ID_GIT_LOG = 'git-log'
+ID_GIT_RESET = 'git-reset'
 ID_GIT_LOG_SEARCH = 'git-log-search'
 ID_NEW_GIT_REF = 'git-log-ref'
 ID_GIT_DIFF = 'git-diff'
@@ -1555,6 +1556,7 @@ class GitLogView(ListView):
         self.job = GitLogJob(ID_GIT_LOG, list(self._cli_args))
         self.job_git_refresh_head = GitRefreshHeadJob()
         self.job_git_search = GitSearchJob(cmd_args)
+        self.view_reset = ResetDialogPopup()
 
     def set_pref_flags(self, flags: str):
         self.pref_flags = flags
@@ -1715,15 +1717,22 @@ class GitLogView(ListView):
         else:
             Gitkcli.log.error(f"Error during revert: " + result.stderr)
     
-    def reset(self, hard, commit_id = None):
+    def confirm_reset(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
-        reset_type = '--hard' if hard else '--soft'
-        result = Job.run_job(['git', 'reset', reset_type, commit_id])
+        if not commit_id or commit_id.startswith('local'):
+            Gitkcli.log.warning('Select a commit to reset the current branch to')
+            return
+        self.view_reset.open(commit_id)
+
+    def reset(self, mode, commit_id = None):
+        commit_id = commit_id or self.get_selected_commit_id()
+        result = Job.run_job(['git', 'reset', mode, commit_id])
         if result.returncode == 0:
             Gitkcli.git_refs.reload_refs()
             Gitkcli.git_log.check_uncommitted_changes()
+            Gitkcli.log.success(f'{mode[2:].capitalize()} reset to {commit_id[:8]}')
         else:
-            Gitkcli.log.error(f"Error during {reset_type} reset:" + result.stderr)
+            Gitkcli.log.error(f"Error during {mode} reset: " + result.stderr)
 
     def clean_uncommitted_changes(self, staged:bool = False):
         if staged:
@@ -1757,9 +1766,9 @@ class GitLogView(ListView):
         elif key == ord('b'):
             Gitkcli.git_refs.view_new_ref.create_ref(self.get_selected_commit_id())
         elif key == ord('r'):
-            self.reset(False)
+            self.confirm_reset()
         elif key == ord('R'):
-            self.reset(True)
+            self.confirm_reset()
         elif key == ord('c'):
             self.cherry_pick()
         elif key == ord('v'):
@@ -2039,8 +2048,7 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
                 self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
                 self.append(SeparatorItem())
-                self.append(ContextMenuItem("Reset here", view.reset, [False, item.id]))
-                self.append(ContextMenuItem("Hard reset here", view.reset, [True, item.id]))
+                self.append(ContextMenuItem("Reset to this commit…", view.confirm_reset, [item.id]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()]))
                 self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id]))
@@ -2245,6 +2253,65 @@ class UserInputListItem(Item):
         win.addch(ord(' '), curses.A_REVERSE | curses.A_BLINK)
         win.addstr(right_txt, Screen.color(self.color, selected, marked, matched))
         win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), Screen.color(self.color, selected, marked, matched))
+
+class ResetModeItem(TextListItem):
+    def __init__(self, dialog, mode, txt, color = 1):
+        super().__init__(txt, color = color)
+        self.dialog = dialog
+        self.mode = mode
+
+    def execute_action(self):
+        self.dialog.hide()
+        Gitkcli.git_log.reset(self.mode, self.dialog.commit_id)
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
+            self.execute_action()
+            return True
+        return False
+
+    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+        if event_type == 'double-click':
+            self.execute_action()
+            return True
+        return super().handle_mouse_input(event_type, x, y)
+
+
+class ResetDialogPopup(ListView):
+    def __init__(self):
+        super().__init__(ID_GIT_RESET, 'window', height = 9, width = 68)
+        self.is_popup = True
+        self.commit_id = ''
+        self.set_header_item(TextListItem(' Reset current branch', 30, expand = True))
+
+        self.target_item = TextListItem('', 4, selectable = False)
+        self.append(self.target_item)
+        self.append(SeparatorItem())
+        self.append(ResetModeItem(self, '--soft',  '  Soft    keep index + working tree (move HEAD)', 3))
+        self.append(ResetModeItem(self, '--mixed', '  Mixed   reset index, keep working tree (default)'))
+        self.append(ResetModeItem(self, '--hard',  '  Hard    discard index + working tree changes', 2))
+        self.append(SeparatorItem())
+        cancel = SegmentedListItem([FillerSegment(),
+                                    ButtonSegment('[ Cancel ]', lambda: self.hide()),
+                                    FillerSegment()])
+        cancel.is_selectable = False
+        self.append(cancel)
+
+    def open(self, commit_id):
+        self.commit_id = commit_id
+        title = Gitkcli.git_log.commits.get(commit_id, {}).get('title', '')
+        if len(title) > 34:
+            title = title[:33] + '…'
+        self.target_item.set_text(f'  Reset HEAD → {commit_id[:8]}  {title}')
+        self.set_selected(3)
+        self.show()
+
+    def handle_input(self, key):
+        if key in (curses.KEY_EXIT, ord('q')):
+            self.hide()
+            return True
+        return super().handle_input(key)
+
 
 class RefPushDialogPopup(ListView):
     def __init__(self):
