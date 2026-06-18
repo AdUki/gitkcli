@@ -782,6 +782,9 @@ class ButtonSegment(TextSegment):
         else:
             return super().handle_mouse_input(event_type, x, y)
 
+    def activate(self) -> bool:
+        return self.callback()
+
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         if self.is_pressed:
             visible_txt = self.get_text()[offset:width]
@@ -805,6 +808,11 @@ class ToggleSegment(TextSegment):
 
     def toggle(self):
         self.toggled = not self.toggled
+
+    def activate(self) -> bool:
+        self.toggle()
+        self.callback(self)
+        return True
 
     def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
         if event_type == 'left-click' or event_type == 'double-click':
@@ -2730,6 +2738,18 @@ class ChoiceSegment(ButtonSegment):
     def get_text(self):
         return '<' + dict(self.options).get(self.value, self.value) + '>'
 
+class PreferenceRow(SegmentedListItem):
+    """A label + interactive control (toggle/choice). Enter activates the control."""
+    def __init__(self, label, control):
+        super().__init__([TextSegment(f'  {label}  '), FillerSegment(), control, TextSegment('  ')])
+        self.control = control
+
+    def handle_input(self, key):
+        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
+            self.control.activate()
+            return True
+        return False
+
 class PreferencesDialogPopup(ListView):
     def __init__(self):
         super().__init__(ID_PREFERENCES, 'window', height=17, width=50)
@@ -2746,8 +2766,8 @@ class PreferencesDialogPopup(ListView):
                                             ('stacked',    'Vertical split')], 'fullscreen')
         self.input_flags   = UserInputListItem()
 
-        def row(label, toggle):
-            return SegmentedListItem([TextSegment(f'  {label}  '), FillerSegment(), toggle, TextSegment('  ')])
+        def row(label, control):
+            return PreferenceRow(label, control)
 
         self.append(row('Show commit ID',           self.t_show_id))
         self.append(row('Show commit date',         self.t_show_date))
