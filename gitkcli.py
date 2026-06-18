@@ -890,20 +890,29 @@ class SegmentedListItem(Item):
             return self.fill_width * ' '
         return ''
 
+    def _segment_selected(self, index, selected):
+        # Per-segment highlight flag. Base: whole row follows the row selection.
+        return selected
+
+    def _bg_selected(self, selected):
+        # Highlight flag for separators/fillers/trailing fill (the row background).
+        return selected
+
     def draw_line(self, win, offset, width, selected, matched, marked):
         draw_separator = False
         remaining_width = width
-        for segment in self.get_segments():
+        bg_selected = self._bg_selected(selected)
+        for index, segment in enumerate(self.get_segments()):
             if draw_separator and self.segment_separator:
                 draw_separator = False
                 remaining_width -= len(self.segment_separator)
-                win.addstr(self.segment_separator, Screen.color(self.bg_color, selected, marked, matched))
+                win.addstr(self.segment_separator, Screen.color(self.bg_color, bg_selected, marked, matched))
             if isinstance(segment, FillerSegment):
                 txt = self.get_fill_txt(width)
-                win.addstr(txt, Screen.color(self.bg_color, selected, marked, matched, matched))
+                win.addstr(txt, Screen.color(self.bg_color, bg_selected, marked, matched, matched))
                 length = len(txt)
             else:
-                length = segment.draw(win, offset, remaining_width, selected, matched, marked)
+                length = segment.draw(win, offset, remaining_width, self._segment_selected(index, selected), matched, marked)
                 txt = segment.get_text()
             draw_separator = length > 0
             remaining_width -= length
@@ -912,10 +921,62 @@ class SegmentedListItem(Item):
             offset -= len(txt) - length
 
         if remaining_width > 0:
-            if selected or marked:
-                win.addstr(' ' * remaining_width, Screen.color(self.bg_color, selected, marked, matched))
+            if bg_selected or marked:
+                win.addstr(' ' * remaining_width, Screen.color(self.bg_color, bg_selected, marked, matched))
             else:
                 win.clrtoeol()
+
+class ButtonRowItem(SegmentedListItem):
+    """A row of buttons navigable with Left/Right (or h/l); Enter activates the
+    focused button. Only the focused button is highlighted, not the whole row."""
+    def __init__(self, segments = [], bg_color = 1):
+        super().__init__(segments, bg_color)
+        self.is_selectable = True
+        indices = self._button_indices()
+        self.focused = indices[0] if indices else 0
+
+    def _button_indices(self):
+        return [i for i, s in enumerate(self.segments) if hasattr(s, 'activate')]
+
+    def reset_focus(self):
+        # Back to the default (first/primary) button. Reused dialogs call this on
+        # open so focus doesn't linger on whatever was picked last time.
+        indices = self._button_indices()
+        self.focused = indices[0] if indices else 0
+
+    def focus_last(self):
+        # Focus the last (rightmost) button. Destructive confirm dialogs default
+        # here so a stray Enter hits the safe (cancel) button.
+        indices = self._button_indices()
+        self.focused = indices[-1] if indices else 0
+
+    def _move_focus(self, direction):
+        indices = self._button_indices()
+        if not indices:
+            return
+        pos = indices.index(self.focused) if self.focused in indices else 0
+        self.focused = indices[(pos + direction) % len(indices)]
+
+    def handle_input(self, keyboard):
+        key = keyboard.key
+        if key == curses.KEY_LEFT or key == ord('h'):
+            self._move_focus(-1)
+            return True
+        if key == curses.KEY_RIGHT or key == ord('l'):
+            self._move_focus(1)
+            return True
+        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
+            if 0 <= self.focused < len(self.segments) and hasattr(self.segments[self.focused], 'activate'):
+                self.segments[self.focused].activate()
+            return True
+        return False
+
+    def _segment_selected(self, index, selected):
+        return selected and index == self.focused
+
+    def _bg_selected(self, selected):
+        # Never band the whole row; only the focused button is highlighted.
+        return False
 
 class SplitButtonSegment(ButtonSegment):
     """Header button that shows the current split-view state and cycles it."""
@@ -1276,10 +1337,13 @@ class View:
         else:
             return False
 
+    def border_color(self):
+        return curses.color_pair(5 if self.is_active() else 18)
+
     def draw(self):
         sides = self.split_border_sides()
         if sides is not None:
-            self.win.attrset(curses.color_pair(5 if self.is_active() else 18))
+            self.win.attrset(self.border_color())
             h, w = self.win.getmaxyx()
             if 'left' in sides:
                 self.win.vline(1, 0, curses.ACS_VLINE, h - 1)
@@ -1288,7 +1352,7 @@ class View:
             if 'bottom' in sides:
                 self.win.hline(h - 1, 0, curses.ACS_HLINE, w)
         elif self.view_mode == 'window':
-            self.win.attrset(curses.color_pair(5 if self.is_active() else 18))
+            self.win.attrset(self.border_color())
             self.win.box()
 
         # draw header
@@ -2039,7 +2103,7 @@ class GitDiffView(ListView):
 
 class GitRefsView(ListView):
     def __init__(self):
-        super().__init__(ID_GIT_REFS, 'window') 
+        super().__init__(ID_GIT_REFS) 
 
         self.refs = {} # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
 
@@ -2222,7 +2286,7 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
                 self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
                 self.append(SeparatorItem())
-                self.append(ContextMenuItem("Reset to this commit…", view.confirm_reset, [item.id]))
+                self.append(ContextMenuItem("Reset branch here", view.confirm_reset, [item.id]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Diff this --> selected", view.diff_commits, [item.id, view.get_selected_commit_id()]))
                 self.append(ContextMenuItem("Diff selected --> this", view.diff_commits, [view.get_selected_commit_id(), item.id]))
@@ -2271,13 +2335,24 @@ class ContextMenu(ListView):
         self.show()
         return True
 
-    def checkout_branch(self, branch_name):
-        result = Job.run_job(['git', 'checkout', branch_name])
+    def checkout_branch(self, branch_name, force = False):
+        args = ['git', 'checkout']
+        if force:
+            args += ['-f']
+        args += [branch_name]
+        result = Job.run_job(args)
         if result.returncode == 0:
             Gitkcli.git_log.refresh_head()
             Gitkcli.git_refs.reload_refs()
             Gitkcli.git_log.check_uncommitted_changes()
             Gitkcli.log.success(f'Switched to branch {branch_name}')
+        elif not force and 'would be overwritten by checkout' in result.stderr:
+            Gitkcli.confirm_dialog.confirm(
+                ' Checkout blocked',
+                [(f"Local files conflict with switching to '{branch_name}'.", 4),
+                 ("Force checkout? Conflicting local files will be lost.", 2)],
+                lambda: self.checkout_branch(branch_name, True),
+                confirm_label = '[Force checkout]')
         else:
             Gitkcli.log.error(f"Error checking out branch: {result.stderr}")
 
@@ -2452,12 +2527,20 @@ class ResetModeItem(TextListItem):
             return True
         return super().handle_mouse_input(mouse)
 
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        # Keep the chosen mode highlighted even when focus moves to the buttons
+        # (ListView.draw always passes marked=False, so we can't use that flag).
+        if self.dialog.selected_mode == self.mode:
+            selected = True
+        return super().draw_line(win, offset, width, selected, matched, marked)
+
 
 class ResetDialogPopup(ListView):
     def __init__(self):
         super().__init__(ID_GIT_RESET, 'window', height = 9, width = 68)
         self.is_popup = True
         self.commit_id = ''
+        self.selected_mode = '--mixed'
         self.set_header_item(TextListItem(' Reset current branch', 30, expand = True))
 
         self.target_item = TextListItem('', 4, selectable = False)
@@ -2467,19 +2550,37 @@ class ResetDialogPopup(ListView):
         self.append(ResetModeItem(self, '--mixed', '  Mixed   reset index, keep working tree (default)'))
         self.append(ResetModeItem(self, '--hard',  '  Hard    discard index + working tree changes', 2))
         self.append(SeparatorItem())
-        cancel = SegmentedListItem([FillerSegment(),
-                                    ButtonSegment('[ Cancel ]', lambda: self.hide()),
-                                    FillerSegment()])
-        cancel.is_selectable = False
-        self.append(cancel)
+        self._button_row = ButtonRowItem([FillerSegment(),
+                                          ButtonSegment('[Ok]', self._confirm, 3),
+                                          TextSegment('   '),
+                                          ButtonSegment('[Cancel]', self.hide),
+                                          FillerSegment()])
+        self.append(self._button_row)
+
+    def _confirm(self):
+        # [Ok] applies whichever reset mode is currently highlighted.
+        self.hide()
+        Gitkcli.git_log.reset(self.selected_mode, self.commit_id)
+        return True
+
+    def set_selected(self, what, visible_mode = 'center'):
+        # Track the highlighted mode (keyboard AND mouse funnel through here) so
+        # [Ok] knows which reset to run once focus moves to the buttons row.
+        result = super().set_selected(what, visible_mode)
+        item = self.get_selected()
+        if isinstance(item, ResetModeItem):
+            self.selected_mode = item.mode
+        return result
 
     def open(self, commit_id):
         self.commit_id = commit_id
+        self.selected_mode = '--mixed'
         title = Gitkcli.git_log.commits.get(commit_id, {}).get('title', '')
         if len(title) > 34:
             title = title[:33] + '…'
         self.target_item.set_text(f'  Reset HEAD → {commit_id[:8]}  {title}')
         self.set_selected(3)   # highlight Mixed by default
+        self._button_row.reset_focus()
         self.show()
 
     def handle_input(self, keyboard):
@@ -2506,14 +2607,29 @@ class RefPushDialogPopup(ListView):
         self.append(SegmentedListItem([TextSegment(f"Select remote: ")] + self.remotes + [FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]))
 
         self.append(SpacerListItem())
-        self.append(SegmentedListItem([FillerSegment(),
-                                       ButtonSegment("[Push]", lambda: self.handle_input(KeyboardState(curses.KEY_ENTER))),
-                                       ButtonSegment("[Cancel]", lambda: self.handle_input(KeyboardState(curses.KEY_EXIT))),
-                                       FillerSegment()]))
+        self._button_row = ButtonRowItem([FillerSegment(),
+                                          ButtonSegment("[Push]", self._confirm),
+                                          ButtonSegment("[Cancel]", self.hide),
+                                          FillerSegment()])
+        self.append(self._button_row)
         self.ref_name = ''
 
         for item in self.items:
             item.is_selectable = False
+        # Make the buttons row navigable (Left/Right pick a button, Enter
+        # activates it); default focus is [Push] so a bare Enter still pushes.
+        self._button_row.is_selectable = True
+        self._selected = len(self.items) - 1
+
+    def _confirm(self):
+        self.hide()
+        self.push_ref()
+        return True
+
+    def on_activated(self):
+        self._button_row.reset_focus()
+        self._selected = len(self.items) - 1
+        super().on_activated()
 
     def change_remote(self, new_remote):
         self.remote = new_remote
@@ -2549,10 +2665,9 @@ class RefPushDialogPopup(ListView):
 
     def handle_input(self, keyboard):
         key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.hide()
-            self.push_ref()
-        elif key == curses.KEY_EXIT:
+        # Enter is routed through the buttons row (super -> ButtonRowItem) so it
+        # activates the focused button instead of always pushing.
+        if key == curses.KEY_EXIT:
             self.hide()
         elif key == curses.KEY_F1:
             self.force.toggle()
@@ -2578,6 +2693,10 @@ class ConfirmDialogPopup(ListView):
         self.is_popup = True
         self._on_confirm = lambda: None
 
+    def border_color(self):
+        # Match the red warning banner: draw the window border red too.
+        return curses.color_pair(2)
+
     def confirm(self, title, lines, on_confirm, confirm_label = '[Yes]', cancel_label = '[Cancel]'):
         # Each entry in `lines` is either a string or a (text, color) tuple
         # (color 4 = yellow, 2 = red) for emphasis.
@@ -2592,19 +2711,32 @@ class ConfirmDialogPopup(ListView):
             self.append(TextListItem('  ' + text, color, selectable = False))
             content = max(content, len(text) + 2)  # + 2 for the left indent
         self.append(SpacerListItem())
-        self.append(SegmentedListItem([FillerSegment(),
-                                       ButtonSegment(confirm_label, lambda: self.handle_input(KeyboardState(curses.KEY_ENTER)), 2),
-                                       TextSegment('   '),
-                                       ButtonSegment(cancel_label, lambda: self.handle_input(KeyboardState(curses.KEY_EXIT))),
-                                       FillerSegment()]))
+        self._button_row = ButtonRowItem([FillerSegment(),
+                                          ButtonSegment(confirm_label, self._confirm, 2),
+                                          TextSegment('   '),
+                                          ButtonSegment(cancel_label, self.hide),
+                                          FillerSegment()])
+        self.append(self._button_row)
         content = max(content, len(confirm_label) + len(cancel_label) + 5)
 
         for item in self.items:
             item.is_selectable = False
+        # The button row is the only navigable item: focus it (Left/Right pick a
+        # button, Enter activates it). These are destructive force/overwrite
+        # confirmations, so default focus to [Cancel] — the user must Left-arrow
+        # to the confirm button and press Enter to proceed.
+        self._button_row.is_selectable = True
+        self._button_row.focus_last()
+        self._selected = len(self.items) - 1
 
         # content + 2 (right margin so text doesn't touch the border) + 2 (box sides)
         self._resize_centered(len(self.items) + 2, max(40, content + 4))
         self.show()
+
+    def _confirm(self):
+        self.hide()
+        self._on_confirm()
+        return True
 
     def _resize_centered(self, height, width):
         self.fixed_x = None
@@ -2620,11 +2752,16 @@ class ConfirmDialogPopup(ListView):
 
     def handle_input(self, keyboard):
         key = keyboard.key
-        if key in (curses.KEY_ENTER, KEY_ENTER, KEY_RETURN, ord('y'), ord('Y')):
-            self.hide()
-            self._on_confirm()
+        if key in (ord('y'), ord('Y')):
+            self._confirm()
         elif key in (curses.KEY_EXIT, ord('n'), ord('N'), ord('q')):
             self.hide()
+        else:
+            # Left/Right move focus between buttons; Enter activates the focused
+            # button. Default focus is [Cancel], so a bare Enter cancels; the
+            # user Left-arrows to the confirm button to proceed. (y/Y always
+            # confirms regardless of focus.)
+            super().handle_input(keyboard)
         # Modal: swallow every other key. Otherwise global shortcuts (F1-F5,
         # Ctrl+o/i) would fall through and could bury this popup behind a
         # fullscreen view while its force callback is still armed.
@@ -2828,15 +2965,14 @@ class PreferencesDialogPopup(ListView):
         self.append(TextListItem('  Git log default flags:', selectable=False))
         self.append(self.input_flags)
 
-        buttons = SegmentedListItem([
+        self._button_row = ButtonRowItem([
             FillerSegment(),
             ButtonSegment('[Save]',   self.on_save),
             TextSegment('  '),
             ButtonSegment('[Close]', self.on_cancel),
             FillerSegment(),
         ])
-        buttons.is_selectable = False
-        self.append(buttons)
+        self.append(self._button_row)
         self._selected = 0
 
     def on_activated(self):
@@ -2847,6 +2983,7 @@ class PreferencesDialogPopup(ListView):
         self.t_autoscroll.set_toggled(Gitkcli.log.view.autoscroll)
         self.c_view_mode.set_value(Gitkcli.default_view_mode)
         self.input_flags.set_text(Gitkcli.git_log.pref_flags)
+        self._button_row.reset_focus()
         self.dirty = True
         super().on_activated()
 
