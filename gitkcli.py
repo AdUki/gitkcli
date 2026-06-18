@@ -2519,9 +2519,9 @@ class RefPushDialogPopup(ListView):
                                ('non-fast-forward', 'fetch first', 'would clobber')):
             Gitkcli.confirm_dialog.confirm(
                 ' Push rejected',
-                [f"Push of '{ref_name}' to '{remote}' was rejected.",
+                [(f"Push of '{ref_name}' to '{remote}' was rejected.", 4),
                  "The remote has changes you don't have locally.",
-                 "Force push? This may overwrite remote commits."],
+                 ("Force push? This may overwrite remote commits.", 2)],
                 lambda: self._do_push(remote, ref_name, True),
                 confirm_label = '[Force push]')
         else:
@@ -2553,32 +2553,36 @@ class ConfirmDialogPopup(ListView):
     operation is rejected (ref already exists, non-fast-forward push, ...)."""
     def __init__(self):
         super().__init__(ID_CONFIRM_DIALOG, 'window', height = 7)
-        self.set_header_item(TextListItem('', 30, expand = True))
+        self.set_header_item(TextListItem('', 31, expand = True))  # red warning banner
         self.is_popup = True
         self._on_confirm = lambda: None
 
     def confirm(self, title, lines, on_confirm, confirm_label = '[Yes]', cancel_label = '[Cancel]'):
+        # Each entry in `lines` is either a string or a (text, color) tuple
+        # (color 4 = yellow, 2 = red) for emphasis.
         self._on_confirm = on_confirm
         self.header_item.set_text(title)
 
         self.clear()
-        max_len = len(title)
+        content = len(title)
         self.append(SpacerListItem())
         for line in lines:
-            self.append(TextListItem('  ' + line, selectable = False))
-            max_len = max(max_len, len(line))
+            text, color = line if isinstance(line, tuple) else (line, 1)
+            self.append(TextListItem('  ' + text, color, selectable = False))
+            content = max(content, len(text) + 2)  # + 2 for the left indent
         self.append(SpacerListItem())
         self.append(SegmentedListItem([FillerSegment(),
-                                       ButtonSegment(confirm_label, lambda: self.handle_input(curses.KEY_ENTER)),
-                                       TextSegment('  '),
+                                       ButtonSegment(confirm_label, lambda: self.handle_input(curses.KEY_ENTER), 2),
+                                       TextSegment('   '),
                                        ButtonSegment(cancel_label, lambda: self.handle_input(curses.KEY_EXIT)),
                                        FillerSegment()]))
-        max_len = max(max_len, len(confirm_label) + len(cancel_label) + 2)
+        content = max(content, len(confirm_label) + len(cancel_label) + 5)
 
         for item in self.items:
             item.is_selectable = False
 
-        self._resize_centered(len(self.items) + 2, max(40, max_len + 4))
+        # content + 2 (right margin so text doesn't touch the border) + 2 (box sides)
+        self._resize_centered(len(self.items) + 2, max(40, content + 4))
         self.show()
 
     def _resize_centered(self, height, width):
@@ -2691,7 +2695,7 @@ class BranchRenameDialogPopup(UserInputDialogPopup):
         elif not force and 'already exists' in result.stderr:
             Gitkcli.confirm_dialog.confirm(
                 ' Branch already exists',
-                [f"A branch named '{new_name}' already exists.",
+                [(f"A branch named '{new_name}' already exists.", 4),
                  "Overwrite it? (uses git branch --force)"],
                 lambda: self._rename_branch(old_name, new_name, True),
                 confirm_label = '[Overwrite]')
@@ -2912,7 +2916,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
         elif not force and 'already exists' in result.stderr:
             Gitkcli.confirm_dialog.confirm(
                 f' {ref_type.capitalize()} already exists',
-                [f"A {ref_type} named '{name}' already exists.",
+                [(f"A {ref_type} named '{name}' already exists.", 4),
                  f"Overwrite it? (uses git {ref_type} --force)"],
                 lambda: self._create_ref(ref_type, name, commit_id, True),
                 confirm_label = '[Overwrite]')
@@ -3166,6 +3170,10 @@ class Screen:
         Screen._init_color(30,
                    curses.COLOR_BLACK, 245, -1, 247,              # Inactive window title
                    curses.COLOR_WHITE, curses.COLOR_BLUE, -1, 20) # Active window title
+
+        Screen._init_color(31,
+                   curses.COLOR_WHITE, curses.COLOR_RED, -1, curses.COLOR_RED,    # Warning title bar
+                   curses.COLOR_WHITE, curses.COLOR_RED)                          # (white on red)
 
         curses.init_pair(200, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Status bar normal
         curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Status bar success
