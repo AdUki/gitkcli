@@ -25,6 +25,7 @@ KEY_CTRL_DEL = -104
 KEY_ENTER = 10
 KEY_RETURN = 13
 KEY_TAB = 9
+ENTER_KEYS = (curses.KEY_ENTER, KEY_ENTER, KEY_RETURN)
 
 def KEY_CTRL(key):
     return ord(key) & 0x1F
@@ -38,7 +39,6 @@ ID_GIT_DIFF = 'git-diff'
 ID_GIT_DIFF_SEARCH = 'git-diff-search'
 ID_GIT_REFS = 'git-refs'
 ID_GIT_REFS_SEARCH = 'git-refs-search'
-ID_BRANCH_RENAME = 'git-branch-rename'
 ID_GIT_REF_PUSH = 'git-ref-push'
 ID_CONTEXT_MENU = 'context-menu'
 ID_CONFIRM_DIALOG = 'confirm-dialog'
@@ -163,31 +163,27 @@ class Job:
                 self.on_finished()
                 self.on_finished = None
 
-    def process_items(self) -> bool:
+    def _drain(self, q, handler) -> bool:
+        """Drain a queue, dispatching each truthy item to handler (skipped while
+        stopped). Returns True if anything was processed."""
         processed = False
         try:
             while True:
-                item = self.items.get_nowait()
-                self.items.task_done()
+                item = q.get_nowait()
+                q.task_done()
                 if not item:
-                    return processed;
+                    break
                 if not self.stop:
-                    self.process_item(item)
-                    processed = True
-        except queue.Empty:
-            pass
-        try:
-            while True:
-                message = self.messages.get_nowait()
-                self.messages.task_done()
-                if not message:
-                    return processed
-                if not self.stop:
-                    self.process_message(message)
+                    handler(item)
                     processed = True
         except queue.Empty:
             pass
         return processed
+
+    def process_items(self) -> bool:
+        drained_items = self._drain(self.items, self.process_item)
+        drained_msgs = self._drain(self.messages, self.process_message)
+        return drained_items or drained_msgs
 
     def stop_job(self):
         self.stop = True
@@ -326,8 +322,7 @@ class GitDiffJob(Job):
         self.line_count = -1
 
         if self.tag_id:
-            args = ['cat-file', '-p', self.tag_id]
-            return args
+            return ['cat-file', '-p', self.tag_id]
 
         if self.commit_id:
             args = ['show', '-m', self.commit_id]
@@ -355,54 +350,45 @@ class GitDiffJob(Job):
             return f'{self.commit_id}^'
         return self.old_commit_id
 
-    def show_diff(self, old_commit_id, new_commit_id = None, cached = False, title = None,
-                  view_id = None, add_to_jump_list = False):
-        self.commit_id = None
-        self.tag_id = None
+    def _restore_on_finished(self, key):
+        """Callback that restores the saved cursor/scroll for `key`, or None."""
+        entry = self.selected_line_map.get(key)
+        return (lambda: Gitkcli.git_diff.restore_view_position(*entry)) if entry else None
+
+    def _prepare(self, title, *, is_diff, view_commit_id, commit_id=None, tag_id=None,
+                 old_commit_id=None, new_commit_id=None, cached=False):
+        """Reset the job target and the diff view before starting a show_* job."""
+        self.commit_id = commit_id
+        self.tag_id = tag_id
         self.cached = cached
         self.old_commit_id = old_commit_id
         self.new_commit_id = new_commit_id
         Gitkcli.git_diff.clear()
-        Gitkcli.git_diff.commit_id = view_id or old_commit_id
-        Gitkcli.git_diff.is_diff = True
+        Gitkcli.git_diff.commit_id = view_commit_id
+        Gitkcli.git_diff.is_diff = is_diff
+        Gitkcli.git_diff.header_item.set_title(title)
+
+    def show_diff(self, old_commit_id, new_commit_id = None, cached = False, title = None,
+                  view_id = None, add_to_jump_list = False):
         if not title:
             title = f'Diff {old_commit_id[:7]} {new_commit_id[:7]}'
-        Gitkcli.git_diff.header_item.set_title(title)
-        on_finished = None
-        if view_id and view_id in self.selected_line_map:
-            line, offset_y = self.selected_line_map[view_id]
-            on_finished = lambda: Gitkcli.git_diff.restore_view_position(line, offset_y)
-        self.start_job(self._get_args(), on_finished = on_finished)
+        self._prepare(title, is_diff=True, view_commit_id=view_id or old_commit_id,
+                      old_commit_id=old_commit_id, new_commit_id=new_commit_id, cached=cached)
+        self.start_job(self._get_args(), on_finished=self._restore_on_finished(view_id))
         if add_to_jump_list and view_id:
             Gitkcli.git_log.add_to_jump_list(view_id)
 
     def show_commit(self, commit_id, on_finished = None, add_to_jump_list = True):
-        self.commit_id = commit_id
-        self.tag_id = None
-        self.cached = False
-        self.old_commit_id = None
-        self.new_commit_id = None
-        Gitkcli.git_diff.clear()
-        Gitkcli.git_diff.commit_id = commit_id
-        Gitkcli.git_diff.is_diff = False
-        Gitkcli.git_diff.header_item.set_title(f'Commit {commit_id[:7]}')
-        if on_finished == None and commit_id in self.selected_line_map:
-            line, offset_y = self.selected_line_map[commit_id]
-            on_finished = lambda: Gitkcli.git_diff.restore_view_position(line, offset_y)
-        self.start_job(self._get_args(), on_finished = on_finished)
+        self._prepare(f'Commit {commit_id[:7]}', is_diff=False, view_commit_id=commit_id,
+                      commit_id=commit_id)
+        if on_finished is None:
+            on_finished = self._restore_on_finished(commit_id)
+        self.start_job(self._get_args(), on_finished=on_finished)
         if add_to_jump_list:
             Gitkcli.git_log.add_to_jump_list(commit_id)
 
     def show_tag_annotation(self, tag_id):
-        self.tag_id = tag_id
-        self.cached = False
-        self.commit_id = None
-        self.old_commit_id = None
-        self.new_commit_id = None
-        Gitkcli.git_diff.clear()
-        Gitkcli.git_diff.commit_id = tag_id
-        Gitkcli.git_diff.is_diff = True
-        Gitkcli.git_diff.header_item.set_title(f'Tag {tag_id}')
+        self._prepare(f'Tag {tag_id}', is_diff=True, view_commit_id=tag_id, tag_id=tag_id)
         self.start_job(self._get_args())
         Gitkcli.git_diff.show()
 
@@ -489,22 +475,10 @@ class GitRefsJob(Job):
 
     def process_line(self, line) -> typing.Any:
         id, value = tuple(line.split(' '))
-
-        ref = {}
-        ref['id'] = id
         if value == 'HEAD':
-            ref['name'] = value
-            ref['type'] = 'head'
-        else:
-            parts = value.split('/', 2)
-            if len(parts) == 2:
-                ref['type'] = parts[1]
-                ref['name'] = parts[1]
-            else:
-                ref['type'] = parts[1]
-                ref['name'] = parts[2]
-
-        return ref
+            return {'id': id, 'name': value, 'type': 'head'}
+        parts = value.split('/', 2)
+        return {'id': id, 'type': parts[1], 'name': parts[1] if len(parts) == 2 else parts[2]}
 
     def process_item(self, item):
         id = item['id']
@@ -540,10 +514,18 @@ class Item:
     def draw_line(self, win, offset, width, selected, matched, marked):
         pass
 
+    def activate(self) -> bool:
+        """Default action on Enter / double-click. Override in subclasses."""
+        return False
+
     def handle_input(self, keyboard) -> bool:
+        if keyboard.key in ENTER_KEYS:
+            return self.activate()
         return False
 
     def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'double-click':
+            return self.activate()
         if mouse.event_type == 'right-click':
             return Gitkcli.context_menu.show_context_menu(self)
         return False
@@ -563,8 +545,7 @@ class RefListItem(Item):
         return self.data['name']
 
     def draw_line(self, win, offset, width, selected, matched, marked):
-        line = self.get_text()
-        line = line[offset:]
+        line = self.get_text()[offset:]
         color, _ = GitRefsView.get_ref_color_and_title(self.data)
         if selected or marked:
             line += ' ' * (width - len(line))
@@ -574,26 +555,12 @@ class RefListItem(Item):
         win.addstr(line, Screen.color(color, selected, marked, matched))
         win.clrtoeol()
 
-    def jump_to_ref(self):
+    def activate(self) -> bool:
         if Gitkcli.git_log.select_commit(self.data['id']):
             Gitkcli.git_log.show()
         else:
             Gitkcli.log.warning(f"Commit with hash {self.data['id']} not found")
-
-    def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == 'double-click':
-            self.jump_to_ref()
-            return True
-        else:
-            return super().handle_mouse_input(mouse)
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.jump_to_ref()
-            return True
-        else:
-            return False
+        return True
 
 class TextListItem(Item):
     def __init__(self, txt, color = 1, expand = False, selectable = True, dim = False):
@@ -643,20 +610,9 @@ class StatListItem(TextListItem):
         diff.set_selected(re.compile(f'diff.*{self.stat_file_path}'), 'top')
         Gitkcli.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
 
-    def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == 'double-click':
-            self.jump_to_file()
-            return True
-        else:
-            return super().handle_mouse_input(mouse)
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.jump_to_file()
-            return True
-        else:
-            return super().handle_input(keyboard)
+    def activate(self) -> bool:
+        self.jump_to_file()
+        return True
 
 class DiffListItem(TextListItem):
     def __init__(self, line:int, txt:str, color:int,
@@ -702,20 +658,9 @@ class DiffListItem(TextListItem):
 
                         diff.job.show_commit(commit.id, on_finished=on_finished, add_to_jump_list=False)
 
-    def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == 'double-click':
-            self.jump_to_origin()
-            return True
-        else:
-            return super().handle_mouse_input(mouse)
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.jump_to_origin()
-            return True
-        else:
-            return super().handle_input(keyboard)
+    def activate(self) -> bool:
+        self.jump_to_origin()
+        return True
 
 class Segment:
     def get_text(self) -> str:
@@ -836,7 +781,6 @@ class SegmentedListItem(Item):
         super().__init__()
         self.segment_separator = ' '
         self.segments = segments
-        self.filler_width = 0
         self.bg_color = bg_color
         self.clicked_segment = None
 
@@ -844,16 +788,7 @@ class SegmentedListItem(Item):
         return self.segments
 
     def get_text(self):
-        text = ''
-        first = True
-        for segment in self.get_segments():
-            if first:
-                first = False
-            elif self.segment_separator:
-                text += self.segment_separator
-            text += segment.get_text()
-
-        return text
+        return self.segment_separator.join(s.get_text() for s in self.get_segments())
 
     def get_segment_on_offset(self, offset) -> Segment:
         segment_pos = 0
@@ -965,7 +900,7 @@ class ButtonRowItem(SegmentedListItem):
         if key == curses.KEY_RIGHT or key == ord('l'):
             self._move_focus(1)
             return True
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
+        if key in ENTER_KEYS:
             if 0 <= self.focused < len(self.segments) and hasattr(self.segments[self.focused], 'activate'):
                 self.segments[self.focused].activate()
             return True
@@ -977,6 +912,10 @@ class ButtonRowItem(SegmentedListItem):
     def _bg_selected(self, selected):
         # Never band the whole row; only the focused button is highlighted.
         return False
+
+def button_row(*buttons):
+    """A centered, keyboard-navigable row of buttons (fillers pad both ends)."""
+    return ButtonRowItem([FillerSegment(), *buttons, FillerSegment()])
 
 class SplitButtonSegment(ButtonSegment):
     """Header button that shows the current split-view state and cycles it."""
@@ -1002,8 +941,7 @@ class WindowTopBarItem(SegmentedListItem):
         self.title_segment.set_text(txt)
 
     def handle_mouse_input(self, mouse) -> bool:
-        handled = super().handle_mouse_input(mouse)
-        if handled:
+        if super().handle_mouse_input(mouse):
             return True
         if 'double-click' == mouse.event_type:
             Gitkcli.screen.get_active_view().toggle_window_mode()
@@ -1025,22 +963,9 @@ class UncommittedChangesListItem(TextListItem):
         Gitkcli.git_diff.job.show_diff('HEAD', cached = self._staged, title = self.txt,
                                        view_id = self.id, add_to_jump_list = True)
 
-    def handle_mouse_input(self, mouse) -> bool:
-        if super().handle_mouse_input(mouse):
-            return True
-        if mouse.event_type == 'double-click':
-            self.load_to_view()
-            Gitkcli.git_diff.show()
-            return True
-        return False
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.load_to_view()
-            Gitkcli.git_diff.show()
-        else:
-            return False
+    def activate(self) -> bool:
+        self.load_to_view()
+        Gitkcli.git_diff.show()
         return True
 
 class CommitListItem(SegmentedListItem):
@@ -1075,22 +1000,9 @@ class CommitListItem(SegmentedListItem):
         if Gitkcli.git_diff.commit_id != self.id or Gitkcli.git_diff.is_diff:
             Gitkcli.git_diff.job.show_commit(self.id)
 
-    def handle_mouse_input(self, mouse) -> bool:
-        if super().handle_mouse_input(mouse):
-            return True
-        if mouse.event_type == 'double-click':
-            self.load_to_view()
-            Gitkcli.git_diff.show()
-            return True
-        return False
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.load_to_view()
-            Gitkcli.git_diff.show()
-        else:
-            return False
+    def activate(self) -> bool:
+        self.load_to_view()
+        Gitkcli.git_diff.show()
         return True
 
 class View:
@@ -1220,8 +1132,7 @@ class View:
         self.set_dimensions(x, y, height, width)
 
     def set_fullscreen(self):
-        if self.view_mode != 'fullscreen':
-            self.set_view_mode('fullscreen')
+        self.set_view_mode('fullscreen')
 
     def toggle_window_mode(self):
         # In split view the log/diff panes are managed by the split layout;
@@ -1508,14 +1419,10 @@ class ListView(View):
         if isinstance(what, int):
             if (0 <= what < len(self.items)) or (what <= 0 and len(self.items) == 0):
                 new_index = what
-        elif isinstance(what, str):
+        elif isinstance(what, (str, re.Pattern)):
+            test = (lambda t: what in t) if isinstance(what, str) else (lambda t: what.match(t))
             for i, item in enumerate(Gitkcli.git_diff.items):
-                if what in item.get_text():
-                    new_index = i
-                    break
-        elif isinstance(what, re.Pattern):
-            for i, item in enumerate(Gitkcli.git_diff.items):
-                if what.match(item.get_text()):
+                if test(item.get_text()):
                     new_index = i
                     break
 
@@ -1580,14 +1487,10 @@ class ListView(View):
 
     def handle_mouse_input(self, mouse) -> bool:
         if mouse.event_type == 'wheel-up':
-            self._offset_y -= 5
-            if self._offset_y < 0:
-                self._offset_y = 0
+            self._offset_y = max(0, self._offset_y - 5)
             return True
         if mouse.event_type == 'wheel-down':
-            self._offset_y += 5
-            if self._offset_y >= len(self.items) - self.height:
-                self._offset_y = max(0, len(self.items) - self.height)
+            self._offset_y = min(self._offset_y + 5, max(0, len(self.items) - self.height))
             return True
 
         if not self.resize_mode:
@@ -1903,24 +1806,16 @@ class GitLogView(ListView):
     def cherry_pick(self, commit_id = None):
         Job.run_job(['git', 'cherry-pick', '--abort'])
         commit_id = commit_id or self.get_selected_commit_id()
-        result = Job.run_job(['git', 'cherry-pick', '-m', '1', commit_id])
-        if result.returncode == 0:
-            self.refresh_head()
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'Commit {commit_id} cherry picked successfully')
-        else:
-            Gitkcli.log.error(f"Error during cherry-pick: " + result.stderr)
+        Gitkcli.run_git(['git', 'cherry-pick', '-m', '1', commit_id],
+                        ok=f'Commit {commit_id} cherry picked successfully',
+                        err='Error during cherry-pick', refresh_head=True, reload_refs=True)
 
     def revert(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
-        result = Job.run_job(['git', 'revert', '--no-edit', '-m', '1', commit_id])
-        if result.returncode == 0:
-            self.refresh_head()
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'Commit {commit_id} reverted successfully')
-        else:
-            Gitkcli.log.error(f"Error during revert: " + result.stderr)
-    
+        Gitkcli.run_git(['git', 'revert', '--no-edit', '-m', '1', commit_id],
+                        ok=f'Commit {commit_id} reverted successfully',
+                        err='Error during revert', refresh_head=True, reload_refs=True)
+
     def confirm_reset(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
         if not commit_id or commit_id.startswith('local'):
@@ -1930,13 +1825,9 @@ class GitLogView(ListView):
 
     def reset(self, mode, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
-        result = Job.run_job(['git', 'reset', mode, commit_id])
-        if result.returncode == 0:
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.git_log.check_uncommitted_changes()
-            Gitkcli.log.success(f'{mode[2:].capitalize()} reset to {commit_id[:8]}')
-        else:
-            Gitkcli.log.error(f"Error during {mode} reset: " + result.stderr)
+        Gitkcli.run_git(['git', 'reset', mode, commit_id],
+                        ok=f'{mode[2:].capitalize()} reset to {commit_id[:8]}',
+                        err=f'Error during {mode} reset', reload_refs=True, check_uncommitted=True)
 
     def clean_uncommitted_changes(self, staged:bool = False):
         if staged:
@@ -1951,10 +1842,8 @@ class GitLogView(ListView):
             Gitkcli.git_refs.reload_refs()
             Gitkcli.git_log.check_uncommitted_changes()
         else:
-            Gitkcli.log.error("Error during cleaning " +
-                      "staged" if staged else "unstaged" +
-                      " changes: " + result.stderr)
-    
+            Gitkcli.log.error(f"Error cleaning {'staged' if staged else 'unstaged'} changes: {result.stderr}")
+
     def mark_commit(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
         self.marked_commit_id = commit_id
@@ -1975,9 +1864,7 @@ class GitLogView(ListView):
                 Gitkcli.exit_program()
         elif key == ord('b'):
             Gitkcli.git_refs.view_new_ref.create_ref(self.get_selected_commit_id())
-        elif key == ord('r'):
-            self.confirm_reset()
-        elif key == ord('R'):
+        elif key in (ord('r'), ord('R')):
             self.confirm_reset()
         elif key == ord('c'):
             self.cherry_pick()
@@ -1991,12 +1878,14 @@ class GitLogView(ListView):
             return super().handle_input(keyboard)
         return True
 
-class ShowContextSegment(TextSegment):
-    def __init__(self, color):
+class DynamicTextSegment(TextSegment):
+    """TextSegment whose text is recomputed by a getter on every draw."""
+    def __init__(self, getter, color = 1):
         super().__init__('', color)
+        self.getter = getter
 
     def get_text(self):
-        return str(Gitkcli.git_diff.context_size)
+        return str(self.getter())
 
 class HighlightToggleSegment(ButtonSegment):
     """Header button with a fixed label, highlighted while its state is on."""
@@ -2021,7 +1910,7 @@ class GitDiffView(ListView):
 
         self.set_header_item(WindowTopBarItem('Git commit diff', [
             TextSegment("Context:", 30),
-            ShowContextSegment(30),
+            DynamicTextSegment(lambda: Gitkcli.git_diff.context_size, 30),
             ButtonSegment("[ + ]", lambda: self.change_context(+1), 30),
             ButtonSegment("[ - ]", lambda: self.change_context(-1), 30),
             HighlightToggleSegment("[Ignore whitespace]",
@@ -2063,20 +1952,18 @@ class GitDiffView(ListView):
             if isinstance(item, DiffListItem) and item.new_file_path == file and item.new_file_line == line:
                 self.set_selected(item.line)
 
+    def _reload_diff(self):
+        self.clear()
+        self.job.selected_line_map.clear()
+        self.job.restart_job()
+
     def change_context(self, size:int):
         self.context_size = max(0, self.context_size + size)
-        self.clear()
-        self.job.selected_line_map.clear()
-        self.job.restart_job()
+        self._reload_diff()
 
     def change_ignore_whitespace(self, val:typing.Optional[bool] = None):
-        if val is None:
-            val = not self.ignore_whitespace
-        self.ignore_whitespace = val
-        self.clear()
-
-        self.job.selected_line_map.clear()
-        self.job.restart_job()
+        self.ignore_whitespace = not self.ignore_whitespace if val is None else val
+        self._reload_diff()
 
     def handle_input(self, keyboard) -> bool:
         key = keyboard.key
@@ -2111,7 +1998,6 @@ class GitRefsView(ListView):
         self.set_search_dialog(SearchDialogPopup(ID_GIT_REFS_SEARCH))
 
         self.view_new_ref = NewRefDialogPopup()
-        self.view_branch_rename = BranchRenameDialogPopup()
         self.view_ref_push = RefPushDialogPopup()
 
         self.job = GitRefsJob()
@@ -2140,13 +2026,6 @@ class GitRefsView(ListView):
             color = 14
         return color, title
 
-class ShowLogLevelSegment(TextSegment):
-    def __init__(self, color):
-        super().__init__('', color)
-
-    def get_text(self):
-        return str(Gitkcli.log.level)
-
 class LogView(ListView):
     def __init__(self):
         super().__init__(ID_LOG, 'fullscreen') 
@@ -2155,7 +2034,7 @@ class LogView(ListView):
             ButtonSegment("[Clear]", lambda: self.clear(), 30),
             HighlightToggleSegment("[Autoscroll]", lambda: self.autoscroll, self.toggle_autoscroll, 30),
             TextSegment("  Log level:", 30),
-            ShowLogLevelSegment(30),
+            DynamicTextSegment(lambda: Gitkcli.log.level, 30),
             ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 30),
             ButtonSegment("[ - ]", lambda: self.change_log_level(-1), 30)]))
 
@@ -2177,52 +2056,16 @@ class ContextMenuItem(TextListItem):
         self.action = action
         self.args = args if args else []
 
-    def execute_action(self):
+    def activate(self) -> bool:
         if self.is_selectable:
             Gitkcli.screen.hide_active_view()
             self.action(*self.args)
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.execute_action()
-        else:
-            return False
         return True
 
     def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == 'left-click' or mouse.event_type == 'double-click' or mouse.event_type == 'right-release':
-            self.execute_action()
-            return True
-        else:
-            return super().handle_mouse_input(mouse)
-
-class ToggleContextMenuItem(TextListItem):
-    def __init__(self, on_text, off_text, do_toggle, is_toggled):
-        self.on_text = on_text
-        self.off_text = off_text
-        self.do_toggle = do_toggle
-        self.is_toggled = is_toggled
-        super().__init__(self.on_text if self.is_toggled() else self.off_text)
-
-    def execute_action(self):
-        self.do_toggle()
-        self.set_text(self.on_text if self.is_toggled() else self.off_text)
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.execute_action()
-        else:
-            return False
-        return True
-
-    def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == 'left-click' or mouse.event_type == 'double-click' or mouse.event_type == 'right-release':
-            self.execute_action()
-            return True
-        else:
-            return super().handle_mouse_input(mouse)
+        if mouse.event_type in ('left-click', 'double-click', 'right-release'):
+            return self.activate()
+        return super().handle_mouse_input(mouse)
 
 class ContextMenu(ListView):
     def __init__(self):
@@ -2256,22 +2099,12 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Show Git commit diff <F3>", item.git_diff.show))
             self.append(ContextMenuItem("Show Logs <F4>", item.log.view.show))
             self.append(SeparatorItem())
-            self.append(ContextMenuItem("Toggle window/fullscreen", view.toggle_window_mode))
-            self.append(ContextMenuItem("Change view mode <|>", Gitkcli.cycle_split_view))
-            self.append(SeparatorItem())
             self.append(ContextMenuItem("Search </>", view.handle_input, [KeyboardState(ord('/'))]))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
             self.append(SeparatorItem())
-            if view_id == 'git-log':
-                self.append(ContextMenuItem("Refresh <F5>", item.git_log.refresh_head))
-                self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_refs_commits))
-                self.append(SeparatorItem())
-            elif view_id == 'git-refs':
-                self.append(ContextMenuItem("Reread references", item.reload_refs))
-                self.append(SeparatorItem())
-            elif view_id == 'log':
-                self.append(ContextMenuItem("Clear log", view.clear))
-                self.append(SeparatorItem())
+            self.append(ContextMenuItem("Refresh <F5>", item.git_log.refresh_head))
+            self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_refs_commits))
+            self.append(SeparatorItem())
             self.append(ContextMenuItem("Preferences", Gitkcli.preferences.show))
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Quit", item.exit_program))
@@ -2336,25 +2169,16 @@ class ContextMenu(ListView):
         return True
 
     def checkout_branch(self, branch_name, force = False):
-        args = ['git', 'checkout']
-        if force:
-            args += ['-f']
-        args += [branch_name]
-        result = Job.run_job(args)
-        if result.returncode == 0:
-            Gitkcli.git_log.refresh_head()
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.git_log.check_uncommitted_changes()
-            Gitkcli.log.success(f'Switched to branch {branch_name}')
-        elif not force and 'would be overwritten by checkout' in result.stderr:
-            Gitkcli.confirm_dialog.confirm(
-                ' Checkout blocked',
-                [(f"Local files conflict with switching to '{branch_name}'.", 4),
-                 ("Force checkout? Conflicting local files will be lost.", 2)],
-                lambda: self.checkout_branch(branch_name, True),
-                confirm_label = '[Force checkout]')
-        else:
-            Gitkcli.log.error(f"Error checking out branch: {result.stderr}")
+        args = ['git', 'checkout'] + (['-f'] if force else []) + [branch_name]
+        Gitkcli.run_git(args, ok=f'Switched to branch {branch_name}',
+                        err='Error checking out branch',
+                        refresh_head=True, reload_refs=True, check_uncommitted=True,
+                        force=force, reasons=('would be overwritten by checkout',),
+                        retry=lambda: self.checkout_branch(branch_name, True),
+                        title=' Checkout blocked',
+                        lines=[(f"Local files conflict with switching to '{branch_name}'.", 4),
+                               ("Force checkout? Conflicting local files will be lost.", 2)],
+                        label='[Force checkout]')
 
     def push_ref_to_remote(self, branch_name):
         Gitkcli.git_refs.view_ref_push.ref_name = branch_name
@@ -2363,13 +2187,10 @@ class ContextMenu(ListView):
         Gitkcli.git_refs.view_ref_push.show()
 
     def remove_branch(self, branch_name):
-        result = Job.run_job(['git', 'branch', '-D', branch_name])
-        if result.returncode == 0:
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'Deleted branch {branch_name}')
-        else:
-            Gitkcli.log.error(f"Error deleting branch: {result.stderr}")
-    
+        Gitkcli.run_git(['git', 'branch', '-D', branch_name],
+                        ok=f'Deleted branch {branch_name}',
+                        err='Error deleting branch', reload_refs=True)
+
     def remove_tag(self, tag_name):
         remotes = Job.run_job(['git', 'remote']).stdout.splitlines()
         removed_from_remotes = []
@@ -2388,16 +2209,13 @@ class ContextMenu(ListView):
             Gitkcli.log.success(f'Deleted tag {tag_name} from remotes: ' + ' '.join(removed_from_remotes))
         else:
             Gitkcli.log.error(f"Error deleting tag: {result.stderr}")
-    
+
     def remove_remote_ref(self, remote_ref):
         remote, branch = remote_ref.split('/', 1)
-        result = Job.run_job(['git', 'push', '--delete', remote, branch])
-        if result.returncode == 0:
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'Deleted remote branch {remote_ref}')
-        else:
-            Gitkcli.log.error(f"Error deleting remote branch: {result.stderr}")
-    
+        Gitkcli.run_git(['git', 'push', '--delete', remote, branch],
+                        ok=f'Deleted remote branch {remote_ref}',
+                        err='Error deleting remote branch', reload_refs=True)
+
 class UserInputListItem(Item):
     def __init__(self, color = 1):
         super().__init__()
@@ -2510,22 +2328,10 @@ class ResetModeItem(TextListItem):
         self.dialog = dialog
         self.mode = mode
 
-    def execute_action(self):
+    def activate(self) -> bool:
         self.dialog.hide()
         Gitkcli.git_log.reset(self.mode, self.dialog.commit_id)
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.execute_action()
-            return True
-        return False
-
-    def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == 'double-click':
-            self.execute_action()
-            return True
-        return super().handle_mouse_input(mouse)
+        return True
 
     def draw_line(self, win, offset, width, selected, matched, marked):
         # Keep the chosen mode highlighted even when focus moves to the buttons
@@ -2550,11 +2356,9 @@ class ResetDialogPopup(ListView):
         self.append(ResetModeItem(self, '--mixed', '  Mixed   reset index, keep working tree (default)'))
         self.append(ResetModeItem(self, '--hard',  '  Hard    discard index + working tree changes', 2))
         self.append(SeparatorItem())
-        self._button_row = ButtonRowItem([FillerSegment(),
-                                          ButtonSegment('[Ok]', self._confirm, 3),
-                                          TextSegment('   '),
-                                          ButtonSegment('[Cancel]', self.hide),
-                                          FillerSegment()])
+        self._button_row = button_row(ButtonSegment('[Ok]', self._confirm, 3),
+                                      TextSegment('   '),
+                                      ButtonSegment('[Cancel]', self.hide))
         self.append(self._button_row)
 
     def _confirm(self):
@@ -2607,10 +2411,8 @@ class RefPushDialogPopup(ListView):
         self.append(SegmentedListItem([TextSegment(f"Select remote: ")] + self.remotes + [FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]))
 
         self.append(SpacerListItem())
-        self._button_row = ButtonRowItem([FillerSegment(),
-                                          ButtonSegment("[Push]", self._confirm),
-                                          ButtonSegment("[Cancel]", self.hide),
-                                          FillerSegment()])
+        self._button_row = button_row(ButtonSegment("[Push]", self._confirm),
+                                      ButtonSegment("[Cancel]", self.hide))
         self.append(self._button_row)
         self.ref_name = ''
 
@@ -2643,25 +2445,16 @@ class RefPushDialogPopup(ListView):
         self._do_push(self.remote, self.ref_name, self.force.toggled)
 
     def _do_push(self, remote, ref_name, force):
-        args = ['git', 'push']
-        if force:
-            args += ['-f']
-        args += [remote, ref_name]
-        result = Job.run_job(args)
-        if result.returncode == 0:
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'Branch pushed {ref_name} to {remote}')
-        elif not force and any(reason in result.stderr for reason in
-                               ('non-fast-forward', 'fetch first', 'would clobber')):
-            Gitkcli.confirm_dialog.confirm(
-                ' Push rejected',
-                [(f"Push of '{ref_name}' to '{remote}' was rejected.", 4),
-                 "The remote has changes you don't have locally.",
-                 ("Force push? This may overwrite remote commits.", 2)],
-                lambda: self._do_push(remote, ref_name, True),
-                confirm_label = '[Force push]')
-        else:
-            Gitkcli.log.error(f"Error pushing ref '{ref_name}': {result.stderr}")
+        args = ['git', 'push'] + (['-f'] if force else []) + [remote, ref_name]
+        Gitkcli.run_git(args, ok=f'Branch pushed {ref_name} to {remote}',
+                        err=f"Error pushing ref '{ref_name}'", reload_refs=True,
+                        force=force, reasons=('non-fast-forward', 'fetch first', 'would clobber'),
+                        retry=lambda: self._do_push(remote, ref_name, True),
+                        title=' Push rejected',
+                        lines=[(f"Push of '{ref_name}' to '{remote}' was rejected.", 4),
+                               "The remote has changes you don't have locally.",
+                               ("Force push? This may overwrite remote commits.", 2)],
+                        label='[Force push]')
 
     def handle_input(self, keyboard):
         key = keyboard.key
@@ -2672,14 +2465,8 @@ class RefPushDialogPopup(ListView):
         elif key == curses.KEY_F1:
             self.force.toggle()
         elif key == KEY_TAB: # cycle through remotes
-            end = False
-            next_remote = self.remotes[0].txt
-            for remote in self.remotes:
-                if end:
-                    next_remote = remote.txt
-                    break
-                end = remote.txt == self.remote
-            self.change_remote(next_remote)
+            names = [r.txt for r in self.remotes]
+            self.change_remote(names[(names.index(self.remote) + 1) % len(names)])
         else:
             return super().handle_input(keyboard)
         return True
@@ -2711,11 +2498,9 @@ class ConfirmDialogPopup(ListView):
             self.append(TextListItem('  ' + text, color, selectable = False))
             content = max(content, len(text) + 2)  # + 2 for the left indent
         self.append(SpacerListItem())
-        self._button_row = ButtonRowItem([FillerSegment(),
-                                          ButtonSegment(confirm_label, self._confirm, 2),
-                                          TextSegment('   '),
-                                          ButtonSegment(cancel_label, self.hide),
-                                          FillerSegment()])
+        self._button_row = button_row(ButtonSegment(confirm_label, self._confirm, 2),
+                                      TextSegment('   '),
+                                      ButtonSegment(cancel_label, self.hide))
         self.append(self._button_row)
         content = max(content, len(confirm_label) + len(cancel_label) + 5)
 
@@ -2827,41 +2612,6 @@ class UserInputDialogPopup(ListView):
             
         return True
 
-class BranchRenameDialogPopup(UserInputDialogPopup):
-    def __init__(self):
-        super().__init__(ID_BRANCH_RENAME, ' Rename Branch', TextListItem(''))
-        self.old_branch_name = ''
-
-    def rename_branch(self, name):
-        self.old_branch_name = name
-        self.header_item.txt = f"Rename branch '{name}' to:"
-        self.clear()
-        self.show()
-
-    def execute(self):
-        if not self.input.txt:
-            Gitkcli.log.warning("New branch name cannot be empty")
-            return
-
-        self._rename_branch(self.old_branch_name, self.input.txt, False)
-        super().execute()
-
-    def _rename_branch(self, old_name, new_name, force):
-        args = ['git', 'branch', '-M' if force else '-m', old_name, new_name]
-        result = Job.run_job(args)
-        if result.returncode == 0:
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'Branch renamed from {old_name} to {new_name}')
-        elif not force and 'already exists' in result.stderr:
-            Gitkcli.confirm_dialog.confirm(
-                ' Branch already exists',
-                [(f"A branch named '{new_name}' already exists.", 4),
-                 "Overwrite it? (uses git branch --force)"],
-                lambda: self._rename_branch(old_name, new_name, True),
-                confirm_label = '[Overwrite]')
-        else:
-            Gitkcli.log.error(f"Error renaming branch: {result.stderr}")
-
 class OnOffToggleSegment(ToggleSegment):
     def __init__(self, toggled=False, color=1):
         super().__init__('', toggled, color=color)
@@ -2926,12 +2676,9 @@ class PreferenceRow(SegmentedListItem):
         super().__init__([TextSegment(f'  {label}  '), FillerSegment(), control, TextSegment('  ')])
         self.control = control
 
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
-            self.control.activate()
-            return True
-        return False
+    def activate(self) -> bool:
+        self.control.activate()
+        return True
 
 class PreferencesDialogPopup(ListView):
     def __init__(self):
@@ -2949,29 +2696,22 @@ class PreferencesDialogPopup(ListView):
                                             ('stacked',    'Vertical split')], 'fullscreen')
         self.input_flags   = UserInputListItem()
 
-        def row(label, control):
-            return PreferenceRow(label, control)
-
-        self.append(row('Show commit ID',           self.t_show_id))
-        self.append(row('Show commit date',         self.t_show_date))
-        self.append(row('Show commit author',       self.t_show_author))
+        self.append(PreferenceRow('Show commit ID',           self.t_show_id))
+        self.append(PreferenceRow('Show commit date',         self.t_show_date))
+        self.append(PreferenceRow('Show commit author',       self.t_show_author))
         self.append(SeparatorItem())
-        self.append(row('Ignore whitespace (diff)', self.t_ign_ws))
+        self.append(PreferenceRow('Ignore whitespace (diff)', self.t_ign_ws))
         self.append(SeparatorItem())
-        self.append(row('Autoscroll (log view)',    self.t_autoscroll))
+        self.append(PreferenceRow('Autoscroll (log view)',    self.t_autoscroll))
         self.append(SeparatorItem())
-        self.append(row('Default view mode',         self.c_view_mode))
+        self.append(PreferenceRow('Default view mode',         self.c_view_mode))
         self.append(SeparatorItem())
         self.append(TextListItem('  Git log default flags:', selectable=False))
         self.append(self.input_flags)
 
-        self._button_row = ButtonRowItem([
-            FillerSegment(),
-            ButtonSegment('[Save]',   self.on_save),
-            TextSegment('  '),
-            ButtonSegment('[Close]', self.on_cancel),
-            FillerSegment(),
-        ])
+        self._button_row = button_row(ButtonSegment('[Save]', self.on_save),
+                                      TextSegment('  '),
+                                      ButtonSegment('[Close]', self.on_cancel))
         self.append(self._button_row)
         self._selected = 0
 
@@ -3039,15 +2779,12 @@ class NewRefDialogPopup(UserInputDialogPopup):
         self.force = ToggleSegment("<Force>")
         self.commit_id = ''
         self.ref_type = '' # branch or tag
-        self.title_segment = TextSegment('')
         super().__init__(ID_NEW_GIT_REF, ' New Branch',
-            SegmentedListItem([TextSegment(f"Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()])) 
+            SegmentedListItem([TextSegment(f"Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]))
 
     def create_ref(self, commit_id, ref_type='branch'):
         self.commit_id = commit_id
         self.ref_type = ref_type
-        self.title = f' New {ref_type}'
-        self.title_segment.txt = f"Specify the new {ref_type} name:"
         self.clear()
         self.show()
 
@@ -3068,23 +2805,15 @@ class NewRefDialogPopup(UserInputDialogPopup):
         super().execute()
 
     def _create_ref(self, ref_type, name, commit_id, force):
-        args = ['git', ref_type]
-        if force:
-            args += ['-f']
-        args += [name, commit_id]
-        result = Job.run_job(args)
-        if result.returncode == 0:
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'{ref_type} {name} created successfully')
-        elif not force and 'already exists' in result.stderr:
-            Gitkcli.confirm_dialog.confirm(
-                f' {ref_type.capitalize()} already exists',
-                [(f"A {ref_type} named '{name}' already exists.", 4),
-                 f"Overwrite it? (uses git {ref_type} --force)"],
-                lambda: self._create_ref(ref_type, name, commit_id, True),
-                confirm_label = '[Overwrite]')
-        else:
-            Gitkcli.log.error(f"Error creating {ref_type}: " + result.stderr)
+        args = ['git', ref_type] + (['-f'] if force else []) + [name, commit_id]
+        Gitkcli.run_git(args, ok=f'{ref_type} {name} created successfully',
+                        err=f'Error creating {ref_type}', reload_refs=True,
+                        force=force, reasons=('already exists',),
+                        retry=lambda: self._create_ref(ref_type, name, commit_id, True),
+                        title=f' {ref_type.capitalize()} already exists',
+                        lines=[(f"A {ref_type} named '{name}' already exists.", 4),
+                               f"Overwrite it? (uses git {ref_type} --force)"],
+                        label='[Overwrite]')
 
 class SearchDialogPopup(UserInputDialogPopup):
     def __init__(self, id:str):
@@ -3111,18 +2840,14 @@ class SearchDialogPopup(UserInputDialogPopup):
         super().execute()
 
     def matches(self, item):
-        if self.input.txt:
-            if self.use_regexp.toggled:
-                if self.case_sensitive.toggled:
-                    return re.search(self.input.txt, item.get_text())
-                else:
-                    return re.search(self.input.txt, item.get_text(), re.IGNORECASE)
-            elif self.case_sensitive.toggled:
-                return self.input.txt in item.get_text()
-            else:
-                return self.input.txt.lower() in item.get_text().lower()
-        else:
+        if not self.input.txt:
             return False
+        text = item.get_text()
+        if self.use_regexp.toggled:
+            return re.search(self.input.txt, text, 0 if self.case_sensitive.toggled else re.IGNORECASE)
+        if self.case_sensitive.toggled:
+            return self.input.txt in text
+        return self.input.txt.lower() in text.lower()
 
     def handle_input(self, keyboard):
         key = keyboard.key
@@ -3142,33 +2867,21 @@ class SearchDialogPopup(UserInputDialogPopup):
         super().execute()
 
 class GitSearchDialogPopup(SearchDialogPopup):
+    _TYPES = [('txt', '[Txt]'), ('id', '[ID]'), ('message', '[Message]'),
+              ('path', '[Filepaths]'), ('diff', '[Diff]')]
+
     def __init__(self):
-        super().__init__(ID_GIT_LOG_SEARCH) 
-
-        self.search_type_txt_segment = ToggleSegment("[Txt]", callback = lambda val: self.change_search_type("txt"))
-        self.search_type_id_segment = ToggleSegment("[ID]", callback = lambda val: self.change_search_type("id"))
-        self.search_type_message_segment = ToggleSegment("[Message]", callback = lambda val: self.change_search_type("message"))
-        self.search_type_file_segment = ToggleSegment("[Filepaths]", callback = lambda val: self.change_search_type("path"))
-        self.search_type_diff_segment = ToggleSegment("[Diff]", callback = lambda val: self.change_search_type("diff"))
-
-        self.header.segments.insert(0, TextSegment("Type:"))
-        self.header.segments.insert(1, self.search_type_txt_segment)
-        self.header.segments.insert(2, self.search_type_id_segment)
-        self.header.segments.insert(3, self.search_type_message_segment)
-        self.header.segments.insert(4, self.search_type_file_segment)
-        self.header.segments.insert(5, self.search_type_diff_segment)
-
+        super().__init__(ID_GIT_LOG_SEARCH)
+        self._type_segments = [(t, ToggleSegment(label, callback=lambda val, t=t: self.change_search_type(t)))
+                               for t, label in self._TYPES]
+        self.header.segments[0:0] = [TextSegment("Type:")] + [s for _, s in self._type_segments]
         self.change_search_type('txt')
 
     def change_search_type(self, new_type):
         self.search_type = new_type
-        self.search_type_txt_segment.toggled = self.search_type == 'txt'
-        self.search_type_id_segment.toggled = self.search_type == 'id'
-        self.search_type_message_segment.toggled = self.search_type == 'message'
-        self.search_type_file_segment.toggled = self.search_type == 'path'
-        self.search_type_diff_segment.toggled = self.search_type == 'diff'
-        self.use_regexp.enabled = self.search_type != 'path'
-        self.case_sensitive.enabled = self.search_type != 'path'
+        for t, seg in self._type_segments:
+            seg.toggled = (t == new_type)
+        self.use_regexp.enabled = self.case_sensitive.enabled = new_type != 'path'
 
     def matches(self, item):
         if self.search_type == "txt":
@@ -3210,20 +2923,12 @@ class GitSearchDialogPopup(SearchDialogPopup):
 
         elif key == KEY_TAB: # cycle through search types
             self.parent_list_view.dirty = True
-            if self.search_type == "txt":
-                self.change_search_type("id")
-            elif self.search_type == "id":
-                self.change_search_type("message")
-            elif self.search_type == "message":
-                self.change_search_type("path")
-            elif self.search_type == "path":
-                self.change_search_type("diff")
-            else:
-                self.change_search_type("txt")
+            types = [t for t, _ in self._TYPES]
+            self.change_search_type(types[(types.index(self.search_type) + 1) % len(types)])
 
         else:
             return super().handle_input(keyboard)
-            
+
         return True
 
 class Screen:
@@ -3443,11 +3148,10 @@ class Screen:
         if not job or not view:
             return
 
-        job_status = ''
         if job.running:
             job_status = 'Running'
         elif job.get_exit_code() == None:
-            job_status = f"Not started"
+            job_status = "Not started"
         else:
             job_status = f"Exited with code {job.get_exit_code()}"
 
@@ -3475,24 +3179,19 @@ class Log:
         self.level = 4
 
     def debug(self, txt):
-        if self.level > 4:
-            self.log(18, txt)
+        if self.level > 4: self.log(18, txt)
 
     def info(self, txt):
-        if self.level > 3:
-            self.log(1, txt)
+        if self.level > 3: self.log(1, txt)
 
     def success(self, txt):
-        if self.level > 2:
-            self.log(1, txt, 201)
+        if self.level > 2: self.log(1, txt, 201)
 
     def warning(self, txt):
-        if self.level > 1:
-            self.log(12, txt, 202)
+        if self.level > 1: self.log(12, txt, 202)
 
     def error(self, txt):
-        if self.level > 0:
-            self.log(2, txt, 203)
+        if self.level > 0: self.log(2, txt, 203)
 
     def log(self, color, txt, status_color = None):
         now = datetime.datetime.now()
@@ -3723,6 +3422,26 @@ class Gitkcli:
 
     # Layout the app opens in: 'fullscreen' (single view), 'side' or 'stacked'.
     default_view_mode = 'fullscreen'
+
+    @classmethod
+    def run_git(cls, args, ok=None, err='Error', refresh_head=False, reload_refs=False,
+                check_uncommitted=False, force=False, reasons=(), retry=None,
+                title='', lines=(), label='[Yes]'):
+        """Run a git command and react to the result. On success: run the
+        requested refreshes and log `ok`. On a forceable rejection (`retry` set,
+        not already forcing, and a `reasons` substring in stderr): pop a confirm
+        dialog. Otherwise log `err` + stderr. Returns the CompletedProcess."""
+        result = Job.run_job(args)
+        if result.returncode == 0:
+            if refresh_head: cls.git_log.refresh_head()
+            if reload_refs: cls.git_refs.reload_refs()
+            if check_uncommitted: cls.git_log.check_uncommitted_changes()
+            if ok: cls.log.success(ok)
+        elif retry and not force and any(r in result.stderr for r in reasons):
+            cls.confirm_dialog.confirm(title, list(lines), retry, confirm_label=label)
+        else:
+            cls.log.error(f"{err}: {result.stderr}")
+        return result
 
     @classmethod
     def reload_refs_commits(cls):
