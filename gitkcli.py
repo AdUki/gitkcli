@@ -31,7 +31,6 @@ def KEY_CTRL(key):
 ID_LOG = 'log'
 ID_LOG_SEARCH = 'log-search'
 ID_GIT_LOG = 'git-log'
-ID_GIT_RESET = 'git-reset'
 ID_GIT_LOG_SEARCH = 'git-log-search'
 ID_NEW_GIT_REF = 'git-log-ref'
 ID_GIT_DIFF = 'git-diff'
@@ -41,14 +40,17 @@ ID_GIT_REFS_SEARCH = 'git-refs-search'
 ID_BRANCH_RENAME = 'git-branch-rename'
 ID_GIT_REF_PUSH = 'git-ref-push'
 ID_CONTEXT_MENU = 'context-menu'
+ID_CONFIRM_DIALOG = 'confirm-dialog'
 ID_GIT_REFRESH_HEAD = 'git-refresh-head'
 ID_GIT_SEARCH = 'git-search'
 ID_PREFERENCES = 'preferences'
+ID_GIT_RESET = 'git-reset'
 
 DEFAULT_CONFIG = {
     'git_log': {'show_commit_id': True, 'show_commit_date': True, 'show_commit_author': True, 'flags': ''},
     'git_diff': {'ignore_whitespace': False},
     'log': {'autoscroll': False},
+    'view': {'default_mode': 'fullscreen'},  # fullscreen | side | stacked
 }
 
 def get_config_path() -> str:
@@ -105,7 +107,10 @@ class Job:
     @classmethod
     def run_job(cls, args):
         Gitkcli.log.info('Run job: ' + ' '.join(args))
-        return subprocess.run(args, capture_output=True, text=True)
+        # Pin LC_ALL=C so git speaks English: callers parse stderr to detect
+        # conditions like "already exists" / "non-fast-forward".
+        return subprocess.run(args, capture_output=True, text=True,
+                              env={**os.environ, 'LC_ALL': 'C'})
 
     @classmethod
     def process_all_jobs(cls) -> bool:
@@ -900,6 +905,16 @@ class SegmentedListItem(Item):
             else:
                 win.clrtoeol()
 
+class SplitButtonSegment(ButtonSegment):
+    """Header button that shows the current split-view state and cycles it."""
+    _LABELS = {'off': '[Split]', 'side': '[Split |]', 'stacked': '[Split =]'}
+
+    def __init__(self, color = 30):
+        super().__init__('', Gitkcli.cycle_split_view, color)
+
+    def get_text(self):
+        return self._LABELS.get(Gitkcli.split_mode, '[Split]')
+
 class WindowTopBarItem(SegmentedListItem):
     def __init__(self, title:str, additional_segments = [], color = 30):
         self.title_segment = TextSegment(title, color)
@@ -1031,6 +1046,21 @@ class View:
 
         Gitkcli.screen.add_view(id, self)
         
+    def split_border_sides(self):
+        """Border lines this view draws while it is a tiled split pane, as a
+        subset of {'left', 'right', 'bottom'} (the top row is always the title).
+        Returns None when the view is not a split pane, meaning use a full box.
+
+        Side-by-side: only the log (left) pane draws a right divider; the diff
+        (right) pane is borderless. Stacked: both panes are borderless and the
+        bottom pane's title bar doubles as the draggable divider.
+        """
+        if not (Gitkcli.split_active() and self in (Gitkcli.git_log, Gitkcli.git_diff)):
+            return None
+        if Gitkcli.split_mode == 'side' and self is Gitkcli.git_log:
+            return {'right'}
+        return set()
+
     def _calculate_dimensions(self, lines = None, cols = None):
         if lines is None or cols is None:
             lines, cols = Gitkcli.screen.getmaxyx()
@@ -1051,6 +1081,22 @@ class View:
         self.x = 0
         self.width = win_width
         self.height = win_height
+
+        sides = self.split_border_sides()
+        if sides is not None:
+            # split pane: title row on top, plus only the requested thin lines
+            self.height -= 1
+            self.y += 1
+            if self.footer_item:
+                self.height -= 1
+            if 'bottom' in sides:
+                self.height -= 1
+            if 'left' in sides:
+                self.x += 1
+                self.width -= 1
+            if 'right' in sides:
+                self.width -= 1
+            return win_height, win_width, win_y, win_x
 
         if self.header_item or self.view_mode == 'window':
             # substract header or window "box"
@@ -1085,18 +1131,6 @@ class View:
         if self.view_mode == view_mode:
             return
         stdscr_height, stdscr_width = Gitkcli.screen.getmaxyx()
-        if view_mode == 'left':
-            view_mode = 'window'
-            self.set_dimensions(0, 0, stdscr_height, int(stdscr_width/2))
-        if view_mode == 'right':
-            view_mode = 'window'
-            self.set_dimensions(int(stdscr_width/2), 0, stdscr_height, int(stdscr_width/2))
-        if view_mode == 'top':
-            view_mode = 'window'
-            self.set_dimensions(0, 0, int(stdscr_height/2), stdscr_width)
-        if view_mode == 'bottom':
-            view_mode = 'window'
-            self.set_dimensions(0, int(stdscr_height/2), int(stdscr_height/2), stdscr_width)
         self.view_mode = view_mode
         self.dirty = True
         if self.view_mode == 'window':
@@ -1105,7 +1139,21 @@ class View:
         self.win.resize(height, width)
         self.win.mvwin(y, x)
 
+    def set_tiled(self, x, y, height, width):
+        """Place this view as a non-overlapping pane (used by split view)."""
+        self.view_mode = 'window'
+        self.set_dimensions(x, y, height, width)
+
+    def set_fullscreen(self):
+        if self.view_mode != 'fullscreen':
+            self.set_view_mode('fullscreen')
+
     def toggle_window_mode(self):
+        # In split view the log/diff panes are managed by the split layout;
+        # toggling a pane "maximizes" it by leaving split view altogether.
+        if Gitkcli.split_active() and self in (Gitkcli.git_log, Gitkcli.git_diff):
+            Gitkcli.set_split_mode('off')
+            return
         self.set_view_mode('fullscreen' if self.view_mode == 'window' else 'window')
 
     def set_dimensions(self, x, y, height, width):
@@ -1119,8 +1167,26 @@ class View:
         self.win.resize(height, width)
         self.win.mvwin(y, x)
 
+    def _start_split_resize(self, x:int, y:int) -> bool:
+        """Arm a drag of the split divider when the grab is on the shared edge."""
+        win_y, win_x = self.win.getbegyx()
+        win_height, win_width = self.win.getmaxyx()
+        is_log = self is Gitkcli.git_log
+        if Gitkcli.split_mode == 'side':
+            # divider is the right edge of the log pane / left edge of the diff pane
+            on_divider = (x >= win_x + win_width - 1) if is_log else (x <= win_x)
+        else:  # stacked: there is no line, so the bottom pane's title bar is the grip
+            on_divider = (not is_log) and (y <= win_y)
+        if on_divider:
+            self.resize_mode = 'split'
+            return True
+        return False
+
     def start_resize(self, x:int, y:int) -> bool:
         self.resize_mode = ''
+        # Split panes are fixed in place; only the shared divider can be dragged.
+        if Gitkcli.split_active() and self in (Gitkcli.git_log, Gitkcli.git_diff):
+            return self._start_split_resize(x, y)
         if self.view_mode != 'window':
             return False
         win_y, win_x = self.win.getbegyx()
@@ -1145,6 +1211,15 @@ class View:
         return False
 
     def handle_resize(self):
+        if self.resize_mode == 'split':
+            lines, cols = Gitkcli.screen.getmaxyx()
+            if Gitkcli.split_mode == 'side':
+                ratio = Gitkcli.mouse.mouse_x / max(1, cols)
+            else:
+                ratio = Gitkcli.mouse.mouse_y / max(1, lines)
+            Gitkcli.split_ratio = min(0.85, max(0.15, ratio))
+            Gitkcli.apply_split_layout()
+            return
         stdscr_height, stdscr_width = Gitkcli.screen.getmaxyx()
         win_y, win_x = self.win.getbegyx()
         win_height, win_width = self.win.getmaxyx()
@@ -1188,7 +1263,17 @@ class View:
             return False
 
     def draw(self):
-        if self.view_mode == 'window':
+        sides = self.split_border_sides()
+        if sides is not None:
+            self.win.attrset(curses.color_pair(5 if self.is_active() else 18))
+            h, w = self.win.getmaxyx()
+            if 'left' in sides:
+                self.win.vline(1, 0, curses.ACS_VLINE, h - 1)
+            if 'right' in sides:
+                self.win.vline(1, w - 1, curses.ACS_VLINE, h - 1)
+            if 'bottom' in sides:
+                self.win.hline(h - 1, 0, curses.ACS_HLINE, w)
+        elif self.view_mode == 'window':
             self.win.attrset(curses.color_pair(5 if self.is_active() else 18))
             self.win.box()
 
@@ -1494,7 +1579,7 @@ class ListView(View):
             self.search()
         elif key == ord('N'):
             self.search(backward = True)
-        else: 
+        else:
             return super().handle_input(key)
 
         return True
@@ -1523,9 +1608,20 @@ class ListView(View):
 
         if separator_items:
             color = 5 if self.is_active() else 16
+            sides = self.split_border_sides()
             for pair in separator_items:
                 i, width = pair
-                if self.view_mode == 'window':
+                if sides is not None:
+                    # split pane: join only the borders that are actually drawn
+                    if 'left' in sides:
+                        self.win.move(self.y + i, self.x - 1)
+                        self.win.addstr('├', Screen.color(color))
+                    else:
+                        self.win.move(self.y + i, self.x)
+                    self.win.addstr('─' * width, Screen.color(color))
+                    if 'right' in sides:
+                        self.win.addstr('┤', Screen.color(color))
+                elif self.view_mode == 'window':
                     self.win.move(self.y + i, self.x-1)
                     self.win.addstr('├', Screen.color(color))
                     self.win.addstr('─' * width, Screen.color(color))
@@ -1534,6 +1630,24 @@ class ListView(View):
                     self.win.move(self.y + i, self.x)
                     self.win.addstr('─' * width, Screen.color(color))
             self.win.refresh()
+
+def _raise_split_sibling(view, sibling):
+    """Keep both split panes adjacent on top of the stack with `view` focused.
+
+    Focusing a pane (click, F1, F3, ...) goes through View.show(); in split view
+    we first raise the sibling so the side-by-side / stacked layout is restored
+    even after a fullscreen view (logs, refs) temporarily covered it.
+    """
+    if not Gitkcli.split_active() or Gitkcli._raising_split_sibling:
+        return
+    views = Gitkcli.screen.showed_views
+    if len(views) >= 2 and views[-1] is view and views[-2] is sibling:
+        return  # already the top two in the right order
+    Gitkcli._raising_split_sibling = True
+    try:
+        sibling.show()
+    finally:
+        Gitkcli._raising_split_sibling = False
 
 class GitLogView(ListView):
     def __init__(self, git_args:typing.List, cmd_args:typing.List):
@@ -1564,6 +1678,7 @@ class GitLogView(ListView):
 
         repo_name = os.path.basename(Job.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
         self.set_header_item(WindowTopBarItem('Repository: ' + repo_name, [
+                SplitButtonSegment(30),
                 ButtonSegment("[<---]", lambda: self.move_in_jump_list(+1), 30),
                 ButtonSegment("[--->]", lambda: self.move_in_jump_list(-1), 30)
             ]))
@@ -1586,6 +1701,10 @@ class GitLogView(ListView):
         self.clear()
         self.job.start_job()
         self.check_uncommitted_changes()
+
+    def show(self):
+        _raise_split_sibling(self, Gitkcli.git_diff)
+        super().show()
 
     def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
         ret = super().set_selected(what, visible_mode)
@@ -1761,8 +1880,13 @@ class GitLogView(ListView):
         Gitkcli.git_diff.show()
 
     def handle_input(self, key):
-        if key == ord('q') or key == curses.KEY_EXIT:
+        if key == ord('q'):
             Gitkcli.exit_program()
+        elif key == curses.KEY_EXIT:
+            if Gitkcli.split_active():
+                Gitkcli.set_split_mode('off')   # Esc on the log pane leaves split view
+            else:
+                Gitkcli.exit_program()
         elif key == ord('b'):
             Gitkcli.git_refs.view_new_ref.create_ref(self.get_selected_commit_id())
         elif key == ord('r'):
@@ -1801,6 +1925,7 @@ class GitDiffView(ListView):
         self.is_diff = False
 
         self.set_header_item(WindowTopBarItem('Git commit diff', [
+            SplitButtonSegment(30),
             TextSegment("Context:", 30),
             ShowContextSegment(30),
             ButtonSegment("[ + ]", lambda: self.change_context(+1), 30),
@@ -1815,6 +1940,10 @@ class GitDiffView(ListView):
         self.commit_id = ''
         self.is_diff = False
         super().clear()
+
+    def show(self):
+        _raise_split_sibling(self, Gitkcli.git_log)
+        super().show()
 
     def _tracks_position(self) -> bool:
         return bool(self.commit_id) and (not self.is_diff or self.commit_id.startswith('local-'))
@@ -1853,6 +1982,11 @@ class GitDiffView(ListView):
         self.job.restart_job()
 
     def handle_input(self, key) -> bool:
+        if Gitkcli.split_active() and (key == ord('q') or key == curses.KEY_EXIT):
+            # Esc/q in split view steps back to the log pane and stays split,
+            # rather than collapsing the split.
+            Gitkcli.git_log.show()
+            return True
         if key == KEY_CTRL('n'):
             Gitkcli.git_log.handle_input(curses.KEY_DOWN)
         elif key == KEY_CTRL('p'):
@@ -2016,10 +2150,7 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Show Logs <F4>", item.log.view.show))
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Toggle window/fullscreen", view.toggle_window_mode))
-            self.append(ContextMenuItem("Pin to left", view.set_view_mode, ['left']))
-            self.append(ContextMenuItem("Pin to right", view.set_view_mode, ['right']))
-            self.append(ContextMenuItem("Pin to top", view.set_view_mode, ['top']))
-            self.append(ContextMenuItem("Pin to bottom", view.set_view_mode, ['bottom']))
+            self.append(ContextMenuItem("Change view mode <|>", Gitkcli.cycle_split_view))
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Search </>", view.handle_input, [ord('/')]))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
@@ -2303,7 +2434,7 @@ class ResetDialogPopup(ListView):
         if len(title) > 34:
             title = title[:33] + '…'
         self.target_item.set_text(f'  Reset HEAD → {commit_id[:8]}  {title}')
-        self.set_selected(3)
+        self.set_selected(3)   # highlight Mixed by default
         self.show()
 
     def handle_input(self, key):
@@ -2347,16 +2478,28 @@ class RefPushDialogPopup(ListView):
         self.force.toggled = False
 
     def push_ref(self):
+        self._do_push(self.remote, self.ref_name, self.force.toggled)
+
+    def _do_push(self, remote, ref_name, force):
         args = ['git', 'push']
-        if self.force.toggled:
+        if force:
             args += ['-f']
-        args += [self.remote, self.ref_name]
+        args += [remote, ref_name]
         result = Job.run_job(args)
         if result.returncode == 0:
             Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'Branch pushed {self.ref_name} to {self.remote}')
+            Gitkcli.log.success(f'Branch pushed {ref_name} to {remote}')
+        elif not force and any(reason in result.stderr for reason in
+                               ('non-fast-forward', 'fetch first', 'would clobber')):
+            Gitkcli.confirm_dialog.confirm(
+                ' Push rejected',
+                [f"Push of '{ref_name}' to '{remote}' was rejected.",
+                 "The remote has changes you don't have locally.",
+                 "Force push? This may overwrite remote commits."],
+                lambda: self._do_push(remote, ref_name, True),
+                confirm_label = '[Force push]')
         else:
-            Gitkcli.log.error(f"Error pushing ref '{self.ref_name}': {result.stderr}")
+            Gitkcli.log.error(f"Error pushing ref '{ref_name}': {result.stderr}")
 
     def handle_input(self, key):
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
@@ -2377,6 +2520,62 @@ class RefPushDialogPopup(ListView):
             self.change_remote(next_remote)
         else:
             return super().handle_input(key)
+        return True
+
+class ConfirmDialogPopup(ListView):
+    """Generic yes/no popup. Used to offer a forced retry after a git
+    operation is rejected (ref already exists, non-fast-forward push, ...)."""
+    def __init__(self):
+        super().__init__(ID_CONFIRM_DIALOG, 'window', height = 7)
+        self.set_header_item(TextListItem('', 30, expand = True))
+        self.is_popup = True
+        self._on_confirm = lambda: None
+
+    def confirm(self, title, lines, on_confirm, confirm_label = '[Yes]', cancel_label = '[Cancel]'):
+        self._on_confirm = on_confirm
+        self.header_item.set_text(title)
+
+        self.clear()
+        max_len = len(title)
+        self.append(SpacerListItem())
+        for line in lines:
+            self.append(TextListItem('  ' + line, selectable = False))
+            max_len = max(max_len, len(line))
+        self.append(SpacerListItem())
+        self.append(SegmentedListItem([FillerSegment(),
+                                       ButtonSegment(confirm_label, lambda: self.handle_input(curses.KEY_ENTER)),
+                                       TextSegment('  '),
+                                       ButtonSegment(cancel_label, lambda: self.handle_input(curses.KEY_EXIT)),
+                                       FillerSegment()]))
+        max_len = max(max_len, len(confirm_label) + len(cancel_label) + 2)
+
+        for item in self.items:
+            item.is_selectable = False
+
+        self._resize_centered(len(self.items) + 2, max(40, max_len + 4))
+        self.show()
+
+    def _resize_centered(self, height, width):
+        self.fixed_x = None
+        self.fixed_y = None
+        self.fixed_height = height
+        self.fixed_width = width
+        h, w, y, x = self._calculate_dimensions()
+        self.win.mvwin(0, 0)  # move to a position valid for any size before resizing
+        self.win.resize(h, w)
+        self.win.mvwin(y, x)
+        self.dirty = True
+        self.resized = True
+
+    def handle_input(self, key):
+        if key in (curses.KEY_ENTER, KEY_ENTER, KEY_RETURN, ord('y'), ord('Y')):
+            self.hide()
+            self._on_confirm()
+        elif key in (curses.KEY_EXIT, ord('n'), ord('N'), ord('q')):
+            self.hide()
+        # Modal: swallow every other key. Otherwise global shortcuts (F1-F5,
+        # Ctrl+o/i) would fall through and could bury this popup behind a
+        # fullscreen view while its force callback is still armed.
         return True
 
 class UserInputDialogPopup(ListView):
@@ -2453,16 +2652,25 @@ class BranchRenameDialogPopup(UserInputDialogPopup):
         if not self.input.txt:
             Gitkcli.log.warning("New branch name cannot be empty")
             return
-            
-        args = ['git', 'branch', '-m', self.old_branch_name, self.input.txt]
+
+        self._rename_branch(self.old_branch_name, self.input.txt, False)
+        super().execute()
+
+    def _rename_branch(self, old_name, new_name, force):
+        args = ['git', 'branch', '-M' if force else '-m', old_name, new_name]
         result = Job.run_job(args)
         if result.returncode == 0:
             Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'Branch renamed from {self.old_branch_name} to {self.input.txt}')
+            Gitkcli.log.success(f'Branch renamed from {old_name} to {new_name}')
+        elif not force and 'already exists' in result.stderr:
+            Gitkcli.confirm_dialog.confirm(
+                ' Branch already exists',
+                [f"A branch named '{new_name}' already exists.",
+                 "Overwrite it? (uses git branch --force)"],
+                lambda: self._rename_branch(old_name, new_name, True),
+                confirm_label = '[Overwrite]')
         else:
             Gitkcli.log.error(f"Error renaming branch: {result.stderr}")
-
-        super().execute()
 
 class OnOffToggleSegment(ToggleSegment):
     def __init__(self, toggled=False, color=1):
@@ -2475,9 +2683,28 @@ class OnOffToggleSegment(ToggleSegment):
     def toggle(self):
         self.set_toggled(not self.toggled)
 
+class ChoiceSegment(ButtonSegment):
+    """Button that cycles through a fixed list of (value, label) options."""
+    def __init__(self, options, value, color=1):
+        self.options = options
+        self.value = value
+        super().__init__('', self._cycle, color)
+
+    def _cycle(self):
+        values = [v for v, _ in self.options]
+        i = values.index(self.value) if self.value in values else 0
+        self.value = values[(i + 1) % len(values)]
+        return True
+
+    def set_value(self, value):
+        self.value = value
+
+    def get_text(self):
+        return '<' + dict(self.options).get(self.value, self.value) + '>'
+
 class PreferencesDialogPopup(ListView):
     def __init__(self):
-        super().__init__(ID_PREFERENCES, 'window', height=15, width=50)
+        super().__init__(ID_PREFERENCES, 'window', height=17, width=50)
         self.is_popup = True
         self.set_header_item(TextListItem(' Preferences', 30, expand=True))
 
@@ -2486,6 +2713,9 @@ class PreferencesDialogPopup(ListView):
         self.t_show_author = OnOffToggleSegment()
         self.t_ign_ws      = OnOffToggleSegment()
         self.t_autoscroll  = OnOffToggleSegment()
+        self.c_view_mode   = ChoiceSegment([('fullscreen', 'Fullscreen'),
+                                            ('side',       'Horizontal split'),
+                                            ('stacked',    'Vertical split')], 'fullscreen')
         self.input_flags   = UserInputListItem()
 
         def row(label, toggle):
@@ -2498,6 +2728,8 @@ class PreferencesDialogPopup(ListView):
         self.append(row('Ignore whitespace (diff)', self.t_ign_ws))
         self.append(SeparatorItem())
         self.append(row('Autoscroll (log view)',    self.t_autoscroll))
+        self.append(SeparatorItem())
+        self.append(row('Default view mode',         self.c_view_mode))
         self.append(SeparatorItem())
         self.append(TextListItem('  Git log default flags:', selectable=False))
         self.append(self.input_flags)
@@ -2521,6 +2753,7 @@ class PreferencesDialogPopup(ListView):
         self.t_show_author.set_toggled(Gitkcli.git_log.show_commit_author)
         self.t_ign_ws.set_toggled(Gitkcli.git_diff.ignore_whitespace)
         self.t_autoscroll.set_toggled(Gitkcli.log.view.autoscroll)
+        self.c_view_mode.set_value(Gitkcli.default_view_mode)
         self.input_flags.set_text(Gitkcli.git_log.pref_flags)
         self.dirty = True
         super().on_activated()
@@ -2544,6 +2777,12 @@ class PreferencesDialogPopup(ListView):
             Gitkcli.git_log.set_pref_flags(new_flags)
             Gitkcli.git_log.reload_commits()
 
+        Gitkcli.default_view_mode = self.c_view_mode.value
+        # Apply the chosen layout right away; entering a split raises the
+        # log/diff panes, so re-show this dialog to keep it on top.
+        Gitkcli.set_split_mode(self.c_view_mode.value if self.c_view_mode.value in ('side', 'stacked') else 'off')
+        self.show()
+
         cfg = {
             'git_log':  {'show_commit_id':     self.t_show_id.toggled,
                          'show_commit_date':   self.t_show_date.toggled,
@@ -2551,6 +2790,7 @@ class PreferencesDialogPopup(ListView):
                          'flags':              new_flags},
             'git_diff': {'ignore_whitespace':  self.t_ign_ws.toggled},
             'log':      {'autoscroll':         self.t_autoscroll.toggled},
+            'view':     {'default_mode':       self.c_view_mode.value},
         }
         if save_config(cfg):
             Gitkcli.log.success('Preferences saved')
@@ -2593,17 +2833,27 @@ class NewRefDialogPopup(UserInputDialogPopup):
         return True
 
     def execute(self):
-        args = ['git', self.ref_type]
-        if self.force.toggled:
+        self._create_ref(self.ref_type, self.input.txt, self.commit_id, self.force.toggled)
+        super().execute()
+
+    def _create_ref(self, ref_type, name, commit_id, force):
+        args = ['git', ref_type]
+        if force:
             args += ['-f']
-        args += [self.input.txt, self.commit_id]
+        args += [name, commit_id]
         result = Job.run_job(args)
         if result.returncode == 0:
             Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'{self.ref_type} {self.input.txt} created successfully')
+            Gitkcli.log.success(f'{ref_type} {name} created successfully')
+        elif not force and 'already exists' in result.stderr:
+            Gitkcli.confirm_dialog.confirm(
+                f' {ref_type.capitalize()} already exists',
+                [f"A {ref_type} named '{name}' already exists.",
+                 f"Overwrite it? (uses git {ref_type} --force)"],
+                lambda: self._create_ref(ref_type, name, commit_id, True),
+                confirm_label = '[Overwrite]')
         else:
-            Gitkcli.log.error(f"Error creating {self.ref_type}: " + result.stderr)
-        super().execute()
+            Gitkcli.log.error(f"Error creating {ref_type}: " + result.stderr)
 
 class SearchDialogPopup(UserInputDialogPopup):
     def __init__(self, id:str):
@@ -2890,6 +3140,15 @@ class Screen:
 
     def hide_active_view(self):
         if len(self.showed_views) > 0:
+            # Closing a split pane (the [X] button) leaves split view and brings
+            # the *other* pane up fullscreen, instead of popping a single pane
+            # and leaving a gap with no backdrop.
+            closing = self.showed_views[-1]
+            if Gitkcli.split_active() and closing in (Gitkcli.git_log, Gitkcli.git_diff):
+                other = Gitkcli.git_log if closing is Gitkcli.git_diff else Gitkcli.git_diff
+                Gitkcli.set_split_mode('off')
+                other.show()
+                return
             view = self.showed_views.pop(-1)
             view.on_deactivated()
             view.win.erase()
@@ -3101,6 +3360,18 @@ class Gitkcli:
     git_refs:GitRefsView
     context_menu:ContextMenu
     preferences:"PreferencesDialogPopup"
+    confirm_dialog:"ConfirmDialogPopup"
+
+    # Split view tiles the git-log and git-diff panes side by side.
+    #   'off'     - normal single-view behaviour
+    #   'side'    - git-log left, git-diff right
+    #   'stacked' - git-log top, git-diff bottom
+    split_mode = 'off'
+    split_ratio = 0.5             # fraction of the screen given to the git-log pane
+    _raising_split_sibling = False
+
+    # Layout the app opens in: 'fullscreen' (single view), 'side' or 'stacked'.
+    default_view_mode = 'fullscreen'
 
     @classmethod
     def reload_refs_commits(cls):
@@ -3113,6 +3384,62 @@ class Gitkcli:
         for job in Job.jobs.values():
             job.stop_job()
 
+    @classmethod
+    def split_active(cls):
+        """True only when the split is currently shown as two tiled panes.
+
+        `split_mode` is the user's intent; on a terminal too small to tile, the
+        panes fall back to fullscreen (view_mode != 'window'). Behaviours that
+        only make sense with a visible split (Esc/q stepping, divider drag,
+        pane focus pairing) key off this, not off `split_mode` alone.
+        """
+        return cls.split_mode != 'off' and cls.git_log.view_mode == 'window'
+
+    @classmethod
+    def cycle_split_view(cls):
+        cls.set_split_mode({'off': 'side', 'side': 'stacked', 'stacked': 'off'}[cls.split_mode])
+        return True
+
+    @classmethod
+    def set_split_mode(cls, mode):
+        cls.split_mode = mode
+        cls.apply_split_layout()
+        if mode != 'off':
+            # Seed the diff pane from the current selection if it has no content yet.
+            if not cls.git_diff.items:
+                item = cls.git_log.get_selected()
+                if item and hasattr(item, 'load_to_view'):
+                    item.load_to_view()
+            cls.git_log.show()   # focus the log pane (raises the diff pane with it)
+
+    @classmethod
+    def apply_split_layout(cls):
+        """Position the git-log/git-diff panes for the current split mode."""
+        lines, cols = cls.screen.getmaxyx()
+        min_w, min_h = 12, 4
+        # Both axes must clear their minimum, otherwise a pane would be tiled
+        # into a degenerate (<=0 content) window.
+        fits = ((cls.split_mode == 'side' and cols >= 2 * min_w and lines >= min_h) or
+                (cls.split_mode == 'stacked' and lines >= 2 * min_h and cols >= min_w))
+        if cls.split_mode != 'off' and fits:
+            if cls.split_mode == 'side':
+                log_w = max(min_w, min(cols - min_w, int(round(cols * cls.split_ratio))))
+                cls.git_log.set_tiled(0, 0, lines, log_w)
+                cls.git_diff.set_tiled(log_w, 0, lines, cols - log_w)
+            else:
+                log_h = max(min_h, min(lines - min_h, int(round(lines * cls.split_ratio))))
+                cls.git_log.set_tiled(0, 0, log_h, cols)
+                cls.git_diff.set_tiled(0, log_h, lines - log_h, cols)
+        else:
+            # split off, or terminal too small to tile: both panes go fullscreen.
+            # Clear the tiled geometry so a later toggle_window_mode floats a
+            # centered window again instead of reusing the last pane rect.
+            for v in (cls.git_log, cls.git_diff):
+                v.fixed_x = v.fixed_y = v.fixed_width = v.fixed_height = None
+                v.set_fullscreen()
+                v.dirty = True
+                v.resized = True
+
 def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
     Gitkcli.screen = Screen(stdscr)
@@ -3123,6 +3450,7 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
     Gitkcli.git_refs = GitRefsView()
     Gitkcli.context_menu = ContextMenu()
     Gitkcli.preferences = PreferencesDialogPopup()
+    Gitkcli.confirm_dialog = ConfirmDialogPopup()
 
     _cfg = load_config()
     Gitkcli.git_log.show_commit_id     = _cfg['git_log']['show_commit_id']
@@ -3131,6 +3459,7 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
     Gitkcli.git_log.set_pref_flags(_cfg['git_log']['flags'])
     Gitkcli.git_diff.ignore_whitespace = _cfg['git_diff']['ignore_whitespace']
     Gitkcli.log.view.autoscroll        = _cfg['log']['autoscroll']
+    Gitkcli.default_view_mode          = _cfg['view']['default_mode']
 
     Gitkcli.log.info('Application started')
 
@@ -3138,7 +3467,10 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
     Gitkcli.git_log.job.start_job()
     Gitkcli.git_log.check_uncommitted_changes()
 
-    Gitkcli.git_log.show()
+    if Gitkcli.default_view_mode in ('side', 'stacked'):
+        Gitkcli.set_split_mode(Gitkcli.default_view_mode)
+    else:
+        Gitkcli.git_log.show()
 
     try:
         user_input = True
@@ -3265,6 +3597,8 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                 lines, cols = Gitkcli.screen.getmaxyx()
                 for view in Gitkcli.screen.views.values():
                     view.screen_size_changed(lines, cols)
+                if Gitkcli.split_mode != 'off':
+                    Gitkcli.apply_split_layout()
 
             elif active_view.handle_input(key):
                 active_view.dirty = True
@@ -3284,6 +3618,11 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                     Gitkcli.git_diff.show()
                 elif key == curses.KEY_F4:
                     Gitkcli.log.view.show()
+                elif key == ord('|'):
+                    Gitkcli.cycle_split_view()
+                elif key == KEY_CTRL('w') and Gitkcli.split_active():
+                    # toggle focus between the two split panes
+                    (Gitkcli.git_diff if Gitkcli.git_log.is_active() else Gitkcli.git_log).show()
                 elif key == curses.KEY_F5:
                     Gitkcli.git_log.refresh_head()
                     Gitkcli.git_refs.reload_refs()
