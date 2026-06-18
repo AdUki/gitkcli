@@ -17,6 +17,10 @@ import typing
 
 HORIZONTAL_OFFSET_JUMP = 1
 
+# Neutral grey for the divider between split panes — fixed so the line never
+# looks like it belongs to whichever pane happens to be focused.
+SPLIT_DIVIDER_COLOR = 18
+
 KEY_SHIFT_F5 = -100
 KEY_CTRL_LEFT = -101
 KEY_CTRL_RIGHT = -102
@@ -42,6 +46,7 @@ ID_GIT_REFS_SEARCH = 'git-refs-search'
 ID_GIT_REF_PUSH = 'git-ref-push'
 ID_CONTEXT_MENU = 'context-menu'
 ID_CONFIRM_DIALOG = 'confirm-dialog'
+ID_ERROR_DIALOG = 'error-dialog'
 ID_GIT_REFRESH_HEAD = 'git-refresh-head'
 ID_GIT_SEARCH = 'git-search'
 ID_PREFERENCES = 'preferences'
@@ -121,14 +126,6 @@ class Job:
             if processed or job.running:
                 update = True
         return update
-
-    @classmethod
-    def get_job(cls) -> typing.Optional["Job"]:
-        if len(Gitkcli.screen.showed_views) > 0:
-            id = Gitkcli.screen.showed_views[-1].id
-            if id in cls.jobs:
-                return cls.jobs[id]
-        return None
 
     def __init__(self, id:str):
         self.id = id
@@ -780,6 +777,9 @@ class SegmentedListItem(Item):
     def __init__(self, segments = [], bg_color = 1):
         super().__init__()
         self.segment_separator = ' '
+        # Character used for the FillerSegment and the trailing fill. Defaults to
+        # a space (an ordinary row); the rule-line title bar overrides it to '─'.
+        self.fill_char = ' '
         self.segments = segments
         self.bg_color = bg_color
         self.clicked_segment = None
@@ -821,8 +821,11 @@ class SegmentedListItem(Item):
             if isinstance(segment, FillerSegment):
                 fillers_count += 1
         if fillers_count:
-            self.fill_width = int((width - len(self.get_text())) / fillers_count)
-            return self.fill_width * ' '
+            # Clamp to 0: a negative width (content wider than the window) would
+            # otherwise rewind segment_pos in get_segment_on_offset and misroute
+            # clicks on the buttons that follow the filler.
+            self.fill_width = max(0, int((width - len(self.get_text())) / fillers_count))
+            return self.fill_width * self.fill_char
         return ''
 
     def _segment_selected(self, index, selected):
@@ -858,6 +861,9 @@ class SegmentedListItem(Item):
         if remaining_width > 0:
             if bg_selected or marked:
                 win.addstr(' ' * remaining_width, Screen.color(self.bg_color, bg_selected, marked, matched))
+            elif self.fill_char != ' ':
+                # rule-line bar: trail the title with its fill character ('─')
+                win.addstr(self.fill_char * remaining_width, Screen.color(self.bg_color, bg_selected, marked, matched))
             else:
                 win.clrtoeol()
 
@@ -928,17 +934,50 @@ class SplitButtonSegment(ButtonSegment):
         return self._LABELS.get(Gitkcli.split_mode, '[Split]')
 
 class WindowTopBarItem(SegmentedListItem):
-    def __init__(self, title:str, additional_segments = [], color = 30):
-        self.title_segment = TextSegment(title, color)
-        segments = [ButtonSegment('[Menu]', lambda: Gitkcli.context_menu.show_context_menu(Gitkcli), color),
+    """Top title bar of a main view, rendered as a horizontal rule line with the
+    title and buttons inset: ``─ Title ─────── [buttons] [X]``. Fullscreen and
+    split-pane views show it with no surrounding box; a floated window draws it
+    between its box's top corners (``┌─ Title …[X]─┐``). Focus is shown by
+    colouring the active view's line (blue line + white text) versus a dim grey
+    line when inactive."""
+
+    # Line and text colours, by active state. The ── fill uses the line colour;
+    # the title and buttons use the text colour. Selected/highlight backgrounds
+    # are intentionally bypassed (see draw_line) so the bar stays a thin line.
+    LINE_ACTIVE, LINE_INACTIVE = 5, 18
+    TEXT_ACTIVE, TEXT_INACTIVE = 1, 18
+
+    def __init__(self, title:str, additional_segments = []):
+        self.title_segment = TextSegment(title, self.TEXT_ACTIVE)
+        self._leading = TextSegment('─', self.LINE_ACTIVE)
+        segments = [self._leading,
                     self.title_segment,
                     FillerSegment()]
         segments.extend(additional_segments)
-        segments.append(ButtonSegment("[X]", lambda: Gitkcli.screen.hide_active_view(), color))
-        super().__init__(segments, color)
+        segments.append(ButtonSegment("[X]", lambda: Gitkcli.screen.hide_active_view(), self.TEXT_ACTIVE))
+        super().__init__(segments, self.LINE_INACTIVE)
+        self.fill_char = '─'
 
     def set_title(self, txt:str):
         self.title_segment.set_text(txt)
+
+    def get_fill_txt(self, width):
+        # Reserve one trailing column so the rule always ends "…[X]─": a dash
+        # sits between the last button and the right edge / box corner / split
+        # divider, instead of the button being flush against it.
+        return super().get_fill_txt(width - 1)
+
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        # `selected` is the view's active state (passed by View.draw). Recolour
+        # every segment for that state, then draw with selected=False so the
+        # row never gets a highlight band — it must read as a single line.
+        active = selected
+        line_color = self.LINE_ACTIVE if active else self.LINE_INACTIVE
+        text_color = self.TEXT_ACTIVE if active else self.TEXT_INACTIVE
+        self.bg_color = line_color
+        for seg in self.segments:
+            seg.color = line_color if seg is self._leading else text_color
+        super().draw_line(win, offset, width, False, matched, marked)
 
     def handle_mouse_input(self, mouse) -> bool:
         if super().handle_mouse_input(mouse):
@@ -1085,17 +1124,21 @@ class View:
                 self.width -= 1
             return win_height, win_width, win_y, win_x
 
-        if self.header_item or self.view_mode == 'window':
-            # substract header or window "box"
+        # Window-mode views (floating popups and floated main views) draw a full
+        # box. Fullscreen main views are borderless apart from their title line.
+        box = self.view_mode == 'window'
+
+        if self.header_item or box:
+            # substract header line or box top
             self.height -= 1
             self.y += 1
 
-        if self.footer_item or self.view_mode == 'window':
-            # substract footer or window "box"
+        if self.footer_item or box:
+            # substract footer or box bottom
             self.height -= 1
 
-        if self.view_mode == 'window':
-            # substract window "box" width
+        if box:
+            # substract box sides
             self.x += 1
             self.width -= 2
 
@@ -1254,12 +1297,17 @@ class View:
     def draw(self):
         sides = self.split_border_sides()
         if sides is not None:
-            self.win.attrset(self.border_color())
+            # The divider between split panes belongs to neither pane, so it is
+            # drawn in a fixed neutral colour (not the owning pane's active /
+            # inactive border colour).
+            self.win.attrset(Screen.color(SPLIT_DIVIDER_COLOR))
             h, w = self.win.getmaxyx()
+            # Full height (row 0 included) so the divider runs the whole way up
+            # between the two title bars, not just the body rows.
             if 'left' in sides:
-                self.win.vline(1, 0, curses.ACS_VLINE, h - 1)
+                self.win.vline(0, 0, curses.ACS_VLINE, h)
             if 'right' in sides:
-                self.win.vline(1, w - 1, curses.ACS_VLINE, h - 1)
+                self.win.vline(0, w - 1, curses.ACS_VLINE, h)
             if 'bottom' in sides:
                 self.win.hline(h - 1, 0, curses.ACS_HLINE, w)
         elif self.view_mode == 'window':
@@ -1269,8 +1317,30 @@ class View:
         # draw header
         if self.header_item:
             _, cols = self.win.getmaxyx()
-            self.win.move(0, 0)
-            self.header_item.draw_line(self.win, 0, cols, self.is_active(), False, False)
+            if self.is_popup:
+                # New style: the title sits inset in the box's top border
+                # (┌─ Title ───────┐), no banner and no [X]. Drawn in the box's
+                # own colour (red for warning/error dialogs).
+                title = self.header_item.get_text().strip()
+                if title:
+                    label = f' {title} '[:max(0, cols - 4)]
+                    if label:
+                        self.win.move(0, 2)
+                        self.win.addstr(label, self.border_color() | curses.A_BOLD)
+            else:
+                # Rule-line title bar (main views). Columns [left, right) the
+                # title may paint; the divider / box-corner columns are left for
+                # the vline (split) or box corners (┌─ Title ──[X]─┐, floated).
+                left, right = 0, cols
+                if sides is not None:
+                    if 'left' in sides:
+                        left = 1
+                    if 'right' in sides:
+                        right = cols - 1
+                elif self.view_mode == 'window':
+                    left, right = 1, cols - 1
+                self.win.move(0, left)
+                self.header_item.draw_line(self.win, 0, right - left, self.is_active(), False, False)
 
         # draw footer
         if self.footer_item:
@@ -1369,6 +1439,20 @@ class ListView(View):
     def set_search_dialog(self, search_dialog:"SearchDialogPopup"):
         self._search_dialog = search_dialog
         self._search_dialog.parent_list_view = self
+
+    def _resize_centered(self, height, width):
+        """Resize to height x width and re-centre on screen. Used by popups that
+        size themselves to their content (confirm / error dialogs)."""
+        self.fixed_x = None
+        self.fixed_y = None
+        self.fixed_height = height
+        self.fixed_width = width
+        h, w, y, x = self._calculate_dimensions()
+        self.win.mvwin(0, 0)  # move to a position valid for any size before resizing
+        self.win.resize(h, w)
+        self.win.mvwin(y, x)
+        self.dirty = True
+        self.resized = True
 
     def copy_text_to_clipboard(self):
         text = "\n".join(item.get_text() for item in self.items)
@@ -1596,6 +1680,8 @@ class ListView(View):
 
         if separator_items:
             color = 5 if self.is_active() else 16
+            # Joins onto the neutral split divider use its colour, not the pane's.
+            join = Screen.color(SPLIT_DIVIDER_COLOR)
             sides = self.split_border_sides()
             for pair in separator_items:
                 i, width = pair
@@ -1603,12 +1689,12 @@ class ListView(View):
                     # split pane: join only the borders that are actually drawn
                     if 'left' in sides:
                         self.win.move(self.y + i, self.x - 1)
-                        self.win.addstr('├', Screen.color(color))
+                        self.win.addstr('├', join)
                     else:
                         self.win.move(self.y + i, self.x)
                     self.win.addstr('─' * width, Screen.color(color))
                     if 'right' in sides:
-                        self.win.addstr('┤', Screen.color(color))
+                        self.win.addstr('┤', join)
                 elif self.view_mode == 'window':
                     self.win.move(self.y + i, self.x-1)
                     self.win.addstr('├', Screen.color(color))
@@ -1667,8 +1753,8 @@ class GitLogView(ListView):
         repo_name = os.path.basename(Job.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
         self.set_header_item(WindowTopBarItem('Repository: ' + repo_name, [
                 SplitButtonSegment(30),
-                ButtonSegment("[<---]", lambda: self.move_in_jump_list(+1), 30),
-                ButtonSegment("[--->]", lambda: self.move_in_jump_list(-1), 30)
+                ButtonSegment("[<-]", lambda: self.move_in_jump_list(+1), 30),
+                ButtonSegment("[->]", lambda: self.move_in_jump_list(-1), 30)
             ]))
 
         self.set_search_dialog(GitSearchDialogPopup());
@@ -1911,13 +1997,13 @@ class GitDiffView(ListView):
         self.set_header_item(WindowTopBarItem('Git commit diff', [
             TextSegment("Context:", 30),
             DynamicTextSegment(lambda: Gitkcli.git_diff.context_size, 30),
-            ButtonSegment("[ + ]", lambda: self.change_context(+1), 30),
-            ButtonSegment("[ - ]", lambda: self.change_context(-1), 30),
+            ButtonSegment("[+]", lambda: self.change_context(+1), 30),
+            ButtonSegment("[-]", lambda: self.change_context(-1), 30),
             HighlightToggleSegment("[Ignore whitespace]",
                                    lambda: Gitkcli.git_diff.ignore_whitespace,
                                    lambda: Gitkcli.git_diff.change_ignore_whitespace(), 30),
-            ButtonSegment("[<---]", lambda: Gitkcli.git_log.move_in_jump_list(+1), 30),
-            ButtonSegment("[--->]", lambda: Gitkcli.git_log.move_in_jump_list(-1), 30)
+            ButtonSegment("[<-]", lambda: Gitkcli.git_log.move_in_jump_list(+1), 30),
+            ButtonSegment("[->]", lambda: Gitkcli.git_log.move_in_jump_list(-1), 30)
         ]))
 
         self.set_search_dialog(SearchDialogPopup(ID_GIT_DIFF_SEARCH))
@@ -2035,8 +2121,8 @@ class LogView(ListView):
             HighlightToggleSegment("[Autoscroll]", lambda: self.autoscroll, self.toggle_autoscroll, 30),
             TextSegment("  Log level:", 30),
             DynamicTextSegment(lambda: Gitkcli.log.level, 30),
-            ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 30),
-            ButtonSegment("[ - ]", lambda: self.change_log_level(-1), 30)]))
+            ButtonSegment("[+]", lambda: self.change_log_level(+1), 30),
+            ButtonSegment("[-]", lambda: self.change_log_level(-1), 30)]))
 
         self.set_search_dialog(SearchDialogPopup(ID_LOG_SEARCH))
 
@@ -2131,12 +2217,14 @@ class ContextMenu(ListView):
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
             self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
+            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         elif view_id == 'git-diff':
             self.append(ContextMenuItem("Jump to file", StatListItem.jump_to_file, [item], isinstance(item, StatListItem)))
             self.append(ContextMenuItem("Show origin of this line", DiffListItem.jump_to_origin, [item], isinstance(item, DiffListItem) and item.old_file_path and item.old_file_line is not None))
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
             self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
+            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         elif view_id == 'git-refs' and hasattr(item, 'data'):
             if item.data['type'] == 'heads':
                 self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
@@ -2162,6 +2250,7 @@ class ContextMenu(ListView):
         elif view_id == 'log':
             self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
             self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
+            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         else:
             return False
         self.set_dimensions(x, y, len(self.items) + 2, 30)
@@ -2523,18 +2612,6 @@ class ConfirmDialogPopup(ListView):
         self._on_confirm()
         return True
 
-    def _resize_centered(self, height, width):
-        self.fixed_x = None
-        self.fixed_y = None
-        self.fixed_height = height
-        self.fixed_width = width
-        h, w, y, x = self._calculate_dimensions()
-        self.win.mvwin(0, 0)  # move to a position valid for any size before resizing
-        self.win.resize(h, w)
-        self.win.mvwin(y, x)
-        self.dirty = True
-        self.resized = True
-
     def handle_input(self, keyboard):
         key = keyboard.key
         if key in (ord('y'), ord('Y')):
@@ -2551,6 +2628,61 @@ class ConfirmDialogPopup(ListView):
         # Ctrl+o/i) would fall through and could bury this popup behind a
         # fullscreen view while its force callback is still armed.
         return True
+
+class ErrorDialogPopup(ListView):
+    """Modal red alert with a single [Ok] button. Replaces the old status-bar
+    error line: Log.error() pops this with the message. Errors that arrive while
+    it is still open (e.g. a job emitting several stderr lines) are coalesced
+    into the same dialog instead of stacking a new popup per line."""
+
+    MAX_LINES = 12
+
+    def __init__(self):
+        super().__init__(ID_ERROR_DIALOG, 'window', height = 7)
+        self.set_header_item(TextListItem(' Error', 31, expand = True))  # red banner
+        self.is_popup = True
+        self._lines = []
+
+    def border_color(self):
+        # Match the red banner: draw the box border red too.
+        return curses.color_pair(2)
+
+    def show_error(self, message):
+        incoming = [line for line in message.splitlines() if line.strip()] or [message]
+        if not self.is_active():
+            self._lines = []
+        for line in incoming:
+            if len(self._lines) < self.MAX_LINES:
+                self._lines.append(line)
+        self._render()
+
+    def _render(self):
+        self.clear()
+        content = len('Error')
+        self.append(SpacerListItem())
+        for line in self._lines:
+            self.append(TextListItem('  ' + line, 2, selectable = False))
+            content = max(content, len(line) + 2)
+        self.append(SpacerListItem())
+        self._button_row = button_row(ButtonSegment('[Ok]', self.hide, 2))
+        self.append(self._button_row)
+
+        for item in self.items:
+            item.is_selectable = False
+        self._button_row.is_selectable = True
+        self._button_row.reset_focus()
+        self._selected = len(self.items) - 1
+
+        self._resize_centered(len(self.items) + 2, max(40, content + 4))
+        self.show()
+
+    def handle_input(self, keyboard):
+        # Any of Enter / Esc / o / q dismisses; Left/Right keep focus on [Ok].
+        if keyboard.key in ENTER_KEYS or keyboard.key in (curses.KEY_EXIT, ord('o'), ord('O'), ord('q')):
+            self.hide()
+        else:
+            super().handle_input(keyboard)
+        return True  # modal: swallow every other key
 
 class UserInputDialogPopup(ListView):
     def __init__(self, id:str, title:str, header_item:Item, bottom_item:typing.Optional[Item] = None):
@@ -3045,10 +3177,7 @@ class Screen:
                    curses.COLOR_WHITE, curses.COLOR_RED, -1, curses.COLOR_RED,    # Warning title bar
                    curses.COLOR_WHITE, curses.COLOR_RED)                          # (white on red)
 
-        curses.init_pair(200, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Status bar normal
-        curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Status bar success
-        curses.init_pair(202, curses.COLOR_BLACK, curses.COLOR_YELLOW)# Status bar warning
-        curses.init_pair(203, curses.COLOR_WHITE, curses.COLOR_RED)   # Status bar error
+        curses.init_pair(204, curses.COLOR_BLACK, curses.COLOR_CYAN)  # Bottom-bar label block (Midnight Commander style)
 
         curses.curs_set(0)  # Hide cursor
         stdscr.timeout(5)
@@ -3057,13 +3186,27 @@ class Screen:
         curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
         curses.mouseinterval(0)
 
-        self.status_bar_message = ''
-        self.status_bar_color = None
-        self.status_bar_time = time.time()
-
         self.stdscr = stdscr
         self.showed_views = []
         self.views = {}
+
+        # Midnight-Commander-style function-key panel pinned to the bottom row.
+        # Each entry is (key label, name, callback); callbacks reference Gitkcli
+        # views lazily, so they are safe to define before those views exist.
+        self.bottom_bar_entries = [
+            ('F1',  'Git Log',  lambda: Gitkcli.git_log.show()),
+            ('F2',  'Git Refs', lambda: Gitkcli.git_refs.show()),
+            ('F3',  'Git Diff', lambda: Gitkcli.git_diff.show()),
+            ('F4',  'Logs',     lambda: Gitkcli.log.view.show()),
+            ('F5',  'Refresh',  lambda: Gitkcli.refresh_all()),
+            ('F6',  'Search',   lambda: Gitkcli.open_search()),
+            ('F7',  'Context',  lambda: Gitkcli.open_context_menu(at_selection=False)),
+            ('F9',  'Config',   lambda: Gitkcli.preferences.show()),
+            ('F10', 'Quit',     lambda: Gitkcli.exit_program()),
+        ]
+        # Filled by draw_bottom_bar each frame: (x_start, x_end, callback) ranges
+        # used to route clicks on the bottom row to the right entry.
+        self.bar_hitmap = []
 
         stdscr.clear()
         stdscr.refresh()
@@ -3127,35 +3270,41 @@ class Screen:
         
         return result
 
-    def show_status_bar_message(self, message:str, color:int):
-        self.status_bar_message = message
-        self.status_bar_color = color
-        self.status_bar_time = time.time()
-
-    def draw_status_bar(self, stdscr):
+    def draw_bottom_bar(self, stdscr):
+        """Draw the global function-key panel on the bottom row and rebuild the
+        click hit-map. Midnight-Commander style: a 2-wide key number followed by
+        the label on a cyan block, with the entries spread evenly across the full
+        width (e.g. `` 1Log        2Refs       …``). Written to stdscr (which no
+        view covers); it shows on the next stdscr.refresh(), like the old bar."""
         lines, cols = stdscr.getmaxyx()
-
-        if self.status_bar_message:
-            # show status bar message for 2 seconds
-            if time.time() - self.status_bar_time < 2:
-                stdscr.addstr(lines-1, 0, self.status_bar_message.ljust(cols - 1), Screen.color(self.status_bar_color))
-                return
-            else:
-                self.status_bar_message = ''
-
-        job = Job.get_job()
-        view = self.get_active_view()
-        if not job or not view:
+        if cols < 2 or lines < 1:
             return
+        y = lines - 1
+        num_attr = Screen.color(1)             # key number: light text on default bg
+        label_attr = curses.color_pair(204)    # label: black on cyan
+        # cols - 1: writing the bottom-right cell advances the cursor off-screen
+        # and raises addwstr() ERR.
+        stdscr.addstr(y, 0, ' ' * (cols - 1), num_attr)
 
-        if job.running:
-            job_status = 'Running'
-        elif job.get_exit_code() == None:
-            job_status = "Not started"
-        else:
-            job_status = f"Exited with code {job.get_exit_code()}"
-
-        stdscr.addstr(lines-1, 0, f"Line {view._selected+1}/{len(view.items)} - Offset {view._offset_x} - Process '{self.showed_views[-1].id}' {job_status}".ljust(cols - 1), Screen.color(200))
+        # Spread the entries evenly over the whole width: equal cells, with the
+        # remainder handed to the leftmost cells. Each cell is a 2-wide key
+        # number then the label padded out on cyan to fill the cell.
+        self.bar_hitmap = []
+        entries = self.bottom_bar_entries
+        total = cols - 1
+        n = len(entries)
+        x = 0
+        for i, (key, name, callback) in enumerate(entries):
+            cell_w = total // n + (1 if i < total % n else 0)
+            if cell_w < 2:
+                break
+            num = (key[1:] if key.startswith('F') else key).rjust(2)  # ' 1', '10'
+            label = name[:cell_w - len(num)].ljust(cell_w - len(num))
+            stdscr.addstr(y, x, num, num_attr)
+            if label:
+                stdscr.addstr(y, x + len(num), label, label_attr)
+            self.bar_hitmap.append((x, x + cell_w, callback))
+            x += cell_w
 
     def draw_visible_views(self):
         visible_views = self.get_visible_views()
@@ -3185,23 +3334,24 @@ class Log:
         if self.level > 3: self.log(1, txt)
 
     def success(self, txt):
-        if self.level > 2: self.log(1, txt, 201)
+        if self.level > 2: self.log(1, txt)
 
     def warning(self, txt):
-        if self.level > 1: self.log(12, txt, 202)
+        if self.level > 1: self.log(12, txt)
 
     def error(self, txt):
-        if self.level > 0: self.log(2, txt, 203)
+        if self.level > 0:
+            self.log(2, txt)
+            # Surface errors as a modal red dialog (the status bar is gone).
+            # Guarded: errors can fire during start-up before the dialog exists.
+            dialog = getattr(Gitkcli, 'error_dialog', None)
+            if dialog is not None:
+                dialog.show_error(txt)
 
-    def log(self, color, txt, status_color = None):
+    def log(self, color, txt):
         now = datetime.datetime.now()
-        first_line = ''
         for line in txt.splitlines():
             self.view.append(TextListItem(f'{now} {line}', color))
-            if not first_line:
-                first_line = line
-        if status_color:
-            Gitkcli.screen.show_status_bar_message(first_line, status_color)
 
 @dataclasses.dataclass
 class KeyboardState:
@@ -3359,6 +3509,22 @@ class MouseState:
         # expose the (possibly adjusted) type to handlers reading mouse.event_type
         self.event_type = event_type
 
+        # The function-key bar lives on the reserved bottom row, outside every
+        # view's rect. Route a single click there to its entries — but not while
+        # a modal popup is open: let those fall through so an outside-click
+        # dismisses it. (Only 'left-click', never 'double-click': a bar entry has
+        # no double-click meaning, and firing twice would e.g. open then instantly
+        # close the menu/preferences popup an entry just raised.)
+        if event_type == 'left-click':
+            bar_y = Gitkcli.screen.stdscr.getmaxyx()[0] - 1
+            active = Gitkcli.screen.get_active_view()
+            if self.screen_y == bar_y and not (active and active.is_popup):
+                for x_start, x_end, callback in Gitkcli.screen.bar_hitmap:
+                    if x_start <= self.screen_x < x_end:
+                        callback()
+                        break
+                return
+
         enclosed_view = None
         for view in reversed(Gitkcli.screen.showed_views):
             if view.is_popup or view.win.enclose(self.screen_y, self.screen_x):
@@ -3411,6 +3577,7 @@ class Gitkcli:
     context_menu:ContextMenu
     preferences:"PreferencesDialogPopup"
     confirm_dialog:"ConfirmDialogPopup"
+    error_dialog:"ErrorDialogPopup"
 
     # Split view tiles the git-log and git-diff panes side by side.
     #   'off'     - normal single-view behaviour
@@ -3442,6 +3609,37 @@ class Gitkcli:
         else:
             cls.log.error(f"{err}: {result.stderr}")
         return result
+
+    @classmethod
+    def refresh_all(cls):
+        """Refresh new commits on HEAD and reload refs (the F5 action)."""
+        cls.git_log.refresh_head()
+        cls.git_refs.reload_refs()
+
+    @classmethod
+    def open_search(cls):
+        """Open the active view's search dialog (the F6 / '/' action)."""
+        view = cls.screen.get_active_view()
+        if view:
+            view.handle_input(KeyboardState(ord('/')))
+
+    @classmethod
+    def open_context_menu(cls, at_selection=True):
+        """Open the context menu for the active view's selected item.
+        at_selection=True (the F7 *key*) opens it at the selected row, since the
+        keyboard has no cursor; at_selection=False (a mouse click on the F7 bar
+        button) leaves it at the current mouse position."""
+        view = cls.screen.get_active_view()
+        if not view or not hasattr(view, 'get_selected'):
+            return
+        item = view.get_selected()
+        if item is None:
+            return
+        if at_selection:
+            win_y, win_x = view.win.getbegyx()
+            cls.mouse.screen_x = win_x + view.x
+            cls.mouse.screen_y = win_y + view.y + (view._selected - view._offset_y)
+        cls.context_menu.show_context_menu(item)
 
     @classmethod
     def reload_refs_commits(cls):
@@ -3522,6 +3720,7 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
     Gitkcli.context_menu = ContextMenu()
     Gitkcli.preferences = PreferencesDialogPopup()
     Gitkcli.confirm_dialog = ConfirmDialogPopup()
+    Gitkcli.error_dialog = ErrorDialogPopup()
 
     _cfg = load_config()
     Gitkcli.git_log.show_commit_id     = _cfg['git_log']['show_commit_id']
@@ -3556,7 +3755,7 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
                 try:
                     Gitkcli.screen.draw_visible_views()
-                    Gitkcli.screen.draw_status_bar(stdscr)
+                    Gitkcli.screen.draw_bottom_bar(stdscr)
                 except curses.error as e:
                     Gitkcli.log.warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
 
@@ -3620,10 +3819,17 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                     # toggle focus between the two split panes
                     (Gitkcli.git_diff if Gitkcli.git_log.is_active() else Gitkcli.git_log).show()
                 elif key == curses.KEY_F5:
-                    Gitkcli.git_log.refresh_head()
-                    Gitkcli.git_refs.reload_refs()
+                    Gitkcli.refresh_all()
                 elif key == KEY_SHIFT_F5:
                     Gitkcli.reload_refs_commits()
+                elif key == curses.KEY_F6:
+                    Gitkcli.open_search()
+                elif key == curses.KEY_F7:
+                    Gitkcli.open_context_menu()
+                elif key == curses.KEY_F9:
+                    Gitkcli.preferences.show()
+                elif key == curses.KEY_F10:
+                    Gitkcli.exit_program()
 
     except KeyboardInterrupt:
         pass
