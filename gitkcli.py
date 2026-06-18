@@ -1920,6 +1920,15 @@ class ShowContextSegment(TextSegment):
     def get_text(self):
         return str(Gitkcli.git_diff.context_size)
 
+class HighlightToggleSegment(ButtonSegment):
+    """Header button with a fixed label, highlighted while its state is on."""
+    def __init__(self, label, is_active, on_toggle, color = 30):
+        super().__init__(label, on_toggle, color)
+        self._is_active = is_active
+
+    def draw(self, win, offset, width, selected, matched, marked) -> int:
+        return super().draw(win, offset, width, selected, matched, self._is_active())
+
 class GitDiffView(ListView):
     def __init__(self):
         super().__init__(ID_GIT_DIFF, 'fullscreen')
@@ -1933,11 +1942,13 @@ class GitDiffView(ListView):
         self.is_diff = False
 
         self.set_header_item(WindowTopBarItem('Git commit diff', [
-            SplitButtonSegment(30),
             TextSegment("Context:", 30),
             ShowContextSegment(30),
             ButtonSegment("[ + ]", lambda: self.change_context(+1), 30),
             ButtonSegment("[ - ]", lambda: self.change_context(-1), 30),
+            HighlightToggleSegment("[Ignore whitespace]",
+                                   lambda: Gitkcli.git_diff.ignore_whitespace,
+                                   lambda: Gitkcli.git_diff.change_ignore_whitespace(), 30),
             ButtonSegment("[<---]", lambda: Gitkcli.git_log.move_in_jump_list(+1), 30),
             ButtonSegment("[--->]", lambda: Gitkcli.git_log.move_in_jump_list(-1), 30)
         ]))
@@ -2063,6 +2074,7 @@ class LogView(ListView):
 
         self.set_header_item(WindowTopBarItem('Logs', [
             ButtonSegment("[Clear]", lambda: self.clear(), 30),
+            HighlightToggleSegment("[Autoscroll]", lambda: self.autoscroll, self.toggle_autoscroll, 30),
             TextSegment("  Log level:", 30),
             ShowLogLevelSegment(30),
             ButtonSegment("[ + ]", lambda: self.change_log_level(+1), 30),
@@ -2072,6 +2084,12 @@ class LogView(ListView):
 
     def change_log_level(self, value):
         Gitkcli.log.level = max(0, min(5, Gitkcli.log.level + value))
+        self.dirty = True
+
+    def toggle_autoscroll(self):
+        self.autoscroll = not self.autoscroll
+        if self.autoscroll:
+            self._offset_y = max(0, len(self.items) - self.height)
         self.dirty = True
 
 class ContextMenuItem(TextListItem):
@@ -2752,7 +2770,7 @@ class PreferenceRow(SegmentedListItem):
 
 class PreferencesDialogPopup(ListView):
     def __init__(self):
-        super().__init__(ID_PREFERENCES, 'window', height=17, width=50)
+        super().__init__(ID_PREFERENCES, 'window', height=15, width=50)
         self.is_popup = True
         self.set_header_item(TextListItem(' Preferences', 30, expand=True))
 
@@ -2781,7 +2799,6 @@ class PreferencesDialogPopup(ListView):
         self.append(SeparatorItem())
         self.append(TextListItem('  Git log default flags:', selectable=False))
         self.append(self.input_flags)
-        self.append(SpacerListItem())
 
         buttons = SegmentedListItem([
             FillerSegment(),
@@ -2792,7 +2809,6 @@ class PreferencesDialogPopup(ListView):
         ])
         buttons.is_selectable = False
         self.append(buttons)
-        self.append(SpacerListItem())
         self._selected = 0
 
     def on_activated(self):
