@@ -2674,14 +2674,42 @@ class BranchRenameDialogPopup(UserInputDialogPopup):
 
 class OnOffToggleSegment(ToggleSegment):
     def __init__(self, toggled=False, color=1):
-        super().__init__('<ON>' if toggled else '<OFF>', toggled, color=color)
+        super().__init__('', toggled, color=color)
+        self.set_toggled(toggled)
 
     def set_toggled(self, value):
         self.toggled = value
-        self.txt = '<ON>' if self.toggled else '<OFF>'
+        # Display form: active side in CAPS, inactive side lowercase
+        self.txt = '[ON|off]' if self.toggled else '[on|OFF]'
 
     def toggle(self):
         self.set_toggled(not self.toggled)
+
+    def draw(self, win, offset, width, selected, matched, marked) -> int:
+        # Chunks: (text, is_active_side). The active side is highlighted (blue) and CAPS.
+        chunks = [
+            ('[', None),
+            ('ON' if self.toggled else 'on', True),
+            ('|', None),
+            ('off' if self.toggled else 'OFF', False),
+            (']', None),
+        ]
+        drawn = 0
+        pos = 0
+        for txt, side in chunks:
+            seg_start = pos
+            seg_end = pos + len(txt)
+            pos = seg_end
+            # Intersect this chunk with the visible window [offset, width)
+            s = max(seg_start, offset)
+            e = min(seg_end, width)
+            if s >= e:
+                continue
+            sub = txt[s - seg_start:e - seg_start]
+            highlighted = (side is True) if self.toggled else (side is False)
+            win.addstr(sub, Screen.color(self.color, selected, highlighted, marked, dim=not self.enabled))
+            drawn += len(sub)
+        return drawn
 
 class ChoiceSegment(ButtonSegment):
     """Button that cycles through a fixed list of (value, label) options."""
