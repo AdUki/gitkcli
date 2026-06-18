@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import curses
+import dataclasses
 import datetime
 import json
 import os
@@ -539,11 +540,11 @@ class Item:
     def draw_line(self, win, offset, width, selected, matched, marked):
         pass
 
-    def handle_input(self, key) -> bool:
+    def handle_input(self, keyboard) -> bool:
         return False
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'right-click':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'right-click':
             return Gitkcli.context_menu.show_context_menu(self)
         return False
 
@@ -579,14 +580,15 @@ class RefListItem(Item):
         else:
             Gitkcli.log.warning(f"Commit with hash {self.data['id']} not found")
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'double-click':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'double-click':
             self.jump_to_ref()
             return True
         else:
-            return super().handle_mouse_input(event_type, x, y)
+            return super().handle_mouse_input(mouse)
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.jump_to_ref()
             return True
@@ -641,19 +643,20 @@ class StatListItem(TextListItem):
         diff.set_selected(re.compile(f'diff.*{self.stat_file_path}'), 'top')
         Gitkcli.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'double-click':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'double-click':
             self.jump_to_file()
             return True
         else:
-            return super().handle_mouse_input(event_type, x, y)
+            return super().handle_mouse_input(mouse)
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.jump_to_file()
             return True
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
 
 class DiffListItem(TextListItem):
     def __init__(self, line:int, txt:str, color:int,
@@ -699,19 +702,20 @@ class DiffListItem(TextListItem):
 
                         diff.job.show_commit(commit.id, on_finished=on_finished, add_to_jump_list=False)
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'double-click':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'double-click':
             self.jump_to_origin()
             return True
         else:
-            return super().handle_mouse_input(event_type, x, y)
+            return super().handle_mouse_input(mouse)
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.jump_to_origin()
             return True
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
 
 class Segment:
     def get_text(self) -> str:
@@ -723,7 +727,7 @@ class Segment:
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         return 0
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
+    def handle_mouse_input(self, mouse) -> bool:
         return False
 
 class FillerSegment(Segment):
@@ -752,14 +756,14 @@ class RefSegment(TextSegment):
         color, txt = GitRefsView.get_ref_color_and_title(ref)
         super().__init__(txt, color)
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'right-click':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'right-click':
             return Gitkcli.context_menu.show_context_menu(RefListItem(self.ref), 'git-refs')
-        elif event_type == 'double-click' and 'tag_id' in self.ref:
+        elif mouse.event_type == 'double-click' and 'tag_id' in self.ref:
             Gitkcli.git_diff.job.show_tag_annotation(self.ref['tag_id'])
             return True
         else:
-            return super().handle_mouse_input(event_type, x, y)
+            return super().handle_mouse_input(mouse)
 
 class ButtonSegment(TextSegment):
     def __init__(self, txt, callback, color = 1):
@@ -767,20 +771,20 @@ class ButtonSegment(TextSegment):
         self.callback = callback
         self.is_pressed = False
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click' or event_type == 'left-move-in':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'left-click' or mouse.event_type == 'double-click' or mouse.event_type == 'left-move-in':
             self.is_pressed = True
             return True
 
-        if event_type == 'left-move-out':
+        if mouse.event_type == 'left-move-out':
             self.is_pressed = False
             return True
 
-        if event_type == 'left-release':
+        if mouse.event_type == 'left-release':
             self.is_pressed = False
             return self.callback()
         else:
-            return super().handle_mouse_input(event_type, x, y)
+            return super().handle_mouse_input(mouse)
 
     def activate(self) -> bool:
         return self.callback()
@@ -814,13 +818,13 @@ class ToggleSegment(TextSegment):
         self.callback(self)
         return True
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'left-click' or mouse.event_type == 'double-click':
             self.toggle()
             self.callback(self)
             return True
         else:
-            return super().handle_mouse_input(event_type, x, y)
+            return super().handle_mouse_input(mouse)
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         visible_txt = self.txt[offset:width]
@@ -863,18 +867,18 @@ class SegmentedListItem(Item):
             segment_pos += length + len(self.segment_separator)
         return Segment()
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        segment = self.clicked_segment or self.get_segment_on_offset(x)
-        if 'left-click' == event_type or 'double-click' == event_type:
+    def handle_mouse_input(self, mouse) -> bool:
+        segment = self.clicked_segment or self.get_segment_on_offset(mouse.x)
+        if 'left-click' == mouse.event_type or 'double-click' == mouse.event_type:
             self.clicked_segment = segment
         elif self.clicked_segment:
-            if 'release' in event_type:
+            if 'release' in mouse.event_type:
                 self.clicked_segment = None
-            if 'move-in' in event_type and self.clicked_segment != self.get_segment_on_offset(x):
-                event_type = event_type.replace('in', 'out')
-        if segment and segment.handle_mouse_input(event_type, x, y):
+            if 'move-in' in mouse.event_type and self.clicked_segment != self.get_segment_on_offset(mouse.x):
+                mouse.event_type = mouse.event_type.replace('in', 'out')
+        if segment and segment.handle_mouse_input(mouse):
             return True
-        return super().handle_mouse_input(event_type, x, y)
+        return super().handle_mouse_input(mouse)
 
     def get_fill_txt(self, width):
         fillers_count = 0
@@ -936,11 +940,11 @@ class WindowTopBarItem(SegmentedListItem):
     def set_title(self, txt:str):
         self.title_segment.set_text(txt)
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        handled = super().handle_mouse_input(event_type, x, y)
+    def handle_mouse_input(self, mouse) -> bool:
+        handled = super().handle_mouse_input(mouse)
         if handled:
             return True
-        if 'double-click' == event_type:
+        if 'double-click' == mouse.event_type:
             Gitkcli.screen.get_active_view().toggle_window_mode()
             return True
         return False
@@ -960,16 +964,17 @@ class UncommittedChangesListItem(TextListItem):
         Gitkcli.git_diff.job.show_diff('HEAD', cached = self._staged, title = self.txt,
                                        view_id = self.id, add_to_jump_list = True)
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if super().handle_mouse_input(event_type, x, y):
+    def handle_mouse_input(self, mouse) -> bool:
+        if super().handle_mouse_input(mouse):
             return True
-        if event_type == 'double-click':
+        if mouse.event_type == 'double-click':
             self.load_to_view()
             Gitkcli.git_diff.show()
             return True
         return False
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.load_to_view()
             Gitkcli.git_diff.show()
@@ -1009,16 +1014,17 @@ class CommitListItem(SegmentedListItem):
         if Gitkcli.git_diff.commit_id != self.id or Gitkcli.git_diff.is_diff:
             Gitkcli.git_diff.job.show_commit(self.id)
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if super().handle_mouse_input(event_type, x, y):
+    def handle_mouse_input(self, mouse) -> bool:
+        if super().handle_mouse_input(mouse):
             return True
-        if event_type == 'double-click':
+        if mouse.event_type == 'double-click':
             self.load_to_view()
             Gitkcli.git_diff.show()
             return True
         return False
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.load_to_view()
             Gitkcli.git_diff.show()
@@ -1222,9 +1228,9 @@ class View:
         if self.resize_mode == 'split':
             lines, cols = Gitkcli.screen.getmaxyx()
             if Gitkcli.split_mode == 'side':
-                ratio = Gitkcli.mouse.mouse_x / max(1, cols)
+                ratio = Gitkcli.mouse.screen_x / max(1, cols)
             else:
-                ratio = Gitkcli.mouse.mouse_y / max(1, lines)
+                ratio = Gitkcli.mouse.screen_y / max(1, lines)
             Gitkcli.split_ratio = min(0.85, max(0.15, ratio))
             Gitkcli.apply_split_layout()
             return
@@ -1233,8 +1239,8 @@ class View:
         win_height, win_width = self.win.getmaxyx()
 
         if 'm' in self.resize_mode:
-            new_x = max(0, min(win_x + Gitkcli.mouse.mouse_rel_x, stdscr_width - win_width))
-            new_y = max(0, min(win_y + Gitkcli.mouse.mouse_rel_y, stdscr_height - win_height))
+            new_x = max(0, min(win_x + Gitkcli.mouse.rel_x, stdscr_width - win_width))
+            new_y = max(0, min(win_y + Gitkcli.mouse.rel_y, stdscr_height - win_height))
             self.win.mvwin(new_y, new_x)
             self.dirty = True
             self.resized = True
@@ -1244,12 +1250,12 @@ class View:
             new_width = win_width
             new_height = win_height
             if 'w' in self.resize_mode:
-                new_x = max(0, win_x + Gitkcli.mouse.mouse_rel_x)
+                new_x = max(0, win_x + Gitkcli.mouse.rel_x)
                 new_width = win_width - (new_x - win_x)
             if 'e' in self.resize_mode:
-                new_width = max(5, min(stdscr_width - new_x, win_width + Gitkcli.mouse.mouse_rel_x))
+                new_width = max(5, min(stdscr_width - new_x, win_width + Gitkcli.mouse.rel_x))
             if 's' in self.resize_mode:
-                new_height = max(5, min(stdscr_height - new_y, win_height + Gitkcli.mouse.mouse_rel_y))
+                new_height = max(5, min(stdscr_height - new_y, win_height + Gitkcli.mouse.rel_y))
             self.set_dimensions(new_x, new_y, new_height, new_width)
 
     def screen_size_changed(self, lines, cols):
@@ -1309,29 +1315,29 @@ class View:
     def on_deactivated(self):
         Gitkcli.log.debug(f'View {self.id} deactivated')
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-release':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'left-release':
             self.stop_resize()
-        if event_type == 'left-move' and self.resize_mode:
+        if mouse.event_type == 'left-move' and self.resize_mode:
             self.handle_resize()
             return True
-        if self.win.enclose(Gitkcli.mouse.mouse_y, Gitkcli.mouse.mouse_x):
-            if y == 0 and self.header_item and self.header_item.handle_mouse_input(event_type, x, y):
-                if 'left-click' == event_type or 'double-click' == event_type:
+        if self.win.enclose(Gitkcli.mouse.screen_y, Gitkcli.mouse.screen_x):
+            if mouse.y == 0 and self.header_item and self.header_item.handle_mouse_input(mouse):
+                if 'left-click' == mouse.event_type or 'double-click' == mouse.event_type:
                     Gitkcli.mouse.clicked_item = self.header_item
                 return True
-            if y == self.y + self.height - 1 and self.footer_item and self.footer_item.handle_mouse_input(event_type, x, y):
-                if 'left-click' == event_type or 'double-click' == event_type:
+            if mouse.y == self.y + self.height - 1 and self.footer_item and self.footer_item.handle_mouse_input(mouse):
+                if 'left-click' == mouse.event_type or 'double-click' == mouse.event_type:
                     Gitkcli.mouse.clicked_item = self.footer_item
                 return True
-            if event_type == 'left-click' and self.start_resize(Gitkcli.mouse.mouse_x, Gitkcli.mouse.mouse_y):
+            if mouse.event_type == 'left-click' and self.start_resize(Gitkcli.mouse.screen_x, Gitkcli.mouse.screen_y):
                 return True
-        elif self.is_popup and 'click' in event_type:
+        elif self.is_popup and 'click' in mouse.event_type:
             self.hide()
             return True
         return False
 
-    def handle_input(self, key) -> bool:
+    def handle_input(self, keyboard) -> bool:
         return False
 
     def get_parent(self):
@@ -1508,47 +1514,54 @@ class ListView(View):
                     self.set_selected(i)
                     return
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'wheel-up':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'wheel-up':
             self._offset_y -= 5
             if self._offset_y < 0:
                 self._offset_y = 0
             return True
-        if event_type == 'wheel-down':
+        if mouse.event_type == 'wheel-down':
             self._offset_y += 5
             if self._offset_y >= len(self.items) - self.height:
                 self._offset_y = max(0, len(self.items) - self.height)
             return True
 
         if not self.resize_mode:
-            view_x = x - self.x
-            view_y = y - self.y
+            view_x = mouse.x - self.x
+            view_y = mouse.y - self.y
             index = self._offset_y + view_y
 
             if 0 <= view_y < self.height and 0 <= view_x < self.width and 0 <= index < len(self.items):
                 selected = False
-                if 'move' in event_type:
+                if 'move' in mouse.event_type:
                     if self._selected == index:
                         return False # do not redraw when hovering over same item
-                if event_type == 'left-click' or event_type == 'double-click' or ('move' in event_type and self in Gitkcli.mouse.mouse_movement_capture):
+                if mouse.event_type == 'left-click' or mouse.event_type == 'double-click' or ('move' in mouse.event_type and self in Gitkcli.mouse.movement_capture):
                     if self.items[index].is_selectable:
                         self.set_selected(index)
                         selected = True
                 item = self.items[index]
-                handled = item.handle_mouse_input(event_type, view_x + self._offset_x, index)
-                if handled and ('left-click' == event_type or 'double-click' == event_type):
+                # hand the item its own coordinates, then restore the view-relative
+                # ones so a fall-through to super() still sees the right position
+                saved_x, saved_y = mouse.x, mouse.y
+                mouse.x = view_x + self._offset_x
+                mouse.y = index
+                handled = item.handle_mouse_input(mouse)
+                if handled and ('left-click' == mouse.event_type or 'double-click' == mouse.event_type):
                     Gitkcli.mouse.clicked_item = item
                 if selected or handled:
                     return True
+                mouse.x, mouse.y = saved_x, saved_y
 
-        return super().handle_mouse_input(event_type, x, y)
+        return super().handle_mouse_input(mouse)
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if not self.items:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
 
         selected_item = self.get_selected()
-        if selected_item and selected_item.handle_input(key):
+        if selected_item and selected_item.handle_input(keyboard):
             self.dirty = True
             return True
 
@@ -1588,7 +1601,7 @@ class ListView(View):
         elif key == ord('N'):
             self.search(backward = True)
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
 
         return True
 
@@ -1887,7 +1900,8 @@ class GitLogView(ListView):
         Gitkcli.git_diff.job.show_diff(old_commit_id, new_commit_id)
         Gitkcli.git_diff.show()
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == ord('q'):
             Gitkcli.exit_program()
         elif key == curses.KEY_EXIT:
@@ -1910,7 +1924,7 @@ class GitLogView(ListView):
         elif key == ord('M'):
             self.select_commit(self.marked_commit_id)
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
         return True
 
 class ShowContextSegment(TextSegment):
@@ -2000,26 +2014,27 @@ class GitDiffView(ListView):
         self.job.selected_line_map.clear()
         self.job.restart_job()
 
-    def handle_input(self, key) -> bool:
+    def handle_input(self, keyboard) -> bool:
+        key = keyboard.key
         if Gitkcli.split_active() and (key == ord('q') or key == curses.KEY_EXIT):
             # Esc/q in split view steps back to the log pane and stays split,
             # rather than collapsing the split.
             Gitkcli.git_log.show()
             return True
         if key == KEY_CTRL('n'):
-            Gitkcli.git_log.handle_input(curses.KEY_DOWN)
+            Gitkcli.git_log.handle_input(KeyboardState(curses.KEY_DOWN))
         elif key == KEY_CTRL('p'):
-            Gitkcli.git_log.handle_input(curses.KEY_UP)
+            Gitkcli.git_log.handle_input(KeyboardState(curses.KEY_UP))
         elif key in (ord('g'), ord('G'), curses.KEY_HOME, curses.KEY_END):
             track = self._tracks_position()
             if track:
                 Gitkcli.git_log.add_to_jump_list(self.commit_id, self._selected, self._offset_y)
-            ret = super().handle_input(key)
+            ret = super().handle_input(keyboard)
             if track:
                 Gitkcli.git_log.add_to_jump_list(self.commit_id, self._selected, self._offset_y)
             return ret
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
         return True
 
 class GitRefsView(ListView):
@@ -2103,19 +2118,20 @@ class ContextMenuItem(TextListItem):
             Gitkcli.screen.hide_active_view()
             self.action(*self.args)
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.execute_action()
         else:
             return False
         return True
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click' or event_type == 'right-release':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'left-click' or mouse.event_type == 'double-click' or mouse.event_type == 'right-release':
             self.execute_action()
             return True
         else:
-            return super().handle_mouse_input(event_type, x, y)
+            return super().handle_mouse_input(mouse)
 
 class ToggleContextMenuItem(TextListItem):
     def __init__(self, on_text, off_text, do_toggle, is_toggled):
@@ -2129,19 +2145,20 @@ class ToggleContextMenuItem(TextListItem):
         self.do_toggle()
         self.set_text(self.on_text if self.is_toggled() else self.off_text)
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.execute_action()
         else:
             return False
         return True
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click' or event_type == 'right-release':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'left-click' or mouse.event_type == 'double-click' or mouse.event_type == 'right-release':
             self.execute_action()
             return True
         else:
-            return super().handle_mouse_input(event_type, x, y)
+            return super().handle_mouse_input(mouse)
 
 class ContextMenu(ListView):
     def __init__(self):
@@ -2164,8 +2181,8 @@ class ContextMenu(ListView):
         if not view_id:
             view_id = Gitkcli.screen.showed_views[-1].id
         view = Gitkcli.screen.get_active_view()
-        x = Gitkcli.mouse.mouse_x
-        y = Gitkcli.mouse.mouse_y
+        x = Gitkcli.mouse.screen_x
+        y = Gitkcli.mouse.screen_y
         if item == Gitkcli: # main menu
             win_y, win_x = view.win.getbegyx()
             x = win_x + view.x
@@ -2178,7 +2195,7 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Toggle window/fullscreen", view.toggle_window_mode))
             self.append(ContextMenuItem("Change view mode <|>", Gitkcli.cycle_split_view))
             self.append(SeparatorItem())
-            self.append(ContextMenuItem("Search </>", view.handle_input, [ord('/')]))
+            self.append(ContextMenuItem("Search </>", view.handle_input, [KeyboardState(ord('/'))]))
             self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
             self.append(SeparatorItem())
             if view_id == 'git-log':
@@ -2344,7 +2361,8 @@ class UserInputListItem(Item):
             pos += 1
         return pos
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_BACKSPACE or key == 127:  # Backspace
             if self.cursor_pos > 0:
                 self.txt = self.txt[:self.cursor_pos-1] + self.txt[self.cursor_pos:]
@@ -2389,16 +2407,16 @@ class UserInputListItem(Item):
             self.cursor_pos += 1
 
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
 
         return True
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'left-click' or event_type == 'double-click':
-            self.cursor_pos = x if x < len(self.txt) else len(self.txt)
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'left-click' or mouse.event_type == 'double-click':
+            self.cursor_pos = mouse.x if mouse.x < len(self.txt) else len(self.txt)
             return True
         else:
-            return super().handle_mouse_input(event_type, x, y)
+            return super().handle_mouse_input(mouse)
 
     def draw_line(self, win, offset, width, selected, matched, marked):
         # TODO: update self.offset according to offset so that cursor is always visible
@@ -2421,17 +2439,18 @@ class ResetModeItem(TextListItem):
         self.dialog.hide()
         Gitkcli.git_log.reset(self.mode, self.dialog.commit_id)
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.execute_action()
             return True
         return False
 
-    def handle_mouse_input(self, event_type:str, x:int, y:int) -> bool:
-        if event_type == 'double-click':
+    def handle_mouse_input(self, mouse) -> bool:
+        if mouse.event_type == 'double-click':
             self.execute_action()
             return True
-        return super().handle_mouse_input(event_type, x, y)
+        return super().handle_mouse_input(mouse)
 
 
 class ResetDialogPopup(ListView):
@@ -2463,11 +2482,12 @@ class ResetDialogPopup(ListView):
         self.set_selected(3)   # highlight Mixed by default
         self.show()
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key in (curses.KEY_EXIT, ord('q')):
             self.hide()
             return True
-        return super().handle_input(key)
+        return super().handle_input(keyboard)
 
 
 class RefPushDialogPopup(ListView):
@@ -2487,8 +2507,8 @@ class RefPushDialogPopup(ListView):
 
         self.append(SpacerListItem())
         self.append(SegmentedListItem([FillerSegment(),
-                                       ButtonSegment("[Push]", lambda: self.handle_input(curses.KEY_ENTER)),
-                                       ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT)),
+                                       ButtonSegment("[Push]", lambda: self.handle_input(KeyboardState(curses.KEY_ENTER))),
+                                       ButtonSegment("[Cancel]", lambda: self.handle_input(KeyboardState(curses.KEY_EXIT))),
                                        FillerSegment()]))
         self.ref_name = ''
 
@@ -2527,7 +2547,8 @@ class RefPushDialogPopup(ListView):
         else:
             Gitkcli.log.error(f"Error pushing ref '{ref_name}': {result.stderr}")
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.hide()
             self.push_ref()
@@ -2545,7 +2566,7 @@ class RefPushDialogPopup(ListView):
                 end = remote.txt == self.remote
             self.change_remote(next_remote)
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
         return True
 
 class ConfirmDialogPopup(ListView):
@@ -2572,9 +2593,9 @@ class ConfirmDialogPopup(ListView):
             content = max(content, len(text) + 2)  # + 2 for the left indent
         self.append(SpacerListItem())
         self.append(SegmentedListItem([FillerSegment(),
-                                       ButtonSegment(confirm_label, lambda: self.handle_input(curses.KEY_ENTER), 2),
+                                       ButtonSegment(confirm_label, lambda: self.handle_input(KeyboardState(curses.KEY_ENTER)), 2),
                                        TextSegment('   '),
-                                       ButtonSegment(cancel_label, lambda: self.handle_input(curses.KEY_EXIT)),
+                                       ButtonSegment(cancel_label, lambda: self.handle_input(KeyboardState(curses.KEY_EXIT))),
                                        FillerSegment()]))
         content = max(content, len(confirm_label) + len(cancel_label) + 5)
 
@@ -2597,7 +2618,8 @@ class ConfirmDialogPopup(ListView):
         self.dirty = True
         self.resized = True
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key in (curses.KEY_ENTER, KEY_ENTER, KEY_RETURN, ord('y'), ord('Y')):
             self.hide()
             self._on_confirm()
@@ -2619,8 +2641,8 @@ class UserInputDialogPopup(ListView):
 
         if not bottom_item:
             bottom_item = SegmentedListItem([FillerSegment(),
-                                         ButtonSegment("[Execute]", lambda: self.handle_input(curses.KEY_ENTER)),
-                                         ButtonSegment("[Cancel]", lambda: self.handle_input(curses.KEY_EXIT)),
+                                         ButtonSegment("[Execute]", lambda: self.handle_input(KeyboardState(curses.KEY_ENTER))),
+                                         ButtonSegment("[Cancel]", lambda: self.handle_input(KeyboardState(curses.KEY_EXIT))),
                                          FillerSegment()])
             bottom_item.is_selectable = False
 
@@ -2644,7 +2666,8 @@ class UserInputDialogPopup(ListView):
         self.input.clear()
         self.history_index = -1
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.hide()
             self.execute()
@@ -2663,7 +2686,7 @@ class UserInputDialogPopup(ListView):
                 self.input.set_text(self.history_queries[self.history_index])
 
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
             
         return True
 
@@ -2766,7 +2789,8 @@ class PreferenceRow(SegmentedListItem):
         super().__init__([TextSegment(f'  {label}  '), FillerSegment(), control, TextSegment('  ')])
         self.control = control
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             self.control.activate()
             return True
@@ -2866,11 +2890,12 @@ class PreferencesDialogPopup(ListView):
     def on_cancel(self):
         self.hide()
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_EXIT:
             self.on_cancel()
             return True
-        return super().handle_input(key)
+        return super().handle_input(keyboard)
 
 class NewRefDialogPopup(UserInputDialogPopup):
     def __init__(self):
@@ -2893,11 +2918,12 @@ class NewRefDialogPopup(UserInputDialogPopup):
         self.force.toggled = False
         super().clear()
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_F1:
             self.force.toggle()
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
         return True
 
     def execute(self):
@@ -2961,7 +2987,8 @@ class SearchDialogPopup(UserInputDialogPopup):
         else:
             return False
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_DC or key == curses.KEY_BACKSPACE or key == 127 or 32 <= key <= 126:
             self.parent_list_view.dirty = True
 
@@ -2970,7 +2997,7 @@ class SearchDialogPopup(UserInputDialogPopup):
         elif key == curses.KEY_F2:
             self.use_regexp.toggle()
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
         return True
 
     def execute(self):
@@ -3013,10 +3040,11 @@ class GitSearchDialogPopup(SearchDialogPopup):
             return item.id in Gitkcli.git_log.job_git_search.found_ids
         return False
 
-    def handle_input(self, key):
+    def handle_input(self, keyboard):
+        key = keyboard.key
         if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
             if self.search_type == "txt":
-                return super().handle_input(key)
+                return super().handle_input(keyboard)
 
             self.hide()
 
@@ -3057,7 +3085,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
                 self.change_search_type("txt")
 
         else:
-            return super().handle_input(key)
+            return super().handle_input(keyboard)
             
         return True
 
@@ -3339,42 +3367,152 @@ class Log:
         if status_color:
             Gitkcli.screen.show_status_bar_message(first_line, status_color)
 
-class Mouse:
-    def __init__(self):
-        self.mouse_x = 0
-        self.mouse_y = 0
-        self.mouse_state = 0
-        self.mouse_click_x = 0
-        self.mouse_click_y = 0
-        self.mouse_rel_x = 0
-        self.mouse_rel_y = 0
-        self.mouse_click_time = time.time()
-        self.mouse_left_pressed = False
-        self.mouse_right_pressed = False
-        self.mouse_movement_capture = set()
+@dataclasses.dataclass
+class KeyboardState:
+    """Whole keyboard input state passed to handle_input()."""
+    key: int = -1                                   # normalized key code
+    sequence: list = dataclasses.field(default_factory=list)  # raw escape bytes
 
-        self.clicked_view:View|None = None
-        self.clicked_item:Item|None = None
+    def read(self, stdscr) -> bool:
+        """Read and normalize a key from curses. Returns False when nothing
+        usable was read (timeout or an unrecognized escape sequence)."""
+        key = stdscr.getch()
+        if key < 0:
+            return False
+
+        # parse escape sequences
+        if key == 27: # Esc key
+            sequence = []
+            while key >= 0:
+                if key == 27: sequence.clear()
+                sequence.append(key)
+                key = stdscr.getch()
+            Gitkcli.log.debug('Escape sequence: ' + str(sequence))
+            self.sequence = sequence
+            if len(sequence) == 1:
+                key = curses.KEY_EXIT
+            elif sequence == [27, 91, 49, 53, 59, 50, 126]:
+                key = KEY_SHIFT_F5
+            elif sequence == [27, 91, 49, 59, 53, 68]:
+                key = KEY_CTRL_LEFT
+            elif sequence == [27, 91, 49, 59, 53, 67]:
+                key = KEY_CTRL_RIGHT
+            elif sequence == [27, 91, 51, 59, 53, 126]:
+                key = KEY_CTRL_DEL
+            else:
+                return False
+        else:
+            Gitkcli.log.debug('Key: ' + str(key))
+            self.sequence = [key]
+
+        # Ctrl+Backspace arrives as ^H (8) on most terminals; plain
+        # Backspace arrives as KEY_BACKSPACE / 127
+        if key == 8:
+            key = KEY_CTRL_BACKSPACE
+
+        self.key = key
+        return True
+
+@dataclasses.dataclass
+class MouseState:
+    """Whole mouse input state passed to handle_mouse_input()."""
+    event_type: str = ''        # current event ('left-click', 'double-click', ...)
+    state: int = 0              # raw curses bstate
+    screen_x: int = 0           # absolute screen position (persistent)
+    screen_y: int = 0
+    x: int = 0                  # coordinates relative to the handler being invoked
+    y: int = 0
+    rel_x: int = 0              # delta since previous event (used for resize)
+    rel_y: int = 0
+    click_x: int = 0            # position/time of last left-press (double-click detection)
+    click_y: int = 0
+    click_time: float = dataclasses.field(default_factory=time.time)
+    left_pressed: bool = False
+    right_pressed: bool = False
+    movement_capture: set = dataclasses.field(default_factory=set)
+    clicked_view: 'View|None' = None    # drag targets that captured a press
+    clicked_item: 'Item|None' = None
 
     def capture_mouse_movement(self, enable:bool, id = None):
-        enabled = len(self.mouse_movement_capture) > 0
+        enabled = len(self.movement_capture) > 0
         if enable:
-            self.mouse_movement_capture.add(id)
+            self.movement_capture.add(id)
             if not enabled:
                 print("\033[?1003h", end='', flush=True) # start capturing mouse movement
-        elif id in self.mouse_movement_capture:
-            self.mouse_movement_capture.remove(id)
-            if enabled and len(self.mouse_movement_capture) == 0:
+        elif id in self.movement_capture:
+            self.movement_capture.remove(id)
+            if enabled and len(self.movement_capture) == 0:
                 print("\033[?1000h", end='', flush=True) # end capturing mouse movement
 
-    def process_mouse_event(self, event_type:str, active_view:View):
+    def read_curses_event(self, stdscr) -> bool:
+        """Decode a curses mouse event into this state. Returns False when the
+        event should be ignored (a release with no matching press, or an
+        unrecognized button state)."""
+        _, screen_x, screen_y, _, self.state = curses.getmouse()
+        self.rel_x = screen_x - self.screen_x
+        self.rel_y = screen_y - self.screen_y
+        self.screen_x = screen_x
+        self.screen_y = screen_y
+        Gitkcli.log.debug('Mouse state: ' + str(self.state))
+
+        self.event_type = ''
+        if self.state == curses.BUTTON1_PRESSED:
+            now = time.time()
+            self.left_pressed = True
+            if now - self.click_time < 0.3 and self.screen_x == self.click_x and self.screen_y == self.click_y:
+                self.event_type = 'double-click'
+            else:
+                self.click_time = now
+                self.event_type = 'left-click'
+            self.click_x = self.screen_x
+            self.click_y = self.screen_y
+
+        elif self.state == curses.BUTTON1_RELEASED:
+            if not self.left_pressed:
+                return False
+            self.left_pressed = False
+            self.event_type = 'left-release'
+
+        elif self.state == curses.BUTTON3_PRESSED:
+            self.right_pressed = True
+            self.event_type = 'right-click'
+
+        elif self.state == curses.BUTTON3_RELEASED:
+            if not self.right_pressed:
+                return False
+            self.right_pressed = False
+            self.event_type = "right-release"
+
+        elif self.state == curses.REPORT_MOUSE_POSITION:
+            if self.left_pressed:
+                self.event_type = 'left-move'
+            elif self.right_pressed:
+                self.event_type = 'right-move'
+            else:
+                self.event_type = 'move'
+
+        elif self.state & curses.BUTTON1_DOUBLE_CLICKED:
+            self.event_type = 'double-click'
+
+        elif self.state == curses.BUTTON4_PRESSED:
+            self.event_type = 'wheel-up'
+
+        elif self.state == curses.BUTTON5_PRESSED:
+            self.event_type = 'wheel-down'
+
+        return self.event_type != ''
+
+    def process_mouse_event(self, active_view:View, event_type:str = None):
+        if event_type is None:
+            event_type = self.event_type
+
         if 'click' in event_type:
             self.capture_mouse_movement(True)
         if 'release' in event_type:
             self.capture_mouse_movement(False)
 
         if self.clicked_item:
-            if self.mouse_click_y == self.mouse_y:
+            if self.click_y == self.screen_y:
                 if event_type == 'left-move':
                     event_type = 'left-move-in'
             elif event_type == 'left-move':
@@ -3382,9 +3520,12 @@ class Mouse:
             elif event_type == 'left-release':
                 event_type = 'left-release-out'
 
+        # expose the (possibly adjusted) type to handlers reading mouse.event_type
+        self.event_type = event_type
+
         enclosed_view = None
         for view in reversed(Gitkcli.screen.showed_views):
-            if view.is_popup or view.win.enclose(self.mouse_y, self.mouse_x):
+            if view.is_popup or view.win.enclose(self.screen_y, self.screen_x):
                 enclosed_view = view
                 break
 
@@ -3413,9 +3554,9 @@ class Mouse:
 
         if view_to_process and send_event_to:
             begin_y, begin_x = view_to_process.win.getbegyx()
-            win_x = self.mouse_x - begin_x
-            win_y = self.mouse_y - begin_y
-            if send_event_to.handle_mouse_input(event_type, win_x - item_x, win_y - item_y):
+            self.x = (self.screen_x - begin_x) - item_x
+            self.y = (self.screen_y - begin_y) - item_y
+            if send_event_to.handle_mouse_input(self):
                 view_to_process.dirty = True
 
         if 'release' in event_type:
@@ -3425,7 +3566,8 @@ class Mouse:
 class Gitkcli:
     running = True
     screen:Screen
-    mouse:Mouse
+    mouse:MouseState
+    keyboard:KeyboardState
     log:Log
     git_log:GitLogView
     git_diff:GitDiffView
@@ -3515,7 +3657,8 @@ class Gitkcli:
 def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
     Gitkcli.screen = Screen(stdscr)
-    Gitkcli.mouse = Mouse()
+    Gitkcli.mouse = MouseState()
+    Gitkcli.keyboard = KeyboardState()
     Gitkcli.log = Log()
     Gitkcli.git_log = GitLogView(git_args, cmd_args)
     Gitkcli.git_diff = GitDiffView()
@@ -3567,103 +3710,28 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
             
             stdscr.timeout(5 if update_jobs else 100)
 
-            key = stdscr.getch()
-            user_input = key >= 0
+            user_input = Gitkcli.keyboard.read(stdscr)
             if not user_input:
-                # no key pressed
+                # no key pressed (or an unrecognized escape sequence)
                 continue
 
-            # parse escape sequences
-            if key == 27: # Esc key
-                sequence = []
-                while key >= 0:
-                    if key == 27: sequence.clear()
-                    sequence.append(key)
-                    key = stdscr.getch()
-                Gitkcli.log.debug('Escape sequence: ' + str(sequence))
-                if len(sequence) == 1:
-                    key = curses.KEY_EXIT
-                elif sequence == [27, 91, 49, 53, 59, 50, 126]:
-                    key = KEY_SHIFT_F5
-                elif sequence == [27, 91, 49, 59, 53, 68]:
-                    key = KEY_CTRL_LEFT
-                elif sequence == [27, 91, 49, 59, 53, 67]:
-                    key = KEY_CTRL_RIGHT
-                elif sequence == [27, 91, 51, 59, 53, 126]:
-                    key = KEY_CTRL_DEL
-                else:
-                    continue
-            else:
-                Gitkcli.log.debug('Key: ' + str(key))
-
-            # Ctrl+Backspace arrives as ^H (8) on most terminals; plain
-            # Backspace arrives as KEY_BACKSPACE / 127
-            if key == 8:
-                key = KEY_CTRL_BACKSPACE
+            key = Gitkcli.keyboard.key
 
             if key == curses.KEY_MOUSE:
-                _, mouse_x, mouse_y, _, Gitkcli.mouse.mouse_state = curses.getmouse()
-                Gitkcli.mouse.mouse_rel_x = mouse_x - Gitkcli.mouse.mouse_x
-                Gitkcli.mouse.mouse_rel_y = mouse_y - Gitkcli.mouse.mouse_y
-                Gitkcli.mouse.mouse_x = mouse_x
-                Gitkcli.mouse.mouse_y = mouse_y
-                Gitkcli.log.debug('Mouse state: ' + str(Gitkcli.mouse.mouse_state))
+                if not Gitkcli.mouse.read_curses_event(stdscr):
+                    continue
 
-                event_type = None
-                if Gitkcli.mouse.mouse_state == curses.BUTTON1_PRESSED:
-                    now = time.time()
-                    Gitkcli.mouse.mouse_left_pressed = True
-                    if now - Gitkcli.mouse.mouse_click_time < 0.3 and Gitkcli.mouse.mouse_x == Gitkcli.mouse.mouse_click_x and Gitkcli.mouse.mouse_y == Gitkcli.mouse.mouse_click_y:
-                        event_type = 'double-click'
-                    else:
-                        Gitkcli.mouse.mouse_click_time = now
-                        event_type = 'left-click'
-                    Gitkcli.mouse.mouse_click_x = Gitkcli.mouse.mouse_x
-                    Gitkcli.mouse.mouse_click_y = Gitkcli.mouse.mouse_y
+                event_type = Gitkcli.mouse.event_type
 
-                elif Gitkcli.mouse.mouse_state == curses.BUTTON1_RELEASED:
-                    if not Gitkcli.mouse.mouse_left_pressed:
-                        continue
-                    Gitkcli.mouse.mouse_left_pressed = False
-                    event_type = 'left-release'
+                if event_type == 'right-click' and Gitkcli.mouse.left_pressed:
+                    Gitkcli.mouse.left_pressed = False
+                    Gitkcli.mouse.process_mouse_event(active_view, 'right-release')
 
-                elif Gitkcli.mouse.mouse_state == curses.BUTTON3_PRESSED:
-                    Gitkcli.mouse.mouse_right_pressed = True
-                    event_type = 'right-click'
+                if (event_type == 'left-click' or event_type == 'double-click') and Gitkcli.mouse.right_pressed:
+                    Gitkcli.mouse.right_pressed = False
+                    Gitkcli.mouse.process_mouse_event(active_view, 'left-release')
 
-                elif Gitkcli.mouse.mouse_state == curses.BUTTON3_RELEASED:
-                    if not Gitkcli.mouse.mouse_right_pressed:
-                        continue
-                    Gitkcli.mouse.mouse_right_pressed = False
-                    event_type = "right-release"
-
-                elif Gitkcli.mouse.mouse_state == curses.REPORT_MOUSE_POSITION:
-                    if Gitkcli.mouse.mouse_left_pressed:
-                        event_type = 'left-move'
-                    elif Gitkcli.mouse.mouse_right_pressed:
-                        event_type = 'right-move'
-                    else:
-                        event_type = 'move'
-
-                elif Gitkcli.mouse.mouse_state & curses.BUTTON1_DOUBLE_CLICKED:
-                    event_type = 'double-click'
-
-                elif Gitkcli.mouse.mouse_state == curses.BUTTON4_PRESSED:
-                    event_type = 'wheel-up'
-
-                elif Gitkcli.mouse.mouse_state == curses.BUTTON5_PRESSED:
-                    event_type = 'wheel-down'
-
-                if event_type == 'right-click' and Gitkcli.mouse.mouse_left_pressed:
-                    Gitkcli.mouse.mouse_left_pressed = False
-                    Gitkcli.mouse.process_mouse_event('right-release', active_view)
-
-                if (event_type == 'left-click' or event_type == 'double-click') and Gitkcli.mouse.mouse_right_pressed:
-                    Gitkcli.mouse.mouse_right_pressed = False
-                    Gitkcli.mouse.process_mouse_event('left-release', active_view)
-
-                if event_type:
-                    Gitkcli.mouse.process_mouse_event(event_type, active_view)
+                Gitkcli.mouse.process_mouse_event(active_view, event_type)
 
             elif key == curses.KEY_RESIZE:
                 lines, cols = Gitkcli.screen.getmaxyx()
@@ -3672,7 +3740,7 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                 if Gitkcli.split_mode != 'off':
                     Gitkcli.apply_split_layout()
 
-            elif active_view.handle_input(key):
+            elif active_view.handle_input(Gitkcli.keyboard):
                 active_view.dirty = True
 
             else:
