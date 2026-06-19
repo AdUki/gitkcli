@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import curses
+import curses.panel
 import dataclasses
 import datetime
 import json
@@ -669,6 +670,13 @@ class Segment:
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         return 0
 
+    def _draw_text(self, win, offset, width, color) -> int:
+        """Draw the segment's text clipped to [offset, width) in `color` and
+        return how many cells it consumed. Shared by the simple draw() variants."""
+        visible_txt = self.get_text()[offset:width]
+        win.addstr(visible_txt, color)
+        return len(visible_txt)
+
     def handle_mouse_input(self, mouse) -> bool:
         return False
 
@@ -688,9 +696,7 @@ class TextSegment(Segment):
         self.txt = txt
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
-        visible_txt = self.get_text()[offset:width]
-        win.addstr(visible_txt, Screen.color(self.color, selected, marked, matched))
-        return len(visible_txt)
+        return self._draw_text(win, offset, width, Screen.color(self.color, selected, marked, matched))
 
 class RefSegment(TextSegment):
     def __init__(self, ref):
@@ -733,16 +739,10 @@ class ButtonSegment(TextSegment):
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         if self.is_pressed:
-            visible_txt = self.get_text()[offset:width]
-            dim = False
-            bold = False
-            if not selected:
-                selected = True
-            else:
-                bold = True
-                dim = True
-            win.addstr(visible_txt, Screen.color(self.color, selected, marked, bold = bold, dim = dim))
-            return len(visible_txt)
+            # Pressed: highlight if not already selected, else go bold+dim.
+            bold = dim = selected
+            return self._draw_text(win, offset, width,
+                                   Screen.color(self.color, True, marked, bold = bold, dim = dim))
         return super().draw(win, offset, width, selected, matched, marked)
 
 class ToggleSegment(TextSegment):
@@ -769,9 +769,8 @@ class ToggleSegment(TextSegment):
             return super().handle_mouse_input(mouse)
 
     def draw(self, win, offset, width, selected, matched, marked) -> int:
-        visible_txt = self.txt[offset:width]
-        win.addstr(visible_txt, Screen.color(self.color, selected, self.toggled, dim = not self.enabled))
-        return len(visible_txt)
+        return self._draw_text(win, offset, width,
+                               Screen.color(self.color, selected, self.toggled, dim = not self.enabled))
 
 class SegmentedListItem(Item):
     def __init__(self, segments = [], bg_color = 1):
@@ -847,7 +846,7 @@ class SegmentedListItem(Item):
                 win.addstr(self.segment_separator, Screen.color(self.bg_color, bg_selected, marked, matched))
             if isinstance(segment, FillerSegment):
                 txt = self.get_fill_txt(width)
-                win.addstr(txt, Screen.color(self.bg_color, bg_selected, marked, matched, matched))
+                win.addstr(txt, Screen.color(self.bg_color, bg_selected, marked, matched))
                 length = len(txt)
             else:
                 length = segment.draw(win, offset, remaining_width, self._segment_selected(index, selected), matched, marked)
@@ -1054,7 +1053,6 @@ class View:
         self.id:str = id
         self.view_mode:str = view_mode
         self.header_item:typing.Any = None
-        self.footer_item:typing.Any = None
         self.is_popup:bool = False
 
         # coordinates and sizes when view is 'window'
@@ -1064,11 +1062,16 @@ class View:
         self.fixed_width = width
 
         self.dirty:bool = True
-        self.resized:bool = False
         self.resize_mode:str = ''
         
         height, width, y, x = self._calculate_dimensions()
         self.win = curses.newwin(height, width, y, x)
+        # Each view is a panel in the screen's z-ordered deck. The panel library
+        # composites overlapping windows (occlusion, vacated-region cleanup) for
+        # us; we only mark content dirty and let update_panels() do the rest.
+        # Hidden until show() raises it.
+        self.panel = curses.panel.new_panel(self.win)
+        self.panel.hide()
 
         Gitkcli.screen.add_view(id, self)
         
@@ -1113,8 +1116,6 @@ class View:
             # split pane: title row on top, plus only the requested thin lines
             self.height -= 1
             self.y += 1
-            if self.footer_item:
-                self.height -= 1
             if 'bottom' in sides:
                 self.height -= 1
             if 'left' in sides:
@@ -1133,8 +1134,8 @@ class View:
             self.height -= 1
             self.y += 1
 
-        if self.footer_item or box:
-            # substract footer or box bottom
+        if box:
+            # substract box bottom
             self.height -= 1
 
         if box:
@@ -1144,17 +1145,31 @@ class View:
 
         return win_height, win_width, win_y, win_x
 
-    def get_rect(self):
-        y, x = self.win.getbegyx()
-        h, w = self.win.getmaxyx()
-        return (y, x, y + h, x + w)
+    def _set_geometry(self, height, width, y, x):
+        """Resize+reposition the window and mark it dirty. A panel resized in
+        place does NOT re-expose what it shrinks away from (curses only uncovers
+        the new, smaller footprint), so if it is shown we hide it first - which
+        uncovers its full OLD footprint - then move to a valid origin, resize,
+        move to the target, and restore it: to the top if it was the active view,
+        otherwise back into stack order. The actual repaint is a single
+        update_panels()/doupdate() per frame, so the hide/show is invisible."""
+        was_top = self.is_active()
+        shown = not self.panel.hidden()
+        if shown:
+            self.panel.hide()
+        self.panel.move(0, 0)  # an origin valid for any size, before resizing
+        self.win.resize(height, width)
+        self.panel.move(y, x)
+        if shown:
+            self.panel.show()
+            if was_top:
+                self.panel.top()
+            else:
+                Gitkcli.screen._restack()
+        self.dirty = True
 
     def set_header_item(self, item):
         self.header_item = item
-        self._calculate_dimensions()
-
-    def set_footer_item(self, item):
-        self.footer_item = item
         self._calculate_dimensions()
 
     def set_view_mode(self, view_mode:str):
@@ -1162,12 +1177,8 @@ class View:
             return
         stdscr_height, stdscr_width = Gitkcli.screen.getmaxyx()
         self.view_mode = view_mode
-        self.dirty = True
-        if self.view_mode == 'window':
-            self.resized = True
         height, width, y, x = self._calculate_dimensions(stdscr_height, stdscr_width)
-        self.win.resize(height, width)
-        self.win.mvwin(y, x)
+        self._set_geometry(height, width, y, x)
 
     def set_tiled(self, x, y, height, width):
         """Place this view as a non-overlapping pane (used by split view)."""
@@ -1190,11 +1201,8 @@ class View:
         self.fixed_y = y
         self.fixed_height = height
         self.fixed_width = width
-        self.dirty = True
-        self.resized = True
         height, width, y, x = self._calculate_dimensions()
-        self.win.resize(height, width)
-        self.win.mvwin(y, x)
+        self._set_geometry(height, width, y, x)
 
     def _start_split_resize(self, x:int, y:int) -> bool:
         """Arm a drag of the split divider when the grab is on the shared edge."""
@@ -1256,9 +1264,10 @@ class View:
         if 'm' in self.resize_mode:
             new_x = max(0, min(win_x + Gitkcli.mouse.rel_x, stdscr_width - win_width))
             new_y = max(0, min(win_y + Gitkcli.mouse.rel_y, stdscr_height - win_height))
-            self.win.mvwin(new_y, new_x)
+            if new_x == win_x and new_y == win_y:
+                return
+            self.panel.move(new_y, new_x)
             self.dirty = True
-            self.resized = True
         else:
             new_x = win_x
             new_y = win_y
@@ -1275,21 +1284,19 @@ class View:
 
     def screen_size_changed(self, lines, cols):
         self.dirty = True
-        self.resized = True
         height, width, y, x = self._calculate_dimensions(lines, cols)
         self.win.resize(height, width)
-        self.win.mvwin(y, x)
+        self.panel.move(y, x)
 
     def redraw(self, force=False):
+        # Draw content into the window buffer; the screen's update_panels() +
+        # doupdate() pass composites it. force=True re-touches the whole window so
+        # it is re-emitted even when its content is unchanged (used on full redraw).
         if self.dirty or force:
             self.dirty = False
-            self.resized = False
             if force:
                 self.win.touchwin()
             self.draw()
-            return True
-        else:
-            return False
 
     def border_color(self):
         return curses.color_pair(5 if self.is_active() else 18)
@@ -1342,15 +1349,6 @@ class View:
                 self.win.move(0, left)
                 self.header_item.draw_line(self.win, 0, right - left, self.is_active(), False, False)
 
-        # draw footer
-        if self.footer_item:
-            rows, cols = self.win.getmaxyx()
-            self.win.move(rows - 1, 0)
-            # cols - 1: writing the final cell on the last row advances curses' cursor
-            # off-screen and raises addwstr() ERR
-            self.footer_item.draw_line(self.win, 0, cols - 1, self.is_active(), False, False)
-
-        self.win.refresh()
         if self != Gitkcli.log.view and self.get_parent() != Gitkcli.log.view:
             Gitkcli.log.debug(f'Draw view {self.id}')
 
@@ -1370,10 +1368,6 @@ class View:
             if mouse.y == 0 and self.header_item and self.header_item.handle_mouse_input(mouse):
                 if 'left-click' == mouse.event_type or 'double-click' == mouse.event_type:
                     Gitkcli.mouse.clicked_item = self.header_item
-                return True
-            if mouse.y == self.y + self.height - 1 and self.footer_item and self.footer_item.handle_mouse_input(mouse):
-                if 'left-click' == mouse.event_type or 'double-click' == mouse.event_type:
-                    Gitkcli.mouse.clicked_item = self.footer_item
                 return True
             if mouse.event_type == 'left-click' and self.start_resize(Gitkcli.mouse.screen_x, Gitkcli.mouse.screen_y):
                 return True
@@ -1404,9 +1398,13 @@ class View:
         if self in Gitkcli.screen.showed_views:
             Gitkcli.screen.showed_views.remove(self)
         Gitkcli.screen.showed_views.append(self)
+        self.panel.show()
+        self.panel.top()
         self.dirty = True
-        self.resized = True
         if prev_view:
+            # The outgoing top view must repaint to drop its active border/title
+            # colour - active state keys off z-order, not overlap with us.
+            prev_view.dirty = True
             prev_view.on_deactivated()
         self.on_activated()
 
@@ -1415,13 +1413,16 @@ class View:
             if not self in Gitkcli.screen.showed_views:
                 return
             deactivated = Gitkcli.screen.showed_views[-1] == self
+            # Hiding the panel uncovers whatever was underneath; update_panels()
+            # repaints it for us, no manual footprint cleanup needed.
+            self.panel.hide()
             Gitkcli.screen.showed_views.remove(self)
-            active_view = Gitkcli.screen.get_active_view()
-            if active_view:
-                active_view.dirty = True
-                active_view.resized = True
             if deactivated:
                 self.on_deactivated()
+                # Repaint the newly-exposed top view with its active styling.
+                new_active = Gitkcli.screen.get_active_view()
+                if new_active:
+                    new_active.dirty = True
 
 class ListView(View):
     def __init__(self, id:str, view_mode:str = 'fullscreen',
@@ -1442,17 +1443,39 @@ class ListView(View):
 
     def _resize_centered(self, height, width):
         """Resize to height x width and re-centre on screen. Used by popups that
-        size themselves to their content (confirm / error dialogs)."""
-        self.fixed_x = None
-        self.fixed_y = None
-        self.fixed_height = height
-        self.fixed_width = width
-        h, w, y, x = self._calculate_dimensions()
-        self.win.mvwin(0, 0)  # move to a position valid for any size before resizing
-        self.win.resize(h, w)
-        self.win.mvwin(y, x)
-        self.dirty = True
-        self.resized = True
+        size themselves to their content; fixed_x/y = None centres it."""
+        self.set_dimensions(None, None, height, width)
+
+    def _focus_button_row(self, focus = 'first'):
+        """Make only self._button_row navigable (Left/Right pick a button, Enter
+        activates it) and select it. focus='last' defaults to the final button -
+        used for destructive confirmations so a bare Enter lands on [Cancel]."""
+        for item in self.items:
+            item.is_selectable = False
+        self._button_row.is_selectable = True
+        (self._button_row.focus_last if focus == 'last' else self._button_row.reset_focus)()
+        self._selected = len(self.items) - 1
+
+    def _show_message_box(self, lines, button_row_item, focus = 'first'):
+        """Lay out a content-sized popup and show it: a spacer, the message
+        `lines` (each a str or (text, color) tuple, indented two spaces), a
+        spacer, then the button row - the only navigable item. Sizes to the
+        widest of the header, the lines and the button row, then centres."""
+        self.clear()
+        self.append(SpacerListItem())
+        content = len(self.header_item.get_text())
+        for line in lines:
+            text, color = line if isinstance(line, tuple) else (line, 1)
+            self.append(TextListItem('  ' + text, color, selectable = False))
+            content = max(content, len(text) + 2)  # + 2 for the left indent
+        self.append(SpacerListItem())
+        self._button_row = button_row_item
+        self.append(button_row_item)
+        content = max(content, len(button_row_item.get_text()))
+        self._focus_button_row(focus)
+        # content + 2 (right margin so text doesn't touch the border) + 2 (box sides)
+        self._resize_centered(len(self.items) + 2, max(40, content + 4))
+        self.show()
 
     def copy_text_to_clipboard(self):
         text = "\n".join(item.get_text() for item in self.items)
@@ -1479,16 +1502,6 @@ class ListView(View):
         if self.autoscroll:
             self._offset_y = max(0, len(self.items) - self.height)
         
-    def insert(self, item, position=None):
-        """Insert item at position or selected position"""
-        pos = position if position is not None else self._selected
-        self.items.insert(pos, item)
-        if pos <= self._selected:
-            self._selected += 1
-        if pos <= self._offset_y:
-            self._offset_y += 1
-        self.dirty = True
-
     def clear(self):
         Gitkcli.log.debug(f'Clear view {self.id}')
         self.items = []
@@ -1703,7 +1716,6 @@ class ListView(View):
                 else:
                     self.win.move(self.y + i, self.x)
                     self.win.addstr('─' * width, Screen.color(color))
-            self.win.refresh()
 
 def _raise_split_sibling(view, sibling):
     """Keep both split panes adjacent on top of the stack with `view` focused.
@@ -1782,7 +1794,7 @@ class GitLogView(ListView):
 
     def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
         ret = super().set_selected(what, visible_mode)
-        if Gitkcli.git_diff in Gitkcli.screen.get_visible_views():
+        if Gitkcli.screen.is_view_visible(Gitkcli.git_diff):
             item = self.get_selected()
             if item:
                 item.load_to_view()
@@ -2166,6 +2178,13 @@ class ContextMenu(ListView):
         super().on_deactivated()
         Gitkcli.mouse.capture_mouse_movement(False, self)
         
+    def _append_copy_items(self, view, item):
+        """The line/range/all clipboard trio shared by the git-log, git-diff and
+        log context menus."""
+        self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
+        self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
+        self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
+
     def show_context_menu(self, item, view_id:str = '') -> bool:
         if Gitkcli.screen.showed_views[-1] == self:
             return True
@@ -2215,16 +2234,12 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Mark this commit", view.mark_commit, [item.id]))
                 self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id)))
             self.append(SeparatorItem())
-            self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
-            self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
-            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
+            self._append_copy_items(view, item)
         elif view_id == 'git-diff':
             self.append(ContextMenuItem("Jump to file", StatListItem.jump_to_file, [item], isinstance(item, StatListItem)))
             self.append(ContextMenuItem("Show origin of this line", DiffListItem.jump_to_origin, [item], isinstance(item, DiffListItem) and item.old_file_path and item.old_file_line is not None))
             self.append(SeparatorItem())
-            self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
-            self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
-            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
+            self._append_copy_items(view, item)
         elif view_id == 'git-refs' and hasattr(item, 'data'):
             if item.data['type'] == 'heads':
                 self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
@@ -2248,9 +2263,7 @@ class ContextMenu(ListView):
             else:
                 self.append(ContextMenuItem("Copy ref name", copy_to_clipboard, [item.data['name']]))
         elif view_id == 'log':
-            self.append(ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
-            self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
-            self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
+            self._append_copy_items(view, item)
         else:
             return False
         self.set_dimensions(x, y, len(self.items) + 2, 30)
@@ -2506,12 +2519,9 @@ class RefPushDialogPopup(ListView):
         self.append(self._button_row)
         self.ref_name = ''
 
-        for item in self.items:
-            item.is_selectable = False
         # Make the buttons row navigable (Left/Right pick a button, Enter
         # activates it); default focus is [Push] so a bare Enter still pushes.
-        self._button_row.is_selectable = True
-        self._selected = len(self.items) - 1
+        self._focus_button_row()
 
     def _confirm(self):
         self.hide()
@@ -2561,52 +2571,35 @@ class RefPushDialogPopup(ListView):
             return super().handle_input(keyboard)
         return True
 
-class ConfirmDialogPopup(ListView):
+class _RedMessageBoxPopup(ListView):
+    """Modal red message box: a red banner header and matching red border,
+    sized to its content. Base for the confirm and error dialogs."""
+    def __init__(self, id, banner):
+        super().__init__(id, 'window', height = 7)
+        self.set_header_item(TextListItem(banner, 31, expand = True))  # red banner
+        self.is_popup = True
+
+    def border_color(self):
+        return curses.color_pair(2)
+
+class ConfirmDialogPopup(_RedMessageBoxPopup):
     """Generic yes/no popup. Used to offer a forced retry after a git
     operation is rejected (ref already exists, non-fast-forward push, ...)."""
     def __init__(self):
-        super().__init__(ID_CONFIRM_DIALOG, 'window', height = 7)
-        self.set_header_item(TextListItem('', 31, expand = True))  # red warning banner
-        self.is_popup = True
+        super().__init__(ID_CONFIRM_DIALOG, '')
         self._on_confirm = lambda: None
-
-    def border_color(self):
-        # Match the red warning banner: draw the window border red too.
-        return curses.color_pair(2)
 
     def confirm(self, title, lines, on_confirm, confirm_label = '[Yes]', cancel_label = '[Cancel]'):
         # Each entry in `lines` is either a string or a (text, color) tuple
-        # (color 4 = yellow, 2 = red) for emphasis.
+        # (color 4 = yellow, 2 = red) for emphasis. These are destructive
+        # force/overwrite confirmations, so default focus to [Cancel].
         self._on_confirm = on_confirm
         self.header_item.set_text(title)
-
-        self.clear()
-        content = len(title)
-        self.append(SpacerListItem())
-        for line in lines:
-            text, color = line if isinstance(line, tuple) else (line, 1)
-            self.append(TextListItem('  ' + text, color, selectable = False))
-            content = max(content, len(text) + 2)  # + 2 for the left indent
-        self.append(SpacerListItem())
-        self._button_row = button_row(ButtonSegment(confirm_label, self._confirm, 2),
-                                      TextSegment('   '),
-                                      ButtonSegment(cancel_label, self.hide))
-        self.append(self._button_row)
-        content = max(content, len(confirm_label) + len(cancel_label) + 5)
-
-        for item in self.items:
-            item.is_selectable = False
-        # The button row is the only navigable item: focus it (Left/Right pick a
-        # button, Enter activates it). These are destructive force/overwrite
-        # confirmations, so default focus to [Cancel] — the user must Left-arrow
-        # to the confirm button and press Enter to proceed.
-        self._button_row.is_selectable = True
-        self._button_row.focus_last()
-        self._selected = len(self.items) - 1
-
-        # content + 2 (right margin so text doesn't touch the border) + 2 (box sides)
-        self._resize_centered(len(self.items) + 2, max(40, content + 4))
-        self.show()
+        self._show_message_box(lines,
+            button_row(ButtonSegment(confirm_label, self._confirm, 2),
+                       TextSegment('   '),
+                       ButtonSegment(cancel_label, self.hide)),
+            focus = 'last')
 
     def _confirm(self):
         self.hide()
@@ -2630,7 +2623,7 @@ class ConfirmDialogPopup(ListView):
         # fullscreen view while its force callback is still armed.
         return True
 
-class ErrorDialogPopup(ListView):
+class ErrorDialogPopup(_RedMessageBoxPopup):
     """Modal red alert with a single [Ok] button. Replaces the old status-bar
     error line: Log.error() pops this with the message. Errors that arrive while
     it is still open (e.g. a job emitting several stderr lines) are coalesced
@@ -2639,14 +2632,8 @@ class ErrorDialogPopup(ListView):
     MAX_LINES = 12
 
     def __init__(self):
-        super().__init__(ID_ERROR_DIALOG, 'window', height = 7)
-        self.set_header_item(TextListItem(' Error', 31, expand = True))  # red banner
-        self.is_popup = True
+        super().__init__(ID_ERROR_DIALOG, ' Error')
         self._lines = []
-
-    def border_color(self):
-        # Match the red banner: draw the box border red too.
-        return curses.color_pair(2)
 
     def show_error(self, message):
         incoming = [line for line in message.splitlines() if line.strip()] or [message]
@@ -2658,24 +2645,8 @@ class ErrorDialogPopup(ListView):
         self._render()
 
     def _render(self):
-        self.clear()
-        content = len('Error')
-        self.append(SpacerListItem())
-        for line in self._lines:
-            self.append(TextListItem('  ' + line, 2, selectable = False))
-            content = max(content, len(line) + 2)
-        self.append(SpacerListItem())
-        self._button_row = button_row(ButtonSegment('[Ok]', self.hide, 2))
-        self.append(self._button_row)
-
-        for item in self.items:
-            item.is_selectable = False
-        self._button_row.is_selectable = True
-        self._button_row.reset_focus()
-        self._selected = len(self.items) - 1
-
-        self._resize_centered(len(self.items) + 2, max(40, content + 4))
-        self.show()
+        self._show_message_box([(line, 2) for line in self._lines],
+                               button_row(ButtonSegment('[Ok]', self.hide, 2)))
 
     def handle_input(self, keyboard):
         # Any of Enter / Esc / o / q dismisses; Left/Right keep focus on [Ok].
@@ -3075,36 +3046,6 @@ class GitSearchDialogPopup(SearchDialogPopup):
 class Screen:
 
     @classmethod
-    def _subtract_rect(cls, rect, subtract):
-        """Subtract a rectangle from another, returning list of non-overlapping rects"""
-        y1, x1, y2, x2 = rect
-        sy1, sx1, sy2, sx2 = subtract
-
-        # No overlap
-        if x2 <= sx1 or x1 >= sx2 or y2 <= sy1 or y1 >= sy2:
-            return [rect]
-
-        result = []
-
-        # Top part (above subtract)
-        if y1 < sy1:
-            result.append((y1, x1, sy1, x2))
-
-        # Bottom part (below subtract)
-        if y2 > sy2:
-            result.append((sy2, x1, y2, x2))
-
-        # Left part (left of subtract, between top and bottom)
-        if x1 < sx1:
-            result.append((max(y1, sy1), x1, min(y2, sy2), sx1))
-
-        # Right part (right of subtract, between top and bottom)
-        if x2 > sx2:
-            result.append((max(y1, sy1), sx2, min(y2, sy2), x2))
-
-        return result
-
-    @classmethod
     def _init_color(cls, pair_number: int, nfg:int, nbg:int = -1, hfg:int = -1, hbg:int = -1, sfg:int = -1, sbg:int = -1, shfg:int = -1, shbg:int = -1) -> None:
         # normal
         fg = nfg
@@ -3127,7 +3068,7 @@ class Screen:
         curses.init_pair(150 + pair_number, fg, bg)
 
     @classmethod
-    def color(cls, number, selected = False, highlighted = False, matched = False, bold = None, reverse = False, dim = False, underline = False):
+    def color(cls, number, selected = False, highlighted = False, matched = False, bold = None, dim = False):
         if matched:
             bold = True
             if number == 1:
@@ -3143,14 +3084,10 @@ class Screen:
             color = curses.color_pair(50 + number)
         else:
             color = curses.color_pair(number)
-        if reverse:
-            color = color | curses.A_REVERSE
         if bold or (selected and bold is None):
             color = color | curses.A_BOLD
         if dim:
             color = color | curses.A_DIM
-        if underline:
-            color = color | curses.A_UNDERLINE
         return color
 
     def __init__(self, stdscr:curses.window):
@@ -3198,6 +3135,9 @@ class Screen:
         self.stdscr = stdscr
         self.showed_views = []
         self.views = {}
+        # Set on terminal resize: every window changed, so clear the background and
+        # re-touch every panel for a full recomposition next frame.
+        self._full_redraw = False
 
         # Midnight-Commander-style function-key panel pinned to the bottom row.
         # Each entry is (key label, name, callback); callbacks reference Gitkcli
@@ -3213,6 +3153,11 @@ class Screen:
             ('F9',  'Config',   lambda: Gitkcli.preferences.show()),
             ('F10', 'Quit',     lambda: Gitkcli.exit_program()),
         ]
+        # Same bindings driven from the keyboard (single source of truth with the
+        # bar). F7 is special-cased in the main loop - from the keyboard it opens
+        # at the selected row, so it never reaches this table.
+        self.fkey_actions = {getattr(curses, 'KEY_' + label): cb
+                             for label, name, cb in self.bottom_bar_entries}
         # Filled by draw_bottom_bar each frame: (x_start, x_end, callback) ranges
         # used to route clicks on the bottom row to the right entry.
         self.bar_hitmap = []
@@ -3232,6 +3177,12 @@ class Screen:
             return self.showed_views[-1]
         return None
 
+    def _restack(self):
+        """Re-assert the panel deck order to match showed_views (bottom -> top),
+        after an op (e.g. resizing a non-active window) perturbed it."""
+        for view in self.showed_views:
+            view.panel.top()
+
     def hide_active_view(self):
         if len(self.showed_views) > 0:
             # Closing a split pane (the [X] button) leaves split view and brings
@@ -3243,48 +3194,25 @@ class Screen:
                 Gitkcli.set_split_mode('off')
                 other.show()
                 return
-            view = self.showed_views.pop(-1)
-            view.on_deactivated()
-            view.win.erase()
-            view.win.refresh()
-            if self.get_active_view():
-                self.get_active_view().dirty = True
-                self.get_active_view().resized = True
+            # Same as closing any top view: blank its footprint (damage-based
+            # redraw repaints what was underneath) and restyle the new top view.
+            closing.hide()
 
-    def get_visible_views(self):
-        visible_views = []
-        for view in self.showed_views:
-            if view.view_mode == 'fullscreen':
-                visible_views.clear()
-            visible_views.append(view)
-        
-        # Compute visible regions for each window
-        result = []
-        for i, view in enumerate(visible_views):
-            # Start with single rectangle region
-            regions = [view.get_rect()]
-            
-            # Subtract all occluding windows
-            for j in range(i + 1, len(visible_views)):
-                new_regions = []
-                for rect in regions:
-                    new_regions.extend(Screen._subtract_rect(rect, visible_views[j].get_rect()))
-                regions = new_regions
-                
-                if not regions:
-                    break
-            
-            if regions:
-                result.append(view)
-        
-        return result
+    def is_view_visible(self, view) -> bool:
+        """True if `view` is on screen and not fully hidden by a fullscreen view
+        stacked above it. The panel deck handles pixel-level occlusion; this only
+        decides whether keeping a window's content live is worth the work."""
+        views = self.showed_views
+        if view not in views:
+            return False
+        return not any(v.view_mode == 'fullscreen' for v in views[views.index(view) + 1:])
 
     def draw_bottom_bar(self, stdscr):
         """Draw the global function-key panel on the bottom row and rebuild the
         click hit-map. Midnight-Commander style: a 2-wide key number followed by
         the label on a cyan block, with the entries spread evenly across the full
-        width (e.g. `` 1Log        2Refs       …``). Written to stdscr (which no
-        view covers); it shows on the next stdscr.refresh(), like the old bar."""
+        width (e.g. `` 1Log        2Refs       …``). Written to stdscr (the bottom
+        of the panel deck); composited under the panels by update_panels()."""
         lines, cols = stdscr.getmaxyx()
         if cols < 2 or lines < 1:
             return
@@ -3316,20 +3244,23 @@ class Screen:
             x += cell_w
 
     def draw_visible_views(self):
-        visible_views = self.get_visible_views()
+        # Refresh only the content of windows whose content changed; the panel
+        # deck handles occlusion and uncovered regions. On a full redraw (terminal
+        # resize) clear the background and re-touch every panel so the whole stack
+        # is recomposed. Then push the background (with the bottom bar), composite
+        # the panels over it, and flush - all in a single doupdate().
+        force = self._full_redraw
+        if force:
+            self._full_redraw = False
+            self.stdscr.clear()
 
-        force_redraw = False
-        for view in visible_views:
-            if view.resized:
-                force_redraw = True
-                break
+        for view in self.showed_views:
+            view.redraw(force)
 
-        if force_redraw and visible_views[0].view_mode != 'fullscreen':
-                Gitkcli.screen.stdscr.clear()
-                Gitkcli.screen.stdscr.refresh()
-
-        for view in visible_views:
-            force_redraw = view.redraw(force_redraw)
+        self.draw_bottom_bar(self.stdscr)
+        self.stdscr.noutrefresh()
+        curses.panel.update_panels()
+        curses.doupdate()
 
 class Log:
     def __init__(self):
@@ -3715,7 +3646,6 @@ class Gitkcli:
                 v.fixed_x = v.fixed_y = v.fixed_width = v.fixed_height = None
                 v.set_fullscreen()
                 v.dirty = True
-                v.resized = True
 
 def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
@@ -3759,12 +3689,10 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
             update_jobs = Job.process_all_jobs()
 
             if update_jobs or user_input:
-
-                stdscr.refresh()
-
                 try:
+                    # Draws dirty content, then composites the panel deck and the
+                    # bottom bar in one doupdate().
                     Gitkcli.screen.draw_visible_views()
-                    Gitkcli.screen.draw_bottom_bar(stdscr)
                 except curses.error as e:
                     Gitkcli.log.warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
 
@@ -3798,6 +3726,7 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                 Gitkcli.mouse.process_mouse_event(active_view, event_type)
 
             elif key == curses.KEY_RESIZE:
+                Gitkcli.screen._full_redraw = True
                 lines, cols = Gitkcli.screen.getmaxyx()
                 for view in Gitkcli.screen.views.values():
                     view.screen_size_changed(lines, cols)
@@ -3814,31 +3743,18 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                     Gitkcli.git_log.move_in_jump_list(+1)
                 elif key == KEY_CTRL_RIGHT or key == KEY_CTRL('i'):
                     Gitkcli.git_log.move_in_jump_list(-1)
-                elif key == curses.KEY_F1:
-                    Gitkcli.git_log.show()
-                elif key == curses.KEY_F2:
-                    Gitkcli.git_refs.show()
-                elif key == curses.KEY_F3:
-                    Gitkcli.git_diff.show()
-                elif key == curses.KEY_F4:
-                    Gitkcli.log.view.show()
                 elif key == ord('|'):
                     Gitkcli.cycle_split_view()
                 elif key == KEY_CTRL('w') and Gitkcli.split_active():
                     # toggle focus between the two split panes
                     (Gitkcli.git_diff if Gitkcli.git_log.is_active() else Gitkcli.git_log).show()
-                elif key == curses.KEY_F5:
-                    Gitkcli.refresh_all()
                 elif key == KEY_SHIFT_F5:
                     Gitkcli.reload_refs_commits()
-                elif key == curses.KEY_F6:
-                    Gitkcli.open_search()
                 elif key == curses.KEY_F7:
+                    # From the keyboard, open at the selected row (no mouse cursor).
                     Gitkcli.open_context_menu()
-                elif key == curses.KEY_F9:
-                    Gitkcli.preferences.show()
-                elif key == curses.KEY_F10:
-                    Gitkcli.exit_program()
+                elif key in Gitkcli.screen.fkey_actions:
+                    Gitkcli.screen.fkey_actions[key]()
 
     except KeyboardInterrupt:
         pass
