@@ -2486,9 +2486,10 @@ class ResetDialogPopup(ListView):
 
 class RefPushDialogPopup(ListView):
     def __init__(self):
-        super().__init__(ID_GIT_REF_PUSH, 'window', height = 6)
+        # Fixed width (like the other input dialogs) instead of half the
+        # terminal, so the box stays tight on wide screens.
+        super().__init__(ID_GIT_REF_PUSH, 'window', height = 5, width = 60)
         self.set_header_item(TextListItem('', 30, expand = True))
-        self.append(SpacerListItem())
         self.is_popup = True
 
         self.remotes = []
@@ -2497,7 +2498,7 @@ class RefPushDialogPopup(ListView):
         self.change_remote(self.remotes[0].txt)
 
         self.force = ToggleSegment("<Force>")
-        self.append(SegmentedListItem([TextSegment(f"Select remote: ")] + self.remotes + [FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]))
+        self.append(SegmentedListItem([TextSegment("Select remote:")] + self.remotes + [FillerSegment(), TextSegment("Flags:"), self.force]))
 
         self.append(SpacerListItem())
         self._button_row = button_row(ButtonSegment("[Push]", self._confirm),
@@ -2685,8 +2686,11 @@ class ErrorDialogPopup(ListView):
         return True  # modal: swallow every other key
 
 class UserInputDialogPopup(ListView):
-    def __init__(self, id:str, title:str, header_item:Item, bottom_item:typing.Optional[Item] = None):
-        super().__init__(id, 'window', height = 7)
+    def __init__(self, id:str, title:str, header_item:Item, bottom_item:typing.Optional[Item] = None, width = 60):
+        # Compact 3-row layout (no blank spacers): the label/flags header, the
+        # input field right below it, and the buttons. A fixed width keeps the
+        # box from ballooning to half the terminal on wide screens.
+        super().__init__(id, 'window', height = 5, width = width)
         self.set_header_item(TextListItem(title, 30, expand = True))
         self.input = UserInputListItem()
         self.is_popup = True
@@ -2703,11 +2707,9 @@ class UserInputDialogPopup(ListView):
         header_item.is_selectable = False
 
         self.append(header_item)
-        self.append(SpacerListItem())
         self.append(self.input)
-        self.append(SpacerListItem())
         self.append(bottom_item)
-        self._selected = 2
+        self._selected = 1
 
     def add_query_to_history(self):
         if self.input.txt and (len(self.history_queries) == 0 or self.history_queries[0] != self.input.txt):
@@ -2911,12 +2913,15 @@ class NewRefDialogPopup(UserInputDialogPopup):
         self.force = ToggleSegment("<Force>")
         self.commit_id = ''
         self.ref_type = '' # branch or tag
+        self.prompt = TextSegment("Specify the new branch name:")
         super().__init__(ID_NEW_GIT_REF, ' New Branch',
-            SegmentedListItem([TextSegment(f"Specify the new branch name:"), FillerSegment(), TextSegment("Flags:"), self.force, FillerSegment()]))
+            SegmentedListItem([self.prompt, FillerSegment(), TextSegment("Flags:"), self.force]))
 
     def create_ref(self, commit_id, ref_type='branch'):
         self.commit_id = commit_id
         self.ref_type = ref_type
+        self.header_item.set_text(f' New {ref_type.capitalize()}')
+        self.prompt.set_text(f"Specify the new {ref_type} name:")
         self.clear()
         self.show()
 
@@ -2948,18 +2953,20 @@ class NewRefDialogPopup(UserInputDialogPopup):
                         label='[Overwrite]')
 
 class SearchDialogPopup(UserInputDialogPopup):
-    def __init__(self, id:str):
+    def __init__(self, id:str, width = 60):
         self.parent_list_view:ListView
         self.case_sensitive = ToggleSegment("<Case>", True)
         self.use_regexp = ToggleSegment("<Regexp>")
-        self.header = SegmentedListItem([FillerSegment(), TextSegment("Flags:"), self.case_sensitive, self.use_regexp, FillerSegment()])
+        # Single leading filler right-aligns the "Flags:" group against the
+        # right edge (subclasses prepend a left-aligned "Type:" group).
+        self.header = SegmentedListItem([FillerSegment(), TextSegment("Flags:"), self.case_sensitive, self.use_regexp])
         buttons = SegmentedListItem([FillerSegment(),
                                      ButtonSegment("[Search Next]", lambda: self.do_search(backward = False)),
                                      ButtonSegment("[Search Previous]", lambda: self.do_search(backward = True)),
                                      ButtonSegment("[Clear]", self.clear_input),
                                      FillerSegment()])
         buttons.is_selectable = False
-        super().__init__(id, ' Search', self.header, buttons)
+        super().__init__(id, ' Search', self.header, buttons, width = width)
 
     def clear_input(self):
         self.clear()
@@ -3003,7 +3010,9 @@ class GitSearchDialogPopup(SearchDialogPopup):
               ('path', '[Filepaths]'), ('diff', '[Diff]')]
 
     def __init__(self):
-        super().__init__(ID_GIT_LOG_SEARCH)
+        # Wider than the plain search popup: the "Type:" group plus the right-
+        # aligned "Flags:" group don't fit in the default width.
+        super().__init__(ID_GIT_LOG_SEARCH, width = 76)
         self._type_segments = [(t, ToggleSegment(label, callback=lambda val, t=t: self.change_search_type(t)))
                                for t, label in self._TYPES]
         self.header.segments[0:0] = [TextSegment("Type:")] + [s for _, s in self._type_segments]
