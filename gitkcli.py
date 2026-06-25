@@ -3084,6 +3084,8 @@ class GitSearchDialogPopup(SearchDialogPopup):
 
 class Screen:
 
+    FLASH_DURATION = 2.0  # seconds a success flash replaces the bottom bar
+
     @classmethod
     def _init_color(cls, pair_number: int, nfg:int, nbg:int = -1, hfg:int = -1, hbg:int = -1, sfg:int = -1, sbg:int = -1, shfg:int = -1, shbg:int = -1) -> None:
         # normal
@@ -3163,6 +3165,7 @@ class Screen:
                    curses.COLOR_WHITE, curses.COLOR_RED)                          # (white on red)
 
         curses.init_pair(204, curses.COLOR_BLACK, curses.COLOR_CYAN)  # Bottom-bar label block (Midnight Commander style)
+        curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Success flash over the bottom bar
 
         curses.curs_set(0)  # Hide cursor
         stdscr.timeout(5)
@@ -3200,6 +3203,12 @@ class Screen:
         # Filled by draw_bottom_bar each frame: (x_start, x_end, callback) ranges
         # used to route clicks on the bottom row to the right entry.
         self.bar_hitmap = []
+
+        # Success "flash": for FLASH_DURATION seconds after a command succeeds the
+        # whole bottom bar is replaced by this message on a green background, then
+        # reverts to the function-key panel. Empty when no flash is showing.
+        self.flash_message = ''
+        self.flash_time = 0.0
 
         stdscr.clear()
         stdscr.refresh()
@@ -3246,16 +3255,38 @@ class Screen:
             return False
         return not any(v.view_mode == 'fullscreen' for v in views[views.index(view) + 1:])
 
+    def show_flash(self, message:str):
+        """Replace the bottom bar with `message` on green for FLASH_DURATION."""
+        self.flash_message = message.splitlines()[0] if message else ''
+        self.flash_time = time.time()
+
+    def flash_active(self) -> bool:
+        """True while a flash should keep the main loop redrawing the bottom bar
+        (either still showing, or set-but-expired and awaiting one clearing draw)."""
+        return bool(self.flash_message)
+
     def draw_bottom_bar(self, stdscr):
         """Draw the global function-key panel on the bottom row and rebuild the
         click hit-map. Midnight-Commander style: a 2-wide key number followed by
         the label on a cyan block, with the entries spread evenly across the full
         width (e.g. `` 1Log        2Refs       …``). Written to stdscr (the bottom
-        of the panel deck); composited under the panels by update_panels()."""
+        of the panel deck); composited under the panels by update_panels().
+
+        While a success flash is active the whole row is drawn green instead."""
         lines, cols = stdscr.getmaxyx()
         if cols < 2 or lines < 1:
             return
         y = lines - 1
+
+        if self.flash_message:
+            if time.time() - self.flash_time < self.FLASH_DURATION:
+                # cols - 1: the bottom-right cell raises addwstr() ERR (see below).
+                stdscr.addstr(y, 0, self.flash_message[:cols - 1].ljust(cols - 1),
+                              curses.color_pair(201))
+                self.bar_hitmap = []  # the F-key cells are hidden, so swallow clicks
+                return
+            self.flash_message = ''  # expired: fall through and redraw the F-key bar
+
         num_attr = Screen.color(1)             # key number: light text on default bg
         label_attr = curses.color_pair(204)    # label: black on cyan
         # cols - 1: writing the bottom-right cell advances the cursor off-screen
@@ -3313,7 +3344,13 @@ class Log:
         if self.level > 3: self.log(1, txt)
 
     def success(self, txt):
-        if self.level > 2: self.log(1, txt)
+        if self.level > 2:
+            self.log(1, txt)
+            # Flash the message green over the bottom bar (guarded: success can
+            # fire during start-up before the screen exists).
+            screen = getattr(Gitkcli, 'screen', None)
+            if screen is not None:
+                screen.show_flash(txt)
 
     def warning(self, txt):
         if self.level > 1: self.log(12, txt)
@@ -3727,7 +3764,11 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
             update_jobs = Job.process_all_jobs()
 
-            if update_jobs or user_input:
+            # A success flash auto-expires on a timer, so keep redrawing the bottom
+            # bar while one is showing even if nothing else changed.
+            flash = Gitkcli.screen.flash_active()
+
+            if update_jobs or user_input or flash:
                 try:
                     # Draws dirty content, then composites the panel deck and the
                     # bottom bar in one doupdate().
@@ -3738,8 +3779,8 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
             active_view = Gitkcli.screen.get_active_view()
             if not active_view:
                 break;
-            
-            stdscr.timeout(5 if update_jobs else 100)
+
+            stdscr.timeout(5 if update_jobs or flash else 100)
 
             user_input = Gitkcli.keyboard.read(stdscr)
             if not user_input:
