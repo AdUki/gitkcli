@@ -268,6 +268,8 @@ class GitLogJob(Job):
             id, commit = item
             if Gitkcli.git_log.add_commit(id, commit):
                 Gitkcli.git_log.append(CommitListItem(id))
+                if id == Gitkcli.git_log.head_id:
+                    Gitkcli.git_log.focus_head_if_pending()
 
 class GitRefreshHeadJob(GitLogJob):
     def __init__(self):
@@ -494,6 +496,7 @@ class GitRefsJob(Job):
         Gitkcli.git_log.dirty = True
         if item['type'] == 'head':
             Gitkcli.git_log.head_id = id
+            Gitkcli.git_log.focus_head_if_pending()
 
 class Item:
     def __init__(self):
@@ -1785,6 +1788,10 @@ class GitLogView(ListView):
         self.jump_index = 0
         self.head_branch = ''
         self.head_id = ''
+        # One-shot: scroll to HEAD the first time it can be located after launch,
+        # so it is visible even when it is not at the top (uncommitted rows above
+        # it, an unrelated revision arg, or a detached/old HEAD deep in the list).
+        self._focus_head_pending = True
 
         self.show_commit_id = True
         self.show_commit_date = True
@@ -1882,6 +1889,14 @@ class GitLogView(ListView):
                 self.set_selected(idx)
                 return item
         return None
+
+    def focus_head_if_pending(self):
+        """Select HEAD once on startup as soon as both its id and its row are
+        available. The id (from the refs job) and the commit rows (from the log
+        job) arrive asynchronously, so this is called from both sides; whichever
+        completes the pair wins, then the one-shot flag disables it."""
+        if self._focus_head_pending and self.head_id and self.select_commit(self.head_id):
+            self._focus_head_pending = False
 
     def add_to_jump_list(self, commit_id:str, line:typing.Optional[int] = None, offset_y:typing.Optional[int] = None):
         self.jump_list = self.jump_list[self.jump_index:]
