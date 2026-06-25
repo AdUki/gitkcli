@@ -945,25 +945,31 @@ class WindowTopBarItem(SegmentedListItem):
     # are intentionally bypassed (see draw_line) so the bar stays a thin line.
     LINE_ACTIVE, LINE_INACTIVE = 5, 18
     TEXT_ACTIVE, TEXT_INACTIVE = 1, 18
+    CLOSE_COLOR = 2  # red [X] close button when active
 
-    def __init__(self, title:str, additional_segments = [], title_color = None, title_provider = None):
-        # title_provider, if given, is a callable returning the title text; it is
-        # invoked on every draw so the bar can show live state (e.g. a line
-        # counter). title_color overrides the title's text colour when active.
+    def __init__(self, title:str, additional_segments = [], title_color = None):
+        # title_color overrides the title's text colour when active. The bar
+        # shows a live "[current/total]" line counter after the title, updated
+        # generically by View.draw_header from the owning view's state.
+        self._base_title = title
         self.title_segment = TextSegment(title, self.TEXT_ACTIVE)
         self._title_color = title_color
-        self._title_provider = title_provider
         self._leading = TextSegment('─', self.LINE_ACTIVE)
+        self._close_segment = ButtonSegment("[X]", lambda: Gitkcli.screen.hide_active_view(), self.TEXT_ACTIVE)
         segments = [self._leading,
                     self.title_segment,
                     FillerSegment()]
         segments.extend(additional_segments)
-        segments.append(ButtonSegment("[X]", lambda: Gitkcli.screen.hide_active_view(), self.TEXT_ACTIVE))
+        segments.append(self._close_segment)
         super().__init__(segments, self.LINE_INACTIVE)
         self.fill_char = '─'
 
     def set_title(self, txt:str):
+        self._base_title = txt
         self.title_segment.set_text(txt)
+
+    def set_counter(self, current:int, total:int):
+        self.title_segment.set_text(f'{self._base_title} [{current}/{total}]')
 
     def get_fill_txt(self, width):
         # Reserve one trailing column so the rule always ends "…[X]─": a dash
@@ -975,8 +981,6 @@ class WindowTopBarItem(SegmentedListItem):
         # `selected` is the view's active state (passed by View.draw). Recolour
         # every segment for that state, then draw with selected=False so the
         # row never gets a highlight band — it must read as a single line.
-        if self._title_provider:
-            self.title_segment.set_text(self._title_provider())
         active = selected
         line_color = self.LINE_ACTIVE if active else self.LINE_INACTIVE
         text_color = self.TEXT_ACTIVE if active else self.TEXT_INACTIVE
@@ -984,8 +988,10 @@ class WindowTopBarItem(SegmentedListItem):
         for seg in self.segments:
             if seg is self._leading:
                 seg.color = line_color
-            elif seg is self.title_segment and active and self._title_color is not None:
+            elif active and seg is self.title_segment and self._title_color is not None:
                 seg.color = self._title_color
+            elif active and seg is self._close_segment:
+                seg.color = self.CLOSE_COLOR
             else:
                 seg.color = text_color
         super().draw_line(win, offset, width, False, matched, marked)
@@ -1366,6 +1372,9 @@ class View:
             # Rule-line title bar (main views). Columns [left, right) the
             # title may paint; the divider / box-corner columns are left for
             # the vline (split) or box corners (┌─ Title ──[X]─┐, floated).
+            if isinstance(self.header_item, WindowTopBarItem) and hasattr(self, 'items'):
+                current = self._selected + 1 if self.items else 0
+                self.header_item.set_counter(current, len(self.items))
             left, right = 0, cols
             if sides is not None:
                 if 'left' in sides:
@@ -1524,6 +1533,11 @@ class ListView(View):
         self.items.append(item)
         if len(self.items) - self._offset_y < self.height:
             self.dirty = True
+        else:
+            # The new row is off-screen, so the body need not be redrawn — but
+            # the header's "[current/total]" counter changed, so request a cheap
+            # header-only redraw to keep it current while items stream in.
+            self.header_dirty = True
         if self.autoscroll:
             self._offset_y = max(0, len(self.items) - self.height)
         
@@ -1788,25 +1802,13 @@ class GitLogView(ListView):
         self.job.args = list(self._cli_args) + flags.split()
 
         repo_name = os.path.basename(Job.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
-        def repo_title():
-            current = self._selected + 1 if self.items else 0
-            return f'{repo_name} [{current}/{len(self.items)}]'
-        self.set_header_item(WindowTopBarItem(repo_title(), [
+        self.set_header_item(WindowTopBarItem(repo_name, [
                 SplitButtonSegment(30),
                 ButtonSegment("[<-]", lambda: self.move_in_jump_list(+1), 30),
                 ButtonSegment("[->]", lambda: self.move_in_jump_list(-1), 30)
-            ], title_color = 5, title_provider = repo_title))
+            ], title_color = 5))
 
         self.set_search_dialog(GitSearchDialogPopup());
-
-    def append(self, item):
-        # The header shows a live "[current/total]" counter, so every appended
-        # commit changes the title even when the new row is off-screen. The base
-        # class only marks the view dirty for on-screen appends; request a
-        # cheap header-only redraw so the counter keeps up without re-rendering
-        # the whole body for every streamed commit.
-        super().append(item)
-        self.header_dirty = True
 
     def add_commit(self, id, commit):
         if id in self.commits:
