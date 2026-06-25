@@ -946,8 +946,13 @@ class WindowTopBarItem(SegmentedListItem):
     LINE_ACTIVE, LINE_INACTIVE = 5, 18
     TEXT_ACTIVE, TEXT_INACTIVE = 1, 18
 
-    def __init__(self, title:str, additional_segments = []):
+    def __init__(self, title:str, additional_segments = [], title_color = None, title_provider = None):
+        # title_provider, if given, is a callable returning the title text; it is
+        # invoked on every draw so the bar can show live state (e.g. a line
+        # counter). title_color overrides the title's text colour when active.
         self.title_segment = TextSegment(title, self.TEXT_ACTIVE)
+        self._title_color = title_color
+        self._title_provider = title_provider
         self._leading = TextSegment('─', self.LINE_ACTIVE)
         segments = [self._leading,
                     self.title_segment,
@@ -970,12 +975,19 @@ class WindowTopBarItem(SegmentedListItem):
         # `selected` is the view's active state (passed by View.draw). Recolour
         # every segment for that state, then draw with selected=False so the
         # row never gets a highlight band — it must read as a single line.
+        if self._title_provider:
+            self.title_segment.set_text(self._title_provider())
         active = selected
         line_color = self.LINE_ACTIVE if active else self.LINE_INACTIVE
         text_color = self.TEXT_ACTIVE if active else self.TEXT_INACTIVE
         self.bg_color = line_color
         for seg in self.segments:
-            seg.color = line_color if seg is self._leading else text_color
+            if seg is self._leading:
+                seg.color = line_color
+            elif seg is self.title_segment and active and self._title_color is not None:
+                seg.color = self._title_color
+            else:
+                seg.color = text_color
         super().draw_line(win, offset, width, False, matched, marked)
 
     def handle_mouse_input(self, mouse) -> bool:
@@ -1062,6 +1074,9 @@ class View:
         self.fixed_width = width
 
         self.dirty:bool = True
+        # When only the header line changed (e.g. a live counter in the title),
+        # redraw just row 0 instead of the whole body. A full redraw subsumes it.
+        self.header_dirty:bool = False
         self.resize_mode:str = ''
         
         height, width, y, x = self._calculate_dimensions()
@@ -1294,9 +1309,13 @@ class View:
         # it is re-emitted even when its content is unchanged (used on full redraw).
         if self.dirty or force:
             self.dirty = False
+            self.header_dirty = False
             if force:
                 self.win.touchwin()
             self.draw()
+        elif self.header_dirty:
+            self.header_dirty = False
+            self.draw_header(self.split_border_sides())
 
     def border_color(self):
         return curses.color_pair(5 if self.is_active() else 18)
@@ -1321,36 +1340,42 @@ class View:
             self.win.attrset(self.border_color())
             self.win.box()
 
-        # draw header
-        if self.header_item:
-            _, cols = self.win.getmaxyx()
-            if self.is_popup:
-                # New style: the title sits inset in the box's top border
-                # (┌─ Title ───────┐), no banner and no [X]. Drawn in the box's
-                # own colour (red for warning/error dialogs).
-                title = self.header_item.get_text().strip()
-                if title:
-                    label = f' {title} '[:max(0, cols - 4)]
-                    if label:
-                        self.win.move(0, 2)
-                        self.win.addstr(label, self.border_color() | curses.A_BOLD)
-            else:
-                # Rule-line title bar (main views). Columns [left, right) the
-                # title may paint; the divider / box-corner columns are left for
-                # the vline (split) or box corners (┌─ Title ──[X]─┐, floated).
-                left, right = 0, cols
-                if sides is not None:
-                    if 'left' in sides:
-                        left = 1
-                    if 'right' in sides:
-                        right = cols - 1
-                elif self.view_mode == 'window':
-                    left, right = 1, cols - 1
-                self.win.move(0, left)
-                self.header_item.draw_line(self.win, 0, right - left, self.is_active(), False, False)
+        self.draw_header(sides)
 
         if self != Gitkcli.log.view and self.get_parent() != Gitkcli.log.view:
             Gitkcli.log.debug(f'Draw view {self.id}')
+
+    def draw_header(self, sides):
+        """Draw only the header line (row 0). Called by the full draw() and, on
+        its own, when header_dirty is set so a title change (e.g. a live counter)
+        repaints without re-rendering the body."""
+        if not self.header_item:
+            return
+        _, cols = self.win.getmaxyx()
+        if self.is_popup:
+            # New style: the title sits inset in the box's top border
+            # (┌─ Title ───────┐), no banner and no [X]. Drawn in the box's
+            # own colour (red for warning/error dialogs).
+            title = self.header_item.get_text().strip()
+            if title:
+                label = f' {title} '[:max(0, cols - 4)]
+                if label:
+                    self.win.move(0, 2)
+                    self.win.addstr(label, self.border_color() | curses.A_BOLD)
+        else:
+            # Rule-line title bar (main views). Columns [left, right) the
+            # title may paint; the divider / box-corner columns are left for
+            # the vline (split) or box corners (┌─ Title ──[X]─┐, floated).
+            left, right = 0, cols
+            if sides is not None:
+                if 'left' in sides:
+                    left = 1
+                if 'right' in sides:
+                    right = cols - 1
+            elif self.view_mode == 'window':
+                left, right = 1, cols - 1
+            self.win.move(0, left)
+            self.header_item.draw_line(self.win, 0, right - left, self.is_active(), False, False)
 
     def on_activated(self):
         Gitkcli.log.debug(f'View {self.id} activated')
@@ -1763,13 +1788,25 @@ class GitLogView(ListView):
         self.job.args = list(self._cli_args) + flags.split()
 
         repo_name = os.path.basename(Job.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
-        self.set_header_item(WindowTopBarItem('Repository: ' + repo_name, [
+        def repo_title():
+            current = self._selected + 1 if self.items else 0
+            return f'{repo_name} [{current}/{len(self.items)}]'
+        self.set_header_item(WindowTopBarItem(repo_title(), [
                 SplitButtonSegment(30),
                 ButtonSegment("[<-]", lambda: self.move_in_jump_list(+1), 30),
                 ButtonSegment("[->]", lambda: self.move_in_jump_list(-1), 30)
-            ]))
+            ], title_color = 5, title_provider = repo_title))
 
         self.set_search_dialog(GitSearchDialogPopup());
+
+    def append(self, item):
+        # The header shows a live "[current/total]" counter, so every appended
+        # commit changes the title even when the new row is off-screen. The base
+        # class only marks the view dirty for on-screen appends; request a
+        # cheap header-only redraw so the counter keeps up without re-rendering
+        # the whole body for every streamed commit.
+        super().append(item)
+        self.header_dirty = True
 
     def add_commit(self, id, commit):
         if id in self.commits:
@@ -2016,7 +2053,7 @@ class GitDiffView(ListView):
                                    lambda: Gitkcli.git_diff.change_ignore_whitespace(), 30),
             ButtonSegment("[<-]", lambda: Gitkcli.git_log.move_in_jump_list(+1), 30),
             ButtonSegment("[->]", lambda: Gitkcli.git_log.move_in_jump_list(-1), 30)
-        ]))
+        ], title_color = 5))
 
         self.set_search_dialog(SearchDialogPopup(ID_GIT_DIFF_SEARCH))
 
@@ -2092,7 +2129,7 @@ class GitRefsView(ListView):
 
         self.refs = {} # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
 
-        self.set_header_item(WindowTopBarItem('Git references'))
+        self.set_header_item(WindowTopBarItem('Git references', title_color = 5))
         self.set_search_dialog(SearchDialogPopup(ID_GIT_REFS_SEARCH))
 
         self.view_new_ref = NewRefDialogPopup()
@@ -2134,7 +2171,7 @@ class LogView(ListView):
             TextSegment("  Log level:", 30),
             DynamicTextSegment(lambda: Gitkcli.log.level, 30),
             ButtonSegment("[+]", lambda: self.change_log_level(+1), 30),
-            ButtonSegment("[-]", lambda: self.change_log_level(-1), 30)]))
+            ButtonSegment("[-]", lambda: self.change_log_level(-1), 30)], title_color = 5))
 
         self.set_search_dialog(SearchDialogPopup(ID_LOG_SEARCH))
 
