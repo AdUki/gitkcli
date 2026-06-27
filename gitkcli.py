@@ -1974,6 +1974,17 @@ class GitLogView(ListView):
         completes the pair wins, then the one-shot flag disables it."""
         if self._focus_head_pending and self.head_id and self.select_commit(self.head_id):
             self._focus_head_pending = False
+            # At this instant HEAD is the last row streamed in, so select_commit's
+            # center clamp (min(sel - h/2, len - h)) pins it to the bottom of the
+            # screen. Re-place it half a screen from the top WITHOUT clamping to
+            # the rows loaded so far; the older commits stream in below and fill
+            # the lower half, leaving HEAD centered. This must happen now, not only
+            # when the log finishes loading: with `git log --all` on a huge repo
+            # the load never finishes promptly, so deferring left HEAD stuck at the
+            # bottom for the whole session.
+            if self.height > 0:
+                self._offset_y = max(0, self._selected - self.height // 2)
+                self.dirty = True
 
     def select_if_pending(self, id:str):
         """Re-select a commit remembered across a reload (reload_commits), once its
