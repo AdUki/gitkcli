@@ -268,8 +268,10 @@ class GitLogJob(Job):
             id, commit = item
             if Gitkcli.git_log.add_commit(id, commit):
                 Gitkcli.git_log.append(CommitListItem(id))
+                Gitkcli.git_log.select_if_pending(id)
                 if id == Gitkcli.git_log.head_id:
                     Gitkcli.git_log.focus_head_if_pending()
+                    Gitkcli.git_log._place_uncommitted_rows()
 
 class GitRefreshHeadJob(GitLogJob):
     def __init__(self):
@@ -293,6 +295,8 @@ class GitRefreshHeadJob(GitLogJob):
         (id, commit) = item
         if Gitkcli.git_log.add_commit(id, commit):
             Gitkcli.git_log.prepend_commit(CommitListItem(id))
+            if id == Gitkcli.git_log.head_id:
+                Gitkcli.git_log._place_uncommitted_rows()
 
 class GitDiffJob(Job):
     def __init__(self):
@@ -497,6 +501,7 @@ class GitRefsJob(Job):
         if item['type'] == 'head':
             Gitkcli.git_log.head_id = id
             Gitkcli.git_log.focus_head_if_pending()
+            Gitkcli.git_log._place_uncommitted_rows()
 
 class Item:
     def __init__(self):
@@ -1007,14 +1012,25 @@ class WindowTopBarItem(SegmentedListItem):
             return True
         return False
 
-class UncommittedChangesListItem(TextListItem):
+class UncommittedChangesListItem(SegmentedListItem):
     def __init__(self, staged:bool = False):
+        super().__init__()
         self._staged = staged
         self.id = 'local-staged' if staged else 'local-working'
+        # Graph art mirrored from the HEAD row when in --graph mode; set by
+        # GitLogView._place_uncommitted_rows, empty otherwise.
+        self.graph_prefix = ''
         if self._staged:
-            super().__init__('Uncommitted changes (staged)', 3)
+            self.txt, self.color = 'Uncommitted changes (staged)', 3
         else:
-            super().__init__('Uncommitted changes (working directory)', 2)
+            self.txt, self.color = 'Uncommitted changes (working directory)', 2
+
+    def get_segments(self):
+        segments = []
+        if self.graph_prefix:
+            segments.append(TextSegment(self.graph_prefix))
+        segments.append(TextSegment(self.txt, self.color))
+        return segments
 
     def load_to_view(self):
         if Gitkcli.git_diff.commit_id == self.id:
@@ -1788,6 +1804,17 @@ class GitLogView(ListView):
         self.jump_index = 0
         self.head_branch = ''
         self.head_id = ''
+        # Whether the working tree / index currently differ; recomputed by
+        # check_uncommitted_changes and consumed by _place_uncommitted_rows.
+        self._has_working = False
+        self._has_staged = False
+        # In --graph mode git computes the lane art over the whole commit set, so
+        # we cannot append a single commit's art incrementally - HEAD changes must
+        # trigger a full reload instead. Recomputed in set_pref_flags.
+        self._graph_mode = '--graph' in git_args
+        # Commit to re-select once it streams back in after a reload (keeps the
+        # cursor where the user left it). One-shot, like _focus_head_pending.
+        self._pending_select_id = ''
         # One-shot: scroll to HEAD the first time it can be located after launch,
         # so it is visible even when it is not at the top (uncommitted rows above
         # it, an unrelated revision arg, or a detached/old HEAD deep in the list).
@@ -1807,6 +1834,8 @@ class GitLogView(ListView):
     def set_pref_flags(self, flags: str):
         self.pref_flags = flags
         self.job.args = list(self._cli_args) + flags.split()
+        # --graph may also arrive via the preferences "flags" field.
+        self._graph_mode = '--graph' in self.job.args
 
         repo_name = os.path.basename(Job.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
         self.set_header_item(WindowTopBarItem(repo_name, [
@@ -1824,12 +1853,26 @@ class GitLogView(ListView):
         return True
 
     def refresh_head(self):
-        commit_id = self.head_id
-        if commit_id:
-            self.job_git_refresh_head.start_job(['--reverse', f'{commit_id}..HEAD'])
+        """Pull in commits made since the view last saw HEAD. In --graph mode the
+        lane art is computed by git over the whole commit set, so a single new
+        commit cannot be appended with correct art - reload the full log instead.
+        Otherwise fetch just the new commits cheaply with `old..HEAD`."""
+        new_head = Job.run_job(['git', 'rev-parse', 'HEAD']).stdout.strip()
+        if self._graph_mode:
+            self.head_id = new_head
+            self.reload_commits()
+            return
+        if self.head_id:
+            # The job's in-view guard needs the OLD head, so start it before
+            # advancing head_id below.
+            self.job_git_refresh_head.start_job(['--reverse', f'{self.head_id}..HEAD'])
+        self.head_id = new_head
         self.check_uncommitted_changes()
 
     def reload_commits(self):
+        # Re-select the same commit once it streams back in, so a reload (prefs
+        # change, F5 in --graph mode, Shift+F5) does not dump the cursor at the top.
+        self._pending_select_id = self.get_selected_commit_id()
         self.clear()
         self.job.start_job()
         self.check_uncommitted_changes()
@@ -1847,41 +1890,75 @@ class GitLogView(ListView):
         return ret
 
     def check_uncommitted_changes(self):
-        to_remove = 0
-        for i in range(min(2, len(self.items))):
-            if hasattr(self.items[i], 'id') and self.items[i].id.startswith('local'):
-                to_remove += 1
-        for _ in range(to_remove):
-            self.items.pop(0)
-            if self._selected > 0:
-                self._selected -= 1
-            if self._offset_y > 0:
-                self._offset_y -= 1
+        """Probe the working tree / index and (re)place the pseudo-rows."""
+        self._has_staged = Job.run_job(['git', 'diff', '--cached', '--quiet']).returncode != 0
+        self._has_working = Job.run_job(['git', 'diff', '--quiet']).returncode != 0
+        self._place_uncommitted_rows()
 
-        # Check for staged changes
-        result = Job.run_job(['git', 'diff', '--cached', '--quiet'])
-        has_staged = result.returncode != 0
-        if has_staged:
-            self.prepend_commit(UncommittedChangesListItem(staged = True))
+    def _place_uncommitted_rows(self):
+        """Single source of truth for the uncommitted pseudo-rows: drop any that
+        exist and reinsert the ones we need directly above the HEAD commit row
+        (working above staged), keeping the cursor on the same screen line.
+        Idempotent, so it can be re-fired whenever HEAD or the rows change."""
+        selected_id = getattr(self.get_selected(), 'id', None)
+        old_selected = self._selected
 
-        # Check for working directory changes
-        result = Job.run_job(['git', 'diff', '--quiet'])
-        has_working = result.returncode != 0
-        if has_working:
-            self.prepend_commit(UncommittedChangesListItem())
+        # Rebuild the list without the pseudo-rows.
+        self.items = [it for it in self.items if not isinstance(it, UncommittedChangesListItem)]
+
+        # Insert directly above the HEAD row; fall back to the top of the
+        # real-commit list when HEAD is not (yet) in view.
+        first_commit = head_index = None
+        for i, it in enumerate(self.items):
+            if isinstance(it, CommitListItem):
+                if first_commit is None:
+                    first_commit = i
+                if it.id == self.head_id:
+                    head_index = i
+                    break
+        insert_at = head_index if head_index is not None else (first_commit or 0)
+
+        # Mirror HEAD's graph art onto the rows only when HEAD is the topmost
+        # commit, so they render as nodes in HEAD's lane; never splice a node into
+        # unrelated lanes when HEAD is buried (e.g. --all). Empty when not in
+        # --graph mode.
+        graph_prefix = ''
+        if head_index is not None and head_index == first_commit:
+            graph_prefix = self.commits.get(self.head_id, {}).get('prefix', '')
+
+        rows = []
+        if self._has_working:
+            rows.append(UncommittedChangesListItem(staged = False))
+        if self._has_staged:
+            rows.append(UncommittedChangesListItem(staged = True))
+        for n, row in enumerate(rows):
+            row.graph_prefix = graph_prefix
+            self.items.insert(insert_at + n, row)
+
+        # Keep the previously-selected row on the same screen line. Real commits
+        # keep their identity across the rebuild; pseudo-rows are recreated, so we
+        # match by id (a selected pseudo-row that vanished falls through to clamp).
+        new_index = next((i for i, it in enumerate(self.items)
+                          if getattr(it, 'id', None) == selected_id), None)
+        if selected_id is not None and new_index is not None:
+            self._selected = new_index
+            self._offset_y = max(0, self._offset_y + (new_index - old_selected))
+        if self.items:
+            self._selected = max(0, min(self._selected, len(self.items) - 1))
+        self.dirty = True
 
     def prepend_commit(self, item):
-        offset = 0
-        for i in range(min(2, len(self.items))):
-            if item.id.startswith('local'):
-                if self.items[i].id == item.id:
-                    return
-            elif self.items[i].id.startswith('local'):
-                offset += 1
-        self.items.insert(offset, item)
-        if self._offset_y > 0:
+        """Insert a freshly-discovered real commit at the front of the
+        real-commit sequence, below any leading uncommitted pseudo-rows."""
+        insert_at = 0
+        while insert_at < len(self.items) and isinstance(self.items[insert_at], UncommittedChangesListItem):
+            insert_at += 1
+        self.items.insert(insert_at, item)
+        if insert_at <= self._selected:
+            self._selected += 1
+        if insert_at <= self._offset_y:
             self._offset_y += 1
-        self.set_selected(self._selected + 1)
+        self.dirty = True
 
     def select_commit(self, id:str) -> typing.Optional[CommitListItem]:
         for idx, item in enumerate(self.items):
@@ -1897,6 +1974,12 @@ class GitLogView(ListView):
         completes the pair wins, then the one-shot flag disables it."""
         if self._focus_head_pending and self.head_id and self.select_commit(self.head_id):
             self._focus_head_pending = False
+
+    def select_if_pending(self, id:str):
+        """Re-select a commit remembered across a reload (reload_commits), once its
+        row streams back in. One-shot, so it clears itself after restoring."""
+        if self._pending_select_id and id == self._pending_select_id and self.select_commit(id):
+            self._pending_select_id = ''
 
     def add_to_jump_list(self, commit_id:str, line:typing.Optional[int] = None, offset_y:typing.Optional[int] = None):
         self.jump_list = self.jump_list[self.jump_index:]
@@ -1951,19 +2034,27 @@ class GitLogView(ListView):
 
     def get_selected_commit_id(self):
         selected_item = self.get_selected()
-        if selected_item:
+        # Pseudo-rows have no real sha; report none so callers never feed a
+        # 'local-*' id into a git command.
+        if selected_item and not isinstance(selected_item, UncommittedChangesListItem):
             return selected_item.id
         return ''
 
     def cherry_pick(self, commit_id = None):
-        Job.run_job(['git', 'cherry-pick', '--abort'])
         commit_id = commit_id or self.get_selected_commit_id()
+        if not commit_id:
+            Gitkcli.log.warning('Select a commit to cherry-pick')
+            return
+        Job.run_job(['git', 'cherry-pick', '--abort'])
         Gitkcli.run_git(['git', 'cherry-pick', '-m', '1', commit_id],
                         ok=f'Commit {commit_id} cherry picked successfully',
                         err='Error during cherry-pick', refresh_head=True, reload_refs=True)
 
     def revert(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
+        if not commit_id:
+            Gitkcli.log.warning('Select a commit to revert')
+            return
         Gitkcli.run_git(['git', 'revert', '--no-edit', '-m', '1', commit_id],
                         ok=f'Commit {commit_id} reverted successfully',
                         err='Error during revert', refresh_head=True, reload_refs=True)
@@ -1977,9 +2068,11 @@ class GitLogView(ListView):
 
     def reset(self, mode, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
+        # refresh_head so --graph mode reloads the log (HEAD moved); it also
+        # re-probes uncommitted changes, so check_uncommitted is not needed.
         Gitkcli.run_git(['git', 'reset', mode, commit_id],
                         ok=f'{mode[2:].capitalize()} reset to {commit_id[:8]}',
-                        err=f'Error during {mode} reset', reload_refs=True, check_uncommitted=True)
+                        err=f'Error during {mode} reset', refresh_head=True, reload_refs=True)
 
     def clean_uncommitted_changes(self, staged:bool = False):
         if staged:
@@ -2268,10 +2361,9 @@ class ContextMenu(ListView):
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Quit", item.exit_program))
         elif view_id == 'git-log' and hasattr(item, 'id'):
-            if item.id == 'local-staged':
-                self.append(ContextMenuItem("Clear staged changes", view.clean_uncommitted_changes, [True]))
-            elif item.id == 'local-working':
-                self.append(ContextMenuItem("Clear unstaged changes", view.clean_uncommitted_changes, [False]))
+            if isinstance(item, UncommittedChangesListItem):
+                label = "Clear staged changes" if item._staged else "Clear unstaged changes"
+                self.append(ContextMenuItem(label, view.clean_uncommitted_changes, [item._staged]))
             else:
                 self.append(ContextMenuItem("Create new branch", Gitkcli.git_refs.view_new_ref.create_ref, [item.id]))
                 self.append(ContextMenuItem("Create new tag", Gitkcli.git_refs.view_new_ref.create_ref, [item.id, 'tag']))
