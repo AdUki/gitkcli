@@ -948,7 +948,7 @@ class WindowTopBarItem(SegmentedListItem):
     # are intentionally bypassed (see draw_line) so the bar stays a thin line.
     LINE_ACTIVE, LINE_INACTIVE = 5, 18
     TEXT_ACTIVE, TEXT_INACTIVE = 1, 18
-    CLOSE_COLOR = 2  # red [X] close button when active
+    CLOSE_COLOR = 2  # red [X] close button, in both active and inactive bars
 
     def __init__(self, title:str, additional_segments = [], title_color = None):
         # title_color overrides the title's text colour when active. The bar
@@ -993,7 +993,7 @@ class WindowTopBarItem(SegmentedListItem):
                 seg.color = line_color
             elif active and seg is self.title_segment and self._title_color is not None:
                 seg.color = self._title_color
-            elif active and seg is self._close_segment:
+            elif seg is self._close_segment:
                 seg.color = self.CLOSE_COLOR
             else:
                 seg.color = text_color
