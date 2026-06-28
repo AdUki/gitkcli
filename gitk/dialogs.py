@@ -131,6 +131,12 @@ class RefPushDialogPopup(ListView):
         self.force.toggled = False
 
     def push_ref(self):
+        # No configured remote (or none selected): pushing would run
+        # `git push "" <ref>` -> a cryptic "fatal: no path specified" error
+        # dialog. Skip with a warning instead.
+        if not self.remote:
+            self.app.log.warning(f"No remote to push '{self.ref_name}' to")
+            return
         self._do_push(self.remote, self.ref_name, self.force.toggled)
 
     def _do_push(self, remote, ref_name, force):

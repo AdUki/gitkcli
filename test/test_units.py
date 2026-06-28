@@ -29,7 +29,7 @@ from gitk.list_view import ListView
 from gitk.jobs import GitLogJob, GitDiffJob, Job, _CONTROL_CHARS
 from gitk.items import UserInputListItem, StatListItem, TextListItem
 from gitk.screen import Screen
-from gitk.dialogs import SearchDialogPopup
+from gitk.dialogs import SearchDialogPopup, RefPushDialogPopup
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -582,3 +582,28 @@ def test_stat_file_path_bare_rename():
 
 def test_stat_file_path_brace_prefix_and_suffix():
     assert GitDiffJob._stat_file_path(' a/{b => c}/d.py | 3 +++') == 'a/c/d.py'
+
+
+# --- RefPushDialogPopup.push_ref: don't push to an empty remote ---------------
+# On a repo with no configured remote, self.remote is '' and pushing would run
+# `git push "" <ref>` -> a cryptic fatal error dialog. Guard it.
+
+def _push_env(remote):
+    pushed = []
+    warned = []
+    return SimpleNamespace(
+        remote=remote, ref_name='feature', force=SimpleNamespace(toggled=False),
+        app=SimpleNamespace(log=SimpleNamespace(warning=warned.append)),
+        _do_push=lambda r, n, f: pushed.append((r, n, f))), pushed, warned
+
+def test_push_ref_skips_when_no_remote():
+    me, pushed, warned = _push_env('')
+    RefPushDialogPopup.push_ref(me)
+    assert pushed == []          # no git push attempted
+    assert len(warned) == 1      # warned instead
+
+def test_push_ref_pushes_when_remote_selected():
+    me, pushed, warned = _push_env('origin')
+    RefPushDialogPopup.push_ref(me)
+    assert pushed == [('origin', 'feature', False)]
+    assert warned == []

@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 81 (BUG: pushing on a remote-less repo popped a fatal dialog).**
+  Continued the empty/edge-input → doomed-git-command sweep (cf. iter-72, iter-80).
+  Reset is already guarded (confirm_reset rejects empty/local commit_id). Found
+  the remaining gap in `RefPushDialogPopup.push_ref` (gitk/dialogs.py): the iter-41
+  fix stopped a blank remote TOGGLE, but on a repo with no remotes `self.remote`
+  is '' and pressing [Push] still ran `git push "" <ref>` -> "fatal: no path
+  specified" red error dialog. FIX: guard `if not self.remote:` -> log a warning
+  and skip. Unit-tested both branches (empty remote -> no push + warning; real
+  remote -> pushes). Used unit tests rather than a golden because the only trigger
+  (context-menu push on a remote-less repo) is awkward to drive and the fixture
+  has remotes anyway. Suite **72/72** (goldens untouched); units **68/68**.
+  (25th genuine bug.)
 - **2026-06-28 — Iteration 80 (BUG: empty New-Branch name popped a fatal-error dialog).**
   Audited the refs view / RefListItem (sound — last-row width reduced upstream,
   negative-pad is safe), then found an empty-input bug (same class as iter-72) in
