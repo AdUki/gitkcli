@@ -222,6 +222,15 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 65 (robustness probes: empty+graph, tiny terminals).**
+  Two more pty probes, both confirming graceful handling (no bug, no golden — see
+  rationale): (1) empty repo launched with `--graph` — also shows a clean empty
+  `[0/0]` log with no error (the iteration-63 unborn-branch fix holds on the
+  graph reload path too); a golden would just duplicate `log_empty_repo`. (2)
+  very small terminals (8x4, 20x6, 1x1) — no crash/traceback; the draw loop's
+  `curses.error` guard + the geometry minimums absorb it. A 1x1 screen is
+  garbage to assert on, so no golden. Robustness validated; no source change.
+  Full suite **64/64**; units **39/39**; goldens untouched.
 - **2026-06-28 — Iteration 64 (probe: detached HEAD — works; add regression golden).**
   Probed another untested startup state — a detached HEAD (a commit checked out
   directly) — via the pty harness. It renders CORRECTLY: log shown, the detached
