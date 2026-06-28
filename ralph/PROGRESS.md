@@ -222,6 +222,22 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 99 (VERIFY: full PLAN.md exit-criteria re-check; all 9 TRUE).**
+  Re-ran every exit-criterion check end-to-end after the iter-98 split:
+  C1 no `class Gitkcli` in project code; C2 `grep 'Gitkcli\.' gitkcli.py gitk/` = 0;
+  C3 gitkcli.py = 9-line shim; C4 every module ≤ 552 lines (no >600); C5 no
+  module-level app global (App injected); C6 golden suite 78/78 with NO modified
+  goldens and the `refactor-baseline` tag present; C7 `import gitkcli` +
+  `python3 gitkcli.py --help` + `gitk.main:main` all work, setup.py updated;
+  C8 no unchecked `[ ]` tasks in PROGRESS, STRUCTURE.md matches the tree; C9
+  units 94/94. ALL TRUE. Working tree clean; on branch (not master).
+  CLEANUP ITEM (surfaced, not acted on — created by an earlier agent run, not
+  this session): a stale git worktree `.claude/worktrees/clipboard-fix`
+  (detached HEAD at a June-18 commit, clean working tree) still contains the OLD
+  monolithic `gitkcli.py` with `class Gitkcli`, so a bare `grep -rn 'class
+  Gitkcli' .` matches it. The project tree is clean; recommend the user run
+  `git worktree remove .claude/worktrees/clipboard-fix` (or `git worktree
+  prune`) to clear the leftover. No code change. Suite **78/78**; units **94/94**.
 - **2026-06-28 — Iteration 98 (REGRESSION FIX: dialogs.py grew past the ≤600 floor; split out message_box.py).**
   Verifying exit criterion 8 (STRUCTURE.md matches the tree) surfaced a criterion-4
   regression I had introduced: my bug-fix additions (rename_branch, empty-input
