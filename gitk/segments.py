@@ -88,7 +88,7 @@ class RefSegment(TextSegment):
 
     def handle_mouse_input(self, mouse) -> bool:
         if mouse.event_type == 'right-click':
-            from gitkcli import RefListItem  # late import: avoids segments<->items cycle
+            from gitk.items import RefListItem  # late import: avoids segments<->items cycle
             return self.get_app().context_menu.show_context_menu(RefListItem(self.ref), 'git-refs')
         elif mouse.event_type == 'double-click' and 'tag_id' in self.ref:
             self.get_app().git_diff.job.show_tag_annotation(self.ref['tag_id'])

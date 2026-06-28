@@ -21,20 +21,21 @@
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
 - **Phase:** 2 — in progress. Extracted: `gitk/config.py`, `gitk/input.py`,
-  `gitk/screen.py`, `gitk/segments.py` (11 segment classes + `ref_color_and_title`;
-  imports Screen; `RefSegment` uses a function-local `from gitkcli import
-  RefListItem` to avoid the segment↔item cycle). gitkcli.py re-exports each.
-- **NEXT (Phase 2):** `gitk/items.py` — Item + SeparatorItem, RefListItem,
-  TextListItem, SpacerListItem, StatListItem, DiffListItem, ContextMenuItem,
-  UserInputListItem, ResetModeItem, and the SegmentedListItem family
-  (SegmentedListItem, ButtonRowItem, WindowTopBarItem, UncommittedChangesListItem,
-  CommitListItem, PreferenceRow). These depend on Screen + segments (both
-  extracted ✓) and `copy_to_clipboard` (config ✓). Watch: items reference views
-  (GitLogView/GitDiffView) in method bodies (late-bound) — handle with local
-  imports if needed. Item classes are also interleaved with segments/views.
-- **gitkcli.py:** 3308 lines · **package:**
-  `gitk/{__init__,config,input,screen,segments}.py` (screen 347, segments 245) ·
-  **Gitkcli refs:** 0.
+  `gitk/screen.py`, `gitk/segments.py`, `gitk/items.py` (16 item classes +
+  `button_row`; imports segments/Screen/config; `DiffListItem` uses a
+  function-local `from gitkcli import Job`). `RefSegment`'s late import now
+  points at `gitk.items`. gitkcli.py re-exports each.
+  NOTE: items.py is 654 lines (> ~600 cap) — split into items.py +
+  segmented_items.py in Phase 4 (per STRUCTURE.md).
+- **NEXT (Phase 2):** `gitk/view.py` — `View` + `ListView` (+ the module fn
+  `_raise_split_sibling`). These import Screen + curses; they reference items
+  (WindowTopBarItem isinstance, TextListItem, ButtonRowItem, SpacerListItem,
+  search dialogs) in method bodies (late-bound → local imports / re-export).
+  Then `gitk/views/` (git_log, git_diff, git_refs, log), `gitk/dialogs/`,
+  `gitk/jobs.py`, `gitk/log.py`, `gitk/app.py`, `gitk/main.py`.
+- **gitkcli.py:** 2684 lines · **package:**
+  `gitk/{__init__,config,input,screen,segments,items}.py` (screen 347,
+  segments 245, items 654) · **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
 
@@ -95,8 +96,12 @@
 - [x] `gitk/segments.py` — Segment + 10 subclasses + ref_color_and_title.
       Imports Screen; RefSegment uses a function-local `from gitkcli import
       RefListItem` to break the segment↔item cycle.
-- [ ] `gitk/items.py`
-- [ ] `gitk/segmented_items.py`
+- [x] `gitk/items.py` — Item + 15 subclasses + button_row (incl. the
+      SegmentedListItem family; STRUCTURE's separate segmented_items.py folded in
+      for now). 654 lines → split in Phase 4. DiffListItem uses a function-local
+      `from gitkcli import Job`.
+- [ ] `gitk/segmented_items.py` — DEFERRED: folded into items.py; split out in
+      Phase 4 to respect the ~600-line cap.
 - [ ] `gitk/view.py`
 - [ ] `gitk/views/` (git_log, git_diff, git_refs, log)
 - [ ] `gitk/dialogs/` (base, context_menu, confirm, error, preferences, reset,
@@ -135,6 +140,19 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 23 (Phase 2: extract `gitk/items.py`).**
+  Moved the 16 item classes (Item + plain items + the SegmentedListItem family)
+  and the `button_row` helper into `gitk/items.py`, in dependency order. Imports
+  segments, Screen, `copy_to_clipboard`, and input key constants. `DiffListItem`
+  uses a function-local `from gitkcli import Job` (Job not yet extracted);
+  `RefSegment`'s late import repointed to `gitk.items`. Audited deps: the only
+  real runtime cross-ref was Job; GitLogView/View/ListView "refs" were all
+  comments. FIRST attempt corrupted `View.__init__` — `ButtonRowItem`'s computed
+  range (next *class*) overlapped the intervening `button_row` *def*, so
+  highest-first deletion mis-shifted; reverted and redid with explicit
+  non-overlapping ranges (ButtonRowItem capped at the def, button_row its own
+  block) + an overlap assertion. Full suite: **60 passed, 0 failed**; goldens
+  clean. gitkcli.py 3308→2684; items.py 654 (> ~600 cap → split in Phase 4).
 - **2026-06-28 — Iteration 22 (Phase 2: extract `gitk/segments.py`).**
   Gathered the 11 segment classes (scattered across 5 source regions, dependency
   order Segment→…→ChoiceSegment) plus the `ref_color_and_title` helper into
