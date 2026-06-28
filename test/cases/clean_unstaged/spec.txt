@@ -1,0 +1,19 @@
+# "Clear unstaged changes" (context menu on the working-dir pseudo-row) runs
+# `git restore .`, discarding unstaged tracked-file modifications. Detached HEAD
+# so the single working-dir pseudo-row sits at the top; modify README.md
+# (unstaged, nothing staged). After clearing, the working tree is clean so the
+# pseudo-row disappears and HEAD is the top row. Coverage for the destructive
+# unstaged-clean path.
+size      120x40
+config    default
+run       git checkout --detach master && printf 'junk\n' >> README.md
+launch
+wait      stable
+key       g
+wait      stable
+key       <F7>
+wait      stable
+key       <Down>
+key       <Enter>
+wait      2
+capture   after_clear_unstaged

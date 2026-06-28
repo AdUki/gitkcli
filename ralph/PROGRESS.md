@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 91 (coverage: clean-unstaged destructive path; no bug).**
+  Added a golden `clean_unstaged` for the sibling destructive path "Clear
+  unstaged changes" (`git restore .`), completing coverage of the
+  clean_uncommitted_changes flow alongside iter-90's `clean_staged`. Verified the
+  discard works: modify README.md (unstaged), F7 -> "Clear unstaged changes" ->
+  the working tree is clean so the pseudo-row disappears and HEAD becomes the top
+  row ([1/303]). Deterministic 6/6. Noted (not fixed) a niche asymmetry: the
+  unstaged-clean `git restore .` is cwd-relative while the staged-clean `git
+  reset` is repo-wide — only differs when gitkcli is launched from a subdirectory
+  (the app assumes repo-root cwd throughout, and the harness runs from root, so
+  it's untestable here); left as-is. No code change. Suite **76/76** (existing
+  goldens untouched; one new case); units **91/91**.
 - **2026-06-28 — Iteration 90 (RISK FIX: simplify the staged-clean stash-dance to `git reset`).**
   Resolved the long-deferred concern about the destructive "Clear staged changes"
   path. Ran its exact command sequence on a controlled dirty repo: `git stash
