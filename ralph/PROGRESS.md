@@ -222,6 +222,16 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 96 (packaging: declare pyperclip as an optional extra; no bug).**
+  Cross-checked the remaining README claims — config-file locations match
+  `get_config_path` exactly (Linux XDG / macOS / Windows), pyperclip is genuinely
+  optional (not in install_requires; clipboard helper imports it lazily and warns
+  if absent), and the `[X]` close button is correctly wired (hide_active_view).
+  All accurate — no bug. Small packaging improvement: pyperclip was documented as
+  optional but had no `extras_require`, so the standard `pip install
+  gitkcli[clipboard]` wasn't possible. Added `extras_require={'clipboard':
+  ['pyperclip']}` and noted it in the README. No behaviour change. Suite
+  **77/77** (goldens untouched); units **94/94**.
 - **2026-06-28 — Iteration 95 (FIX: declared Python floor was wrong, 3.6 -> 3.7).**
   Continued auditing parse/defensive code (GitRefsJob.process_line unpack and
   GitLogJob.process_line are robust — caught by _reader_thread or graceful str

@@ -31,6 +31,11 @@ setup(
     install_requires=[
         'windows-curses; sys_platform == "win32"',
     ],
+    # pyperclip is optional: the clipboard helper imports it lazily and degrades
+    # to a warning when absent. Offer it as an extra: pip install gitkcli[clipboard]
+    extras_require={
+        'clipboard': ['pyperclip'],
+    },
     entry_points={
         "console_scripts": [
             "gitkcli=gitk.main:main",

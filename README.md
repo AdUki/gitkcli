@@ -140,7 +140,7 @@ Right-click on items for context-sensitive operations:
 
 - Python 3.7+
 - A terminal with curses support
-- `pyperclip` (optional, for clipboard operations)
+- `pyperclip` (optional, for clipboard operations — `pip install gitkcli[clipboard]`)
 
 ## Configuration
 
