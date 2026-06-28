@@ -20,11 +20,14 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **NEXT (Phase 2):** start extracting cohesive clusters into a `gitk/` package
-  (config first), with `from gitk.<mod> import *` re-export crutches in
-  gitkcli.py to keep not-yet-moved code resolving. Suite green after each move.
-- **gitkcli.py:** 4129 lines · **Gitkcli refs (any):** 0 · **`class Gitkcli`:**
-  0 · **package:** not created.
+- **Phase:** 2 — in progress. `gitk/` package created; `gitk/config.py`
+  extracted (config persistence + clipboard + KEY_CTRL). gitkcli.py re-exports
+  via `from gitk.config import (...)`.
+- **NEXT (Phase 2):** extract `gitk/input.py` (KeyboardState, MouseState — and
+  the KEY_* / ENTER_KEYS constants), then `gitk/log.py` (Log), etc., one cluster
+  per iteration with re-export crutches; suite green after each.
+- **gitkcli.py:** 4083 lines · **package:** `gitk/{__init__,config}.py` ·
+  **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
 
@@ -72,7 +75,9 @@
 
 ## Phase 2 — Extract clusters into `gitk/` (one per iteration, re-export crutch)
 
-- [ ] `gitk/config.py`
+- [x] `gitk/config.py` — get_config_path, load_config, save_config,
+      copy_to_clipboard, DEFAULT_CONFIG, KEY_CTRL. Leaf module (stdlib only).
+      gitkcli.py re-exports them. (KEY_* constants stay for input.py.)
 - [ ] `gitk/input.py`
 - [ ] `gitk/log.py`
 - [ ] `gitk/screen.py`
@@ -118,6 +123,16 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 18 (Phase 2 start: extract `gitk/config.py`).**
+  Created the `gitk/` package (`__init__.py`) and moved the config cluster into
+  `gitk/config.py`: `get_config_path`, `load_config`, `save_config`,
+  `copy_to_clipboard`, `DEFAULT_CONFIG`, and the `KEY_CTRL` helper. It's a leaf
+  module (stdlib only; log-needing fns take `app`). gitkcli.py replaces the
+  definitions with `from gitk.config import (...)` so all bare-name call sites
+  keep resolving. Left the `KEY_*`/`ENTER_KEYS` constants in gitkcli.py for the
+  upcoming `gitk/input.py`. Verified `import gitkcli`, `import gitk.config`,
+  `--help`, and re-export visibility. Full suite: **60 passed, 0 failed**;
+  goldens clean. gitkcli.py 4129→4083 lines.
 - **2026-06-28 — Iteration 17 (Phase 1 DONE: constructor injection, bridge removed).**
   Injected `app` as the first constructor param across the whole View hierarchy
   (`View`/`ListView` + all 14 subclasses), `Screen`, and `Log`, threading it
