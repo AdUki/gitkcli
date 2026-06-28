@@ -20,24 +20,26 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 2 — in progress. Extracted: config, input, screen, segments, items,
-  view, `gitk/ids.py` (all ID_* string constants, leaf) and `gitk/jobs.py`
-  (Job + 5 Git*Job; imports ids + items). gitkcli.py re-exports each; the
-  `DiffListItem` late-import now points at gitk.jobs.
-  NOTE: items.py 654 and view.py 743 are > ~600 cap — split in Phase 4.
-- **NEXT (Phase 2):** the views — `gitk/views/git_log.py`, `git_diff.py`,
-  `git_refs.py`, `log.py` (GitLogView/GitDiffView/GitRefsView/LogView). They
-  import view (ListView), items, segments, jobs, ids, Screen. Then `gitk/log.py`
-  (Log), `gitk/dialogs/`, `gitk/app.py` (App), `gitk/main.py`.
-  LESSON: audit referenced names against the FULL set (re-exported names like
-  DiffListItem/StatListItem aren't `class` defs in gitkcli, so a class-only scan
-  misses them); jobs run in threads, so a missing import dies silently and only
-  shows as a wrong/truncated golden. Use the AST undefined-name check
-  (scratchpad) after each extraction.
-- **gitkcli.py:** 1544 lines · **package:**
-  `gitk/{__init__,config,ids,input,screen,segments,items,view,jobs}.py`
-  (screen 347, segments 245, items 654, view 743, jobs 427, ids 23) ·
-  **Gitkcli refs:** 0.
+- **Phase:** 2 — in progress. Extracted: config, ids, input, screen, segments,
+  items, view, jobs, `gitk/dialogs.py` (10 modal popups; depends only on the
+  base ListView + items/segments/jobs/helpers — no concrete-view refs).
+  gitkcli.py re-exports each. Remaining in gitkcli.py: the 5 concrete views
+  (GitLogView/GitDiffView/GitRefsView/LogView/ContextMenu), Log, App,
+  launch_curses/main.
+  NOTE: items.py 654, view.py 743, dialogs.py 559 — items/view > ~600 cap,
+  split in Phase 4.
+- **NEXT (Phase 2):** the 5 concrete views — GitLogView/GitDiffView/GitRefsView/
+  LogView/ContextMenu → `gitk/views.py` (or views/ package). They import view
+  (ListView), items, segments, jobs, dialogs, ids, Screen, config; reach each
+  other via app at runtime. Then `gitk/log.py` (Log, needs LogView), `gitk/app.py`
+  (App), `gitk/main.py` (launch_curses+main → thin gitkcli.py shim, Phase 3).
+  STANDING LESSON: after each extraction run the AST undefined-name check
+  (scratchpad) — re-exported names aren't `class` defs so a class-only scan
+  misses them, and thread/runtime NameErrors only surface as wrong goldens.
+- **gitkcli.py:** 1018 lines · **package:**
+  `gitk/{__init__,config,ids,input,screen,segments,items,view,jobs,dialogs}.py`
+  (screen 347, segments 245, items 654, view 743, jobs 427, ids 23, dialogs 559)
+  · **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
 
@@ -115,8 +117,12 @@
       HORIZONTAL_OFFSET_JUMP/SPLIT_DIVIDER_COLOR. Imports items (no cycle).
       743 lines → split into view.py + list_view.py in Phase 4.
 - [ ] `gitk/views/` (git_log, git_diff, git_refs, log)
-- [ ] `gitk/dialogs/` (base, context_menu, confirm, error, preferences, reset,
-      ref_push, new_ref, search)
+- [x] `gitk/dialogs.py` — 10 modal popups (reset, ref-push, _RedMessageBox,
+      confirm, error, user-input base, preferences, new-ref, search, git-search).
+      Single module for now (STRUCTURE's dialogs/ package split deferred to
+      Phase 4). Depends only on ListView + items/segments/jobs/helpers; reaches
+      concrete views via app at runtime. ContextMenu stays with the views for
+      now (extract with them).
 - [ ] `gitk/app.py` (App + SplitLayout)
 - [ ] `gitk/main.py` (launch_curses, main)
 
@@ -151,6 +157,16 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 26 (Phase 2: extract `gitk/dialogs.py`).**
+  Moved the 10 modal dialog popups (contiguous block) into `gitk/dialogs.py`.
+  Audit confirmed NO references to the concrete view classes (dialogs subclass
+  ListView and reach views via app at runtime), so no cycle — dialogs import
+  only view/items/segments/jobs/screen/config/input/ids. The AST undefined-name
+  check caught 3 runtime names the class-only audit missed (`KEY_ENTER`,
+  `KEY_RETURN`, `KeyboardState` — used in button callbacks / key handling);
+  added them. `Item` flag is annotation-only (lazy). gitkcli.py re-exports the
+  dialogs. Full suite: **60 passed, 0 failed**; goldens clean. gitkcli.py
+  1544→1018. (ContextMenu kept with the views for the next iteration.)
 - **2026-06-28 — Iteration 25 (Phase 2: extract `gitk/ids.py` + `gitk/jobs.py`).**
   Moved all 17 `ID_*` string constants to a new leaf `gitk/ids.py` (so jobs/
   views/dialogs share them without importing the entry module), then the 6 job
