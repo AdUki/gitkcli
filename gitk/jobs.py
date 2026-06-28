@@ -118,6 +118,11 @@ class Job:
 
     def stop_job(self):
         self.stop = True
+        # A stopped job is no longer running. The reader thread breaks on
+        # self.stop before emitting 'finished', so process_message would never
+        # clear `running` — leaving process_all_jobs reporting perpetual updates
+        # (a busy 5ms redraw loop) for a stopped-but-not-restarted job.
+        self.running = False
         self.on_finished = None
         if self.job and self.get_exit_code() is None:
             self.job.terminate()
@@ -125,7 +130,6 @@ class Job:
                 self.job.wait(timeout=1)
             except subprocess.TimeoutExpired:
                 self.job.kill()
-                self.running = False
             self.app.log.debug(f'Job stopped {self.id}')
 
     def start_job(self, args = [], on_finished = None):

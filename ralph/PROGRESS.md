@@ -194,14 +194,24 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
       FIXED: track reader threads; on restart, join them while `stop` is still
       True (so they can't emit a stale 'finished' or race), then empty
       items/messages before resetting stop + spawning new readers.
-- [ ] **stop_job leaves running=True** on the non-timeout path → potential busy
-      redraw loop for a stopped-not-restarted job. Need: set running=False after
-      successful terminate+wait.
+- [x] **stop_job leaves running=True** on the non-timeout path → potential busy
+      redraw loop. FIXED: set `running=False` unconditionally at the top of
+      stop_job (a stopped job is not running; the new-run 'started' message
+      re-sets it True on restart).
 - [ ] (low) set_selected non-selectable skip direction; str/regex set_selected
       hardcodes git_diff.items; RefPush empty-remote — latent, revisit.
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 38 (post-refactor bugfix: stop_job running flag).**
+  `stop_job` only cleared `self.running` in the `TimeoutExpired` branch; on the
+  normal terminate+wait path it stayed True. Since the reader thread breaks on
+  `self.stop` before emitting 'finished', nothing flipped `running` back, so
+  `process_all_jobs` reported `update=True` every frame for a stopped-not-
+  restarted job → main loop spun on the 5ms-timeout redraw path. Fixed by
+  setting `self.running = False` unconditionally at the top of stop_job; a
+  restart's 'started' message re-sets it True. Full golden suite **60/60**
+  (goldens unchanged); units **11/11**.
 - **2026-06-28 — Iteration 37 (post-refactor bugfix: Job queue contamination on restart).**
   `Job.start_job` reused the singleton Job's `items`/`messages` queues without
   clearing them, so rows enqueued by a terminated run (e.g. a large `git show`
