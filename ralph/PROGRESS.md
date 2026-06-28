@@ -213,6 +213,14 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 50 (doc: accurate gitk/__init__ module map).**
+  `gitk/__init__.py`'s docstring still described an *in-progress* migration with
+  `from gitk.<mod> import *` re-export crutches that no longer exist. Replaced it
+  with an accurate, layered module map (the DAG), the injected-`App` access model
+  (`get_app()` via `_view`/`_item` back-refs), and the two function-local
+  import-cycle breakers — so the package's own docs match reality for future
+  maintainers. Doc-only, zero behavior risk. Full suite **60/60** (goldens
+  unchanged); units **27/27**.
 - **2026-06-28 — Iteration 49 (review dialogs+main; revert a regression; fix RefPush Tab).**
   Fourth review (dialogs.py + main.py event loop). Two findings:
   (1) [the reviewer flagged the mouse release-synthesis labels in main.py as
