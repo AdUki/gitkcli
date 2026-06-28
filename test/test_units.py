@@ -19,6 +19,7 @@ from gitk.config import (KEY_CTRL, DEFAULT_CONFIG, load_config, save_config,
                          get_config_path)
 from gitk.segments import ref_color_and_title
 from gitk.views.git_log import GitLogView
+from gitk.list_view import ListView
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -126,3 +127,35 @@ def test_add_to_jump_list_truncates_forward_history_and_prepends():
     GitLogView.add_to_jump_list(ns, 'z', 5, 3)
     assert ns.jump_list == [('z', 5, 3), ('b', None, None)]
     assert ns.jump_index == 0
+
+
+# --- ListView.set_selected non-selectable skip (int target; no app needed) --
+
+class _Row:
+    def __init__(self, selectable):
+        self.is_selectable = selectable
+
+def _listview(selectables, selected):
+    # Stand-in carrying just the attributes set_selected's int path touches.
+    return SimpleNamespace(items=[_Row(s) for s in selectables], _selected=selected,
+                           _offset_y=0, height=10, dirty=False)
+
+def test_set_selected_skips_nonselectable_in_travel_direction():
+    # cursor at 4, target index 2 is non-selectable; selectable rows on BOTH
+    # sides (1 below-travel, 3 opposite). Travelling UP (4->2) must land on 1
+    # (continue past the target), NOT 3 (back toward the start).
+    lv = _listview([True, True, False, True, True], selected=4)
+    assert ListView.set_selected(lv, 2) is True
+    assert lv._selected == 1
+
+def test_set_selected_falls_back_to_opposite_when_travel_blocked():
+    # cursor at 0, target 2 non-selectable; nothing selectable beyond it in the
+    # travel direction (3,4 also non-selectable), so fall back toward the start.
+    lv = _listview([True, True, False, False, False], selected=0)
+    assert ListView.set_selected(lv, 2) is True
+    assert lv._selected == 1
+
+def test_set_selected_selectable_target_is_unchanged():
+    lv = _listview([True, True, True, True], selected=0)
+    assert ListView.set_selected(lv, 2) is True
+    assert lv._selected == 2

@@ -201,12 +201,27 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 - [x] **str/regex set_selected hardcodes git_diff.items** (list_view.py) —
       FIXED: search `self.items` (identical for today's sole caller, which runs
       on git_diff; correct for any other ListView).
-- [ ] (low) set_selected non-selectable skip direction (second pass uses the
-      updated index → can land opposite to travel); RefPush empty-remote when no
-      remotes exist — latent, revisit.
+- [x] **set_selected non-selectable skip direction** — the outer pass loop never
+      broke and reused the updated index, so when selectable rows existed on both
+      sides the opposite-direction pass clobbered the travel-direction match
+      (landing opposite to travel). FIXED: search both passes from the original
+      target, prefer travel direction, stop at first hit. Unit tests added.
+- [ ] (low) RefPush builds an empty-named remote when the repo has no remotes
+      (`git remote` → ['']). Latent; revisit.
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 40 (post-refactor bugfix: set_selected skip direction).**
+  When `set_selected`'s target row is non-selectable, it scans for the nearest
+  selectable row. The old `for dir in [direction, -direction]` loop never broke
+  and the second pass started from the *updated* `new_index`, so when selectable
+  rows existed on both sides between target and cursor, the opposite-direction
+  pass overwrote the travel-direction match — landing on the side opposite to
+  travel (just behind the target instead of past it). Fixed: search both passes
+  from the original `target`, prefer the travel direction, and break at the
+  first hit. Added 3 pure unit tests (int target path needs no `app`). Full
+  golden suite **60/60** (goldens unchanged — buggy clobber path wasn't
+  golden-covered); units **14/14**.
 - **2026-06-28 — Iteration 39 (post-refactor bugfix: set_selected wrong items list).**
   `ListView.set_selected`'s str/`re.Pattern` branch iterated
   `self.app.git_diff.items` (hardcoded) instead of `self.items`, then set

@@ -123,16 +123,24 @@ class ListView(View):
         if new_index is not None:
             if self._selected != new_index:
 
-                # skip non-selectable items
+                # The target row is non-selectable: land on the nearest
+                # selectable row, preferring the travel direction. Search both
+                # passes from the ORIGINAL target and stop at the first hit, so
+                # the fallback (opposite) pass can't clobber a travel-direction
+                # match. Each pass stops at the current selection (never crosses
+                # it). If neither finds one, leave selection unchanged.
                 direction = 1 if new_index > self._selected else -1
                 if 0 <= new_index < len(self.items) and not self.items[new_index].is_selectable:
+                    target = new_index
                     for dir in [direction, -direction]:
-                        i = new_index + dir
+                        i = target + dir
                         while 0 <= i < len(self.items) and i != self._selected:
                             if self.items[i].is_selectable:
                                 new_index = i
                                 break
                             i += dir
+                        if new_index != target:
+                            break
                     if not self.items[new_index].is_selectable:
                         return False
 
