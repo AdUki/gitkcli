@@ -161,7 +161,7 @@ class DiffListItem(TextListItem):
         super().__init__(txt, color)
 
     def jump_to_origin(self):
-        from gitkcli import Job  # late import: Job not yet extracted
+        from gitk.jobs import Job  # late import: jobs imports items, so avoid a load-time cycle
         app = self.get_app()
         blame_revision = app.git_diff.job.get_old_revision()
         if self.old_file_path and self.old_file_line and blame_revision:

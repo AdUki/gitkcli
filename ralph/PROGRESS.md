@@ -21,19 +21,23 @@
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
 - **Phase:** 2 — in progress. Extracted: config, input, screen, segments, items,
-  `gitk/view.py` (View + ListView + `_raise_split_sibling` + the
-  HORIZONTAL_OFFSET_JUMP / SPLIT_DIVIDER_COLOR constants; imports items, so
-  late-bound item refs are now real imports). gitkcli.py re-exports each.
-  NOTE: items.py 654 and view.py 743 are > ~600 cap — split in Phase 4
-  (items→items+segmented_items; view→view+list_view per STRUCTURE.md).
-- **NEXT (Phase 2):** `gitk/jobs.py` (Job + Git*Job — leaf-ish: needs only the
-  item types it instantiates, e.g. TextListItem/CommitListItem/RefListItem, via
-  gitk.items; removes the `DiffListItem`/RefSegment late `from gitkcli import
-  Job`). Then the views (`GitLogView`/`GitDiffView`/`GitRefsView`/`LogView`),
-  `gitk/log.py`, dialogs, `gitk/app.py`, `gitk/main.py`.
-- **gitkcli.py:** 1961 lines · **package:**
-  `gitk/{__init__,config,input,screen,segments,items,view}.py` (screen 347,
-  segments 245, items 654, view 743) · **Gitkcli refs:** 0.
+  view, `gitk/ids.py` (all ID_* string constants, leaf) and `gitk/jobs.py`
+  (Job + 5 Git*Job; imports ids + items). gitkcli.py re-exports each; the
+  `DiffListItem` late-import now points at gitk.jobs.
+  NOTE: items.py 654 and view.py 743 are > ~600 cap — split in Phase 4.
+- **NEXT (Phase 2):** the views — `gitk/views/git_log.py`, `git_diff.py`,
+  `git_refs.py`, `log.py` (GitLogView/GitDiffView/GitRefsView/LogView). They
+  import view (ListView), items, segments, jobs, ids, Screen. Then `gitk/log.py`
+  (Log), `gitk/dialogs/`, `gitk/app.py` (App), `gitk/main.py`.
+  LESSON: audit referenced names against the FULL set (re-exported names like
+  DiffListItem/StatListItem aren't `class` defs in gitkcli, so a class-only scan
+  misses them); jobs run in threads, so a missing import dies silently and only
+  shows as a wrong/truncated golden. Use the AST undefined-name check
+  (scratchpad) after each extraction.
+- **gitkcli.py:** 1544 lines · **package:**
+  `gitk/{__init__,config,ids,input,screen,segments,items,view,jobs}.py`
+  (screen 347, segments 245, items 654, view 743, jobs 427, ids 23) ·
+  **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
 
@@ -90,7 +94,14 @@
 - [ ] `gitk/log.py`
 - [x] `gitk/screen.py` — Screen (curses/panel lifecycle, colour palette, panel
       deck, bottom bar). Clean near-leaf; view/item refs duck-typed at runtime.
-- [ ] `gitk/jobs.py`
+- [x] `gitk/ids.py` — all ID_* string constants (leaf, no imports). Not in the
+      original STRUCTURE; added so jobs/views/dialogs share IDs without a
+      backward `from gitkcli import`.
+- [x] `gitk/jobs.py` — Job + GitLogJob/GitRefreshHeadJob/GitDiffJob/
+      GitSearchJob/GitRefsJob. Imports gitk.ids + gitk.items (incl. DiffListItem/
+      StatListItem — the diff job builds those rows). DiffListItem's blame jump
+      uses a function-local `from gitk.jobs import Job` (jobs imports items, so
+      no load-time cycle).
 - [x] `gitk/segments.py` — Segment + 10 subclasses + ref_color_and_title.
       Imports Screen; RefSegment uses a function-local `from gitkcli import
       RefListItem` to break the segment↔item cycle.
@@ -140,6 +151,18 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 25 (Phase 2: extract `gitk/ids.py` + `gitk/jobs.py`).**
+  Moved all 17 `ID_*` string constants to a new leaf `gitk/ids.py` (so jobs/
+  views/dialogs share them without importing the entry module), then the 6 job
+  classes (contiguous block) to `gitk/jobs.py`, importing ids + items + stdlib
+  (incl. curses/datetime, used in diff parsing/commit dates). Repointed
+  DiffListItem's late `Job` import to gitk.jobs. CAUGHT a regression: first pass
+  imported only TextListItem/CommitListItem/RefListItem — but GitDiffJob also
+  builds `DiffListItem`/`StatListItem` rows; the missing import made the diff
+  job *thread* die on NameError → 18 diff/split/jump goldens showed
+  truncated/wrong output (goldens themselves untouched). Added them; wrote an
+  AST undefined-name check (scratchpad) confirming no others. Full suite:
+  **60 passed, 0 failed**; goldens clean. gitkcli.py 1961→1544.
 - **2026-06-28 — Iteration 24 (Phase 2: extract `gitk/view.py`).**
   Moved `View`, `ListView`, the module fn `_raise_split_sibling`, and the
   view-only constants `HORIZONTAL_OFFSET_JUMP` / `SPLIT_DIVIDER_COLOR` into
