@@ -15,8 +15,10 @@
 
 ## Current status
 
-- **Phase:** 1 — about to begin (App struct). Iteration 0 setup complete.
-- **gitkcli.py:** 4066 lines · **Gitkcli. refs:** 297 · **package:** not created.
+- **Phase:** 1 — in progress. `App` instance + bridge introduced.
+- **gitkcli.py:** 4078 lines · **Gitkcli. refs:** 299 (297 code + 2 doc-comment
+  prose in the bridge note; code refs still resolve via the bridge) ·
+  **`class Gitkcli`:** 0 (now `class App`) · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
 
@@ -30,8 +32,15 @@
 
 ## Phase 1 — Dissolve `Gitkcli` global into an `App` struct (still one file)
 
-- [ ] Introduce `App` instance + access path (`self.app` on views; `get_app()`
+- [~] Introduce `App` instance + access path (`self.app` on views; `get_app()`
       parent-chain walk for items/segments; Screen holds `app`).
+      DONE: `Gitkcli` class → `App` instance (10 classmethods → instance methods,
+      `cls`→`self`; class attrs → `__init__`). A transitional module-level
+      `Gitkcli` name is bound to the single `App()` in `launch_curses` (via
+      `global Gitkcli`) so all 297 existing `Gitkcli.<x>` call sites keep
+      working unchanged. STILL TODO in this checklist item: add `self.app` on
+      views (inject at construction) + `get_app()` parent-chain walk + Screen
+      holding `app`. Doing that next, before migrating clusters.
 - [ ] Migrate the 10 classmethods to `App` methods (consider `SplitLayout`).
 - [ ] Replace all `Gitkcli.<x>` references with injected access, cluster by
       cluster (e.g. one iteration: all `Gitkcli.git_diff` in the diff view).
@@ -86,6 +95,21 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 1 (Phase 1 start: `Gitkcli` class → `App` instance).**
+  Converted the `Gitkcli` service-locator class into an `App` *instance* class:
+  the 10 `@classmethod`s became plain instance methods (`cls`→`self`), and the
+  class attributes (`running`, split state, component slots) moved into
+  `__init__`. `launch_curses` now does `global Gitkcli; Gitkcli = App()` before
+  any view is built, so the bridge is live before `SplitButtonSegment.__init__`
+  (the earliest `Gitkcli.<x>` access during view construction) runs. All 297
+  code call sites resolve through the bridge unchanged — attribute/bound-method
+  access on the instance is identical to the old classmethod access. The
+  `item == Gitkcli` main-menu sentinel still works (identity preserved: the
+  same single instance is the sentinel). Full suite: **60 passed, 0 failed**;
+  `git status test/cases` clean. gitkcli.py 4066→4078 lines. Gotcha:
+  `grep -c 'Gitkcli\.'` rose 297→299 because the new bridge docstring/comment
+  mentions `Gitkcli.<x>` in prose — those 2 are comments, not code, and vanish
+  with the bridge in Phase 3.
 - **2026-06-28 — Iteration 0 (setup).** Created branch `refactor-modularize`
   (the planned `refactor/modularize` is blocked by an existing `refactor`
   branch — git can't nest a ref under an existing leaf ref). Tagged
