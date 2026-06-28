@@ -25,6 +25,8 @@ from gitk.config import (KEY_CTRL, DEFAULT_CONFIG, load_config, save_config,
 from gitk.segments import ref_color_and_title, TextSegment, ButtonSegment, FillerSegment
 from gitk.segmented_items import SegmentedListItem, ButtonRowItem
 from gitk.views.git_log import GitLogView
+from gitk.views.git_diff import GitDiffView
+from gitk.app import App
 from gitk.list_view import ListView
 from gitk.jobs import GitLogJob, GitDiffJob, Job, _CONTROL_CHARS
 from gitk.items import UserInputListItem, StatListItem, TextListItem, ContextMenuItem
@@ -947,3 +949,77 @@ def test_remove_tag_local_only_when_no_remotes(monkeypatch):
         log=SimpleNamespace(success=lambda m: None, error=lambda m: None)))
     ContextMenu.remove_tag(me, 'v1.0')
     assert seen == [['git', 'remote'], ['git', 'tag', '-d', 'v1.0']]   # no push
+
+
+# --- GitDiffView.change_context clamps at 0 and reloads -----------------------
+
+def test_change_context_increments_and_reloads():
+    reloads = []
+    me = SimpleNamespace(context_size=3, _reload_diff=lambda: reloads.append(1))
+    GitDiffView.change_context(me, +1)
+    assert me.context_size == 4 and reloads == [1]
+
+def test_change_context_clamps_at_zero():
+    me = SimpleNamespace(context_size=0, _reload_diff=lambda: None)
+    GitDiffView.change_context(me, -1)
+    assert me.context_size == 0          # never negative
+    me.context_size = 1
+    GitDiffView.change_context(me, -1)
+    assert me.context_size == 0
+
+
+# --- blame "show origin" parse regex (jump_to_origin, items.py) ---------------
+# `git blame -lsfn -L N,N <rev> -- <file>` yields e.g.
+# "<sha> <orig-file> <orig-line> <final-line>) <code>"; the inline regex must
+# pull (sha, file, orig-line). This pins that fragile extraction.
+
+_BLAME_RE = re.compile(r'^(\S+) ([^)]+) ([0-9]+) ')
+
+def test_blame_regex_extracts_sha_file_line():
+    m = _BLAME_RE.search('a42cadebfe42d85cbf36f4887be166b34077b3e2 test.txt 1 1) aaa')
+    assert m and m.group(1) == 'a42cadebfe42d85cbf36f4887be166b34077b3e2'
+    assert m.group(3) == '1'
+
+def test_blame_regex_handles_boundary_sha_caret():
+    # a boundary (initial) commit is prefixed with '^'
+    m = _BLAME_RE.search('^1af87e6c2614c1aea4a81476df0deb8206d5489 file.py 451 451) code')
+    assert m and m.group(1).startswith('^')
+
+
+# --- App.run_git: force-confirm retry arming ---------------------------------
+# On a forceable rejection (retry set, not already forcing, a `reasons` substring
+# in stderr) it arms the confirm dialog with the retry; otherwise it just logs.
+
+def test_run_git_arms_force_confirm_on_rejection(monkeypatch):
+    monkeypatch.setattr(Job, 'run_job', lambda app, args: _result(returncode=1, stderr='fatal: already exists'))
+    seen = []
+    app = App()
+    app.confirm_dialog = SimpleNamespace(
+        confirm=lambda title, lines, on_confirm, confirm_label: seen.append((title, on_confirm, confirm_label)))
+    app.log = SimpleNamespace(error=lambda m: seen.append(('ERROR', m)))
+    retry = lambda: 'retried'
+    app.run_git(['git', 'branch', 'x', 'y'], err='E',
+                reasons=('already exists',), retry=retry, title='T', label='[Overwrite]')
+    assert len(seen) == 1
+    assert seen[0][0] == 'T' and seen[0][1] is retry and seen[0][2] == '[Overwrite]'
+
+def test_run_git_logs_error_when_already_forcing(monkeypatch):
+    monkeypatch.setattr(Job, 'run_job', lambda app, args: _result(returncode=1, stderr='already exists'))
+    seen = []
+    app = App()
+    app.confirm_dialog = SimpleNamespace(confirm=lambda *a, **k: seen.append('CONFIRMED'))
+    app.log = SimpleNamespace(error=lambda m: seen.append(('error', m)))
+    app.run_git(['git', 'branch', '-f', 'x', 'y'], err='E', force=True,
+                reasons=('already exists',), retry=lambda: None, title='T', label='[X]')
+    assert seen == [('error', 'E: already exists')]   # logged, not re-confirmed
+
+def test_run_git_success_runs_requested_refreshes(monkeypatch):
+    monkeypatch.setattr(Job, 'run_job', lambda app, args: _result(returncode=0))
+    calls = []
+    app = App()
+    app.git_log = SimpleNamespace(refresh_head=lambda: calls.append('refresh_head'),
+                                  check_uncommitted_changes=lambda: calls.append('check'))
+    app.git_refs = SimpleNamespace(reload_refs=lambda: calls.append('reload_refs'))
+    app.log = SimpleNamespace(success=lambda m: calls.append(('ok', m)))
+    app.run_git(['git', 'whatever'], ok='done', refresh_head=True, reload_refs=True, check_uncommitted=True)
+    assert calls == ['refresh_head', 'reload_refs', 'check', ('ok', 'done')]
