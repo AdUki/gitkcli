@@ -9,6 +9,7 @@ remains the behavioural oracle.
 import datetime
 import json
 import os
+import queue
 import sys
 
 # Make the repo root importable regardless of how pytest is invoked.
@@ -21,7 +22,7 @@ from gitk.config import (KEY_CTRL, DEFAULT_CONFIG, load_config, save_config,
 from gitk.segments import ref_color_and_title, TextSegment
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
-from gitk.jobs import GitLogJob
+from gitk.jobs import GitLogJob, Job
 from gitk.items import UserInputListItem
 
 
@@ -245,3 +246,33 @@ def test_next_word_pos_skips_leading_spaces_then_word():
 
 def test_next_word_pos_at_end_is_length():
     assert UserInputListItem.next_word_pos(_input("foo bar", 7)) == 7
+
+
+# --- Job queue helpers: _empty_queue (static) and _drain (uses self.stop) ----
+
+def test_empty_queue_drains_everything():
+    q = queue.Queue()
+    for i in range(5):
+        q.put(i)
+    Job._empty_queue(q)
+    assert q.empty()
+
+def test_drain_dispatches_truthy_items_until_falsy_sentinel():
+    q = queue.Queue()
+    for x in ['a', 'b', None, 'c']:
+        q.put(x)
+    got = []
+    processed = Job._drain(SimpleNamespace(stop=False), q, got.append)
+    assert processed is True
+    assert got == ['a', 'b']            # the None sentinel breaks the loop
+    assert q.get_nowait() == 'c'         # items after the sentinel are left queued
+
+def test_drain_consumes_but_does_not_dispatch_while_stopped():
+    q = queue.Queue()
+    for x in ['a', 'b']:
+        q.put(x)
+    got = []
+    processed = Job._drain(SimpleNamespace(stop=True), q, got.append)
+    assert processed is False            # nothing dispatched while stopped
+    assert got == []
+    assert q.empty()                     # but the queue was still drained

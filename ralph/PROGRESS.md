@@ -213,6 +213,15 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 52 (coverage: Job queue helpers _empty_queue/_drain).**
+  Confirmed the other degraded-tier/feature paths are already covered (`--graph`
+  has graph_mode/graph_nav; mono now has log_nocolor; the 8-colour tier can't be
+  forced via an app arg, no harness TERM control). Added 3 zero-risk unit tests
+  for the pure `Job` queue helpers — `_empty_queue` (drains fully) and `_drain`
+  (dispatches truthy items, breaks on the falsy sentinel leaving the rest queued,
+  and drains-without-dispatch while `stop` is set) — the queue-processing
+  contract behind the iteration-37 stale-row fix. Full suite **61/61** (existing
+  goldens untouched); units **30/30**.
 - **2026-06-28 — Iteration 51 (coverage: add golden for the --no-color mono tier).**
   The monochrome colour-degradation path (`--no-color` → `Screen.force_mono` →
   `color_depth=0`) had NO golden coverage. Added a NEW (additive) case
