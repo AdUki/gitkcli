@@ -19,8 +19,8 @@ from types import SimpleNamespace
 
 from gitk.config import (KEY_CTRL, DEFAULT_CONFIG, load_config, save_config,
                          get_config_path)
-from gitk.segments import ref_color_and_title, TextSegment
-from gitk.segmented_items import SegmentedListItem
+from gitk.segments import ref_color_and_title, TextSegment, ButtonSegment, FillerSegment
+from gitk.segmented_items import SegmentedListItem, ButtonRowItem
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
 from gitk.jobs import GitLogJob, Job
@@ -299,3 +299,40 @@ def test_get_segment_on_offset_separator_column_hits_no_segment():
     hit = it.get_segment_on_offset(2)
     assert hit is not a and hit is not b        # the gap maps to a fresh empty Segment
     assert hit.get_text() == ''
+
+
+# --- ButtonRowItem focus navigation (buttons = segments with `activate`) ------
+# Non-button segments (text/filler) are skipped; focus wraps with Left/Right.
+
+def _button_row():
+    # indices of the actual buttons are 1 and 3 (0=text, 2=filler).
+    return ButtonRowItem([TextSegment('lbl'), ButtonSegment('[A]', lambda: None),
+                          FillerSegment(), ButtonSegment('[B]', lambda: None)])
+
+def test_button_row_indices_and_default_focus():
+    r = _button_row()
+    assert r._button_indices() == [1, 3]
+    assert r.focused == 1            # __init__ focuses the first button
+
+def test_button_row_focus_last_and_reset():
+    r = _button_row()
+    r.focus_last()
+    assert r.focused == 3            # rightmost button (safe default for confirms)
+    r.reset_focus()
+    assert r.focused == 1
+
+def test_button_row_move_focus_wraps_and_skips_nonbuttons():
+    r = _button_row()                # focus=1
+    r._move_focus(1)
+    assert r.focused == 3            # skips the filler at index 2
+    r._move_focus(1)
+    assert r.focused == 1            # wraps forward
+    r._move_focus(-1)
+    assert r.focused == 3            # wraps backward
+
+def test_button_row_no_buttons_focus_zero():
+    r = ButtonRowItem([TextSegment('only text')])
+    assert r._button_indices() == []
+    assert r.focused == 0
+    r._move_focus(1)                 # no-op, must not raise
+    assert r.focused == 0

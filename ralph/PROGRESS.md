@@ -222,6 +222,13 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 55 (coverage: ButtonRowItem focus navigation).**
+  Added 4 pure unit tests for the button-row navigation used by every dialog:
+  `_button_indices` finds segments with `activate` (skipping text/filler),
+  `__init__`/`reset_focus` focus the first button, `focus_last` the rightmost
+  (safe default for destructive confirms), and `_move_focus` wraps Left/Right
+  while skipping non-buttons — plus the no-buttons no-op guard. Headless
+  (no curses). Full suite **62/62** (existing goldens untouched); units **36/36**.
 - **2026-06-28 — Iteration 54 (coverage: get_segment_on_offset hit-test math).**
   Completed the #3 story by locking the *other* half — the click hit-test.
   `get_segment_on_offset` maps an absolute get_text() offset (separators
