@@ -87,7 +87,7 @@ class ContextMenu(ListView):
         elif view_id == 'git-refs' and hasattr(item, 'data'):
             if item.data['type'] == 'heads':
                 self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
-                self.append(ContextMenuItem("Rename this branch", self.app.git_refs.view_new_ref.create_ref, [item.data['name']]))
+                self.append(ContextMenuItem("Rename this branch", self.app.git_refs.view_new_ref.rename_branch, [item.data['name']]))
                 self.append(ContextMenuItem("Copy branch name", copy_to_clipboard, [item.data['name']]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Push branch to remote", self.push_ref_to_remote, [item.data['name']]))

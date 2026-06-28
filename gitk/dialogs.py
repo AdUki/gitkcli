@@ -420,6 +420,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
         self.force = ToggleSegment("<Force>")
         self.commit_id = ''
         self.ref_type = '' # branch or tag
+        self.rename_from = '' # branch being renamed; '' means create mode
         self.prompt = TextSegment("Specify the new branch name:")
         super().__init__(app, ID_NEW_GIT_REF, ' New Branch',
             SegmentedListItem([self.prompt, FillerSegment(), TextSegment("Flags:"), self.force]))
@@ -432,10 +433,25 @@ class NewRefDialogPopup(UserInputDialogPopup):
         if not commit_id:
             self.app.log.warning(f'Select a commit to create a {ref_type} from')
             return
+        self.rename_from = ''
         self.commit_id = commit_id
         self.ref_type = ref_type
         self.header_item.set_text(f' New {ref_type.capitalize()}')
         self.prompt.set_text(f"Specify the new {ref_type} name:")
+        self.clear()
+        self.show()
+
+    def rename_branch(self, old_name):
+        # Actually rename (`git branch -m`). This used to be wired to create_ref,
+        # which ran `git branch <new> <old>` -> a COPY that left the original
+        # branch in place, not a rename.
+        if not old_name:
+            self.app.log.warning('Select a branch to rename')
+            return
+        self.rename_from = old_name
+        self.ref_type = 'branch'
+        self.header_item.set_text(' Rename Branch')
+        self.prompt.set_text(f"Rename '{old_name}' to:")
         self.clear()
         self.show()
 
@@ -457,8 +473,24 @@ class NewRefDialogPopup(UserInputDialogPopup):
         # a cancel (the base handler already hid the dialog).
         if not self.input.txt.strip():
             return
-        self._create_ref(self.ref_type, self.input.txt, self.commit_id, self.force.toggled)
+        if self.rename_from:
+            self._rename_branch(self.rename_from, self.input.txt, self.force.toggled)
+        else:
+            self._create_ref(self.ref_type, self.input.txt, self.commit_id, self.force.toggled)
         super().execute()
+
+    def _rename_branch(self, old_name, new_name, force):
+        # -M is -m plus overwrite; only used after the user confirms the
+        # "already exists" force prompt.
+        args = ['git', 'branch', '-M' if force else '-m', old_name, new_name]
+        self.app.run_git(args, ok=f'Renamed branch {old_name} to {new_name}',
+                        err='Error renaming branch', reload_refs=True, refresh_head=True,
+                        force=force, reasons=('already exists',),
+                        retry=lambda: self._rename_branch(old_name, new_name, True),
+                        title=' Branch already exists',
+                        lines=[(f"A branch named '{new_name}' already exists.", 4),
+                               "Overwrite it? (uses git branch -M)"],
+                        label='[Overwrite]')
 
     def _create_ref(self, ref_type, name, commit_id, force):
         args = ['git', ref_type] + (['-f'] if force else []) + [name, commit_id]

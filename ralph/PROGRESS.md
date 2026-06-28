@@ -222,6 +222,19 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 86 (BUG: "Rename this branch" copied instead of renaming).**
+  README/context-menu cross-check: F-keys, jump-history (Ctrl+Left/Right), 'q'
+  semantics, nav keys all verified correct. But the refs-view "Rename this
+  branch" menu item was wired to `create_ref` with the BRANCH NAME passed as the
+  commit_id, so it ran `git branch <new> <old>` -> a COPY at the same commit,
+  leaving the original branch in place (silent: no error, wrong result). FIX:
+  added `NewRefDialogPopup.rename_branch` (a 'rename mode' running
+  `git branch -m old new`, with -M + an "already exists" force-confirm), routed
+  execute() to it via a new `rename_from` flag, and pointed the menu item at it.
+  The menu LABEL is unchanged so the ctx-menu goldens are unaffected; no golden
+  exercises rename. Added 3 unit tests (execute routes rename vs create;
+  _rename_branch builds `git branch -m`/`-M`). Suite **73/73** (goldens
+  untouched); units **87/87**. (29th genuine bug.)
 - **2026-06-28 — Iteration 85 (BUG: documented '+'/'-' diff-context keys did nothing).**
   Systematic index/modulo/division scan came up clean (all guarded). Then found
   a doc-vs-behavior bug: README lists '+'/'-' as diff-view keys to change the

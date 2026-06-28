@@ -736,3 +736,47 @@ def test_shift_n_key_searches_backward_with_wrap():
     calls = []
     ListView.handle_input(_nav_listview(calls), KeyboardState(ord('N')))
     assert calls == [{'backward': True, 'repeat': True}]
+
+
+# --- NewRefDialogPopup rename routing (was a copy, not a rename) --------------
+# "Rename this branch" used to call create_ref -> `git branch <new> <old>`, a
+# COPY leaving the original. It must route to a real `git branch -m old new`.
+
+class _RenameProbe(NewRefDialogPopup):
+    # Bypass the real __init__ (needs app/curses); set only what execute touches.
+    # Inherits the real NewRefDialogPopup.execute, whose super().execute() resolves
+    # to UserInputDialogPopup.execute (add_query_to_history) - harmless here.
+    def __init__(self, rename_from, commit_id='', txt='newname'):
+        self.input = SimpleNamespace(txt=txt)
+        self.force = SimpleNamespace(toggled=False)
+        self.rename_from = rename_from
+        self.commit_id = commit_id
+        self.ref_type = 'branch'
+        self.history_queries = []
+        self.created = []
+        self.renamed = []
+    def _create_ref(self, *a):
+        self.created.append(a)
+    def _rename_branch(self, *a):
+        self.renamed.append(a)
+
+def test_execute_routes_to_rename_when_rename_from_set():
+    p = _RenameProbe(rename_from='oldname')
+    p.execute()
+    assert p.renamed == [('oldname', 'newname', False)]
+    assert p.created == []
+
+def test_execute_routes_to_create_when_not_renaming():
+    p = _RenameProbe(rename_from='', commit_id='deadbeef')
+    p.execute()
+    assert p.created == [('branch', 'newname', 'deadbeef', False)]
+    assert p.renamed == []
+
+def test_rename_branch_builds_git_branch_move():
+    args_seen = []
+    me = SimpleNamespace(app=SimpleNamespace(run_git=lambda args, **kw: args_seen.append(args)))
+    NewRefDialogPopup._rename_branch(me, 'old', 'new', False)
+    assert args_seen[0][:4] == ['git', 'branch', '-m', 'old']
+    args_seen.clear()
+    NewRefDialogPopup._rename_branch(me, 'old', 'new', True)   # forced overwrite
+    assert args_seen[0][:3] == ['git', 'branch', '-M']
