@@ -31,13 +31,16 @@
   SplitButtonSegment (callback deferred via lambda). Jobs DONE (instance
   methods): Job base + GitLogJob/GitRefreshHeadJob/GitDiffJob/GitSearchJob/
   GitRefsJob now hold `self.app` (injected via constructor by the owning view).
-  `MouseState`/`KeyboardState` DONE (`app` set on the real instances in
-  launch_curses; methods use `self.app`). Remaining 68 refs: the `Job.run_job`
-  classmethod (1, logging), the `GitRefsView.get_ref_color_and_title`
-  classmethod (1), `copy_to_clipboard` module fn (2), and the
-  App/launch_curses/main-loop entry point (~64, become `app.` in Phase 2/3).
-- **gitkcli.py:** 4131 lines · **Gitkcli. refs:** 68 (code; +2 doc-prose) ·
-  **`class Gitkcli`:** 0 · **package:** not created.
+  `MouseState`/`KeyboardState` DONE. Module-fn helpers DONE:
+  `copy_to_clipboard(txt, app)`, `save_config(cfg, app)` now take `app`;
+  `GitRefsView.get_ref_color_and_title(ref, head_branch='')` takes `head_branch`
+  as data (decoupled from the global — nice for the module split), threaded from
+  `RefListItem.draw_line`, `RefSegment.__init__`, and
+  `CommitListItem.get_segments`. ONLY remaining non-entry-point code ref: the
+  `Job.run_job` classmethod (1). Everything else (61) is the
+  App/launch_curses/main-loop entry point + 2 doc-comment prose lines.
+- **gitkcli.py:** 4132 lines · **Gitkcli. refs:** 64 (61 entry-point + 1
+  run_job + 2 doc-prose) · **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
 
@@ -128,6 +131,18 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 14 (Phase 1: migrate module-fn helpers + a classmethod).**
+  `copy_to_clipboard` and `save_config` now take an explicit `app` arg (passed
+  by callers that have `self.app`/`get_app()`).
+  `GitRefsView.get_ref_color_and_title` is a classmethod (no `self`) called once
+  at `RefSegment.__init__` time (before the segment is wired), so instead of an
+  app handle it now takes `head_branch` as plain data — threaded from
+  `RefListItem.draw_line` (`self.get_app().git_log.head_branch`) and
+  `CommitListItem.get_segments` (passes `app.git_log.head_branch` into
+  `RefSegment`). This fully decouples the pure color/title formatter from the
+  global. Full suite: **60 passed, 0 failed**; goldens clean. `Gitkcli.` refs
+  68→64. Only the `Job.run_job` classmethod ref (16 call sites) and the entry
+  point now remain.
 - **2026-06-28 — Iteration 13 (Phase 1: migrate MouseState/KeyboardState).**
   Both are `@dataclass`es and `KeyboardState` is constructed in ~6 places as
   synthetic single-positional key events, so adding `app` as a *field* would

@@ -81,7 +81,7 @@ def load_config() -> dict:
         pass
     return cfg
 
-def save_config(cfg: dict) -> bool:
+def save_config(cfg: dict, app) -> bool:
     path = get_config_path()
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -89,17 +89,17 @@ def save_config(cfg: dict) -> bool:
             json.dump(cfg, f, indent=2)
         return True
     except OSError as e:
-        Gitkcli.log.error(f"Failed to save preferences: {e}")
+        app.log.error(f"Failed to save preferences: {e}")
         return False
 
-def copy_to_clipboard(txt:str):
+def copy_to_clipboard(txt:str, app):
     try:
         import pyperclip
         pyperclip.copy(txt)
     except ImportError:
-        Gitkcli.log.warning("pyperclip module not found. Install with: pip install pyperclip")
+        app.log.warning("pyperclip module not found. Install with: pip install pyperclip")
     except Exception as e:
-        Gitkcli.log.error(f"Error copying to clipboard: {str(e)}")
+        app.log.error(f"Error copying to clipboard: {str(e)}")
 
 class Job:
 
@@ -524,7 +524,7 @@ class Item:
         return ''
 
     def copy_text_to_clipboard(self):
-        copy_to_clipboard(self.get_text())
+        copy_to_clipboard(self.get_text(), self.get_app())
 
     def set_text(self, txt:str):
         pass
@@ -564,7 +564,7 @@ class RefListItem(Item):
 
     def draw_line(self, win, offset, width, selected, matched, marked):
         line = self.get_text()[offset:]
-        color, _ = GitRefsView.get_ref_color_and_title(self.data)
+        color, _ = GitRefsView.get_ref_color_and_title(self.data, self.get_app().git_log.head_branch)
         if selected or marked:
             line += ' ' * (width - len(line))
         if len(line) > width:
@@ -731,9 +731,9 @@ class TextSegment(Segment):
         return self._draw_text(win, offset, width, Screen.color(self.color, selected, marked, matched))
 
 class RefSegment(TextSegment):
-    def __init__(self, ref):
+    def __init__(self, ref, head_branch=''):
         self.ref = ref
-        color, txt = GitRefsView.get_ref_color_and_title(ref)
+        color, txt = GitRefsView.get_ref_color_and_title(ref, head_branch)
         super().__init__(txt, color)
 
     def handle_mouse_input(self, mouse) -> bool:
@@ -1096,7 +1096,8 @@ class CommitListItem(SegmentedListItem):
 
         head_position = len(segments) + 1 # +1, because we want to skip 'HEAD ->' segment
         for ref in app.git_refs.refs.get(self.id, []):
-            segments.insert(head_position if ref['name'] == app.git_log.head_branch else len(segments), RefSegment(ref))
+            segments.insert(head_position if ref['name'] == app.git_log.head_branch else len(segments),
+                            RefSegment(ref, app.git_log.head_branch))
 
         # These segments are rebuilt each call (not the wired self.segments), so
         # back-wire them so they can reach the app via get_app() too.
@@ -1576,7 +1577,7 @@ class ListView(View):
     def copy_text_to_clipboard(self):
         text = "\n".join(item.get_text() for item in self.items)
         if text:
-            copy_to_clipboard(text)
+            copy_to_clipboard(text, self.app)
 
     def copy_text_range_to_clipboard(self, to_item):
         text = ""
@@ -1588,7 +1589,7 @@ class ListView(View):
                 text += "\n" + item.get_text()
             if found and i >= self._selected:
                 break
-        copy_to_clipboard(text)
+        copy_to_clipboard(text, self.app)
 
     def append(self, item):
         """Add item to end of list"""
@@ -2309,12 +2310,12 @@ class GitRefsView(ListView):
         self.job.start_job()
 
     @classmethod
-    def get_ref_color_and_title(cls, ref):
+    def get_ref_color_and_title(cls, ref, head_branch=''):
         title = f"({ref['name']})"
         color = 11
         if ref['type'] == 'head':
             color = 13
-            if Gitkcli.git_log.head_branch:
+            if head_branch:
                 title += ' ->'
         elif ref['type'] == 'heads':
             title = f"[{ref['name']}]"
@@ -3069,7 +3070,7 @@ class PreferencesDialogPopup(ListView):
             'log':      {'autoscroll':         self.t_autoscroll.toggled},
             'view':     {'default_mode':       self.c_view_mode.value},
         }
-        if save_config(cfg):
+        if save_config(cfg, self.app):
             self.app.log.success('Preferences saved')
 
     def on_cancel(self):
