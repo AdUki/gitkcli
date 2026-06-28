@@ -3847,9 +3847,9 @@ class App:
     chain (`get_app()`). It is a plain instance, not a service-locator global.
 
     Transitional note (modularization in progress): a module-level name
-    `Gitkcli` still points at the single `App` instance as a bridge, so call
-    sites not yet migrated to injected access keep resolving `Gitkcli.<x>`.
-    That bridge is removed once every reference uses `self.app` / `get_app()`.
+    `Gitkcli` still points at the single `App` instance as a bridge, read by the
+    Screen/View/Item constructors to set self.app. That bridge is removed once
+    those constructors take `app` explicitly.
     """
 
     def __init__(self):
@@ -3985,134 +3985,138 @@ class App:
                 v.dirty = True
 
 # Transitional bridge: a module-level name pointing at the single App instance,
-# (re)bound in launch_curses. Lets not-yet-migrated call sites keep using
-# `Gitkcli.<x>`; removed once all references use injected `self.app`/`get_app()`.
+# bound in launch_curses. Read by the Screen/View/Item constructors to set
+# self.app; removed once those constructors take `app` explicitly.
 Gitkcli = None
 
 def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
+    app = App()
+    # Transitional bridge: View/Screen/Item constructors still read the module
+    # global `Gitkcli` to set self.app. Bind it before any of them run. Removed
+    # once those constructors take `app` explicitly (next iteration).
     global Gitkcli
-    Gitkcli = App()
+    Gitkcli = app
 
-    Gitkcli.screen = Screen(stdscr)
-    Gitkcli.mouse = MouseState()
-    Gitkcli.mouse.app = Gitkcli
-    Gitkcli.keyboard = KeyboardState()
-    Gitkcli.keyboard.app = Gitkcli
-    Gitkcli.log = Log()
-    Gitkcli.git_log = GitLogView(git_args, cmd_args)
-    Gitkcli.git_diff = GitDiffView()
-    Gitkcli.git_refs = GitRefsView()
-    Gitkcli.context_menu = ContextMenu()
-    Gitkcli.preferences = PreferencesDialogPopup()
-    Gitkcli.confirm_dialog = ConfirmDialogPopup()
-    Gitkcli.error_dialog = ErrorDialogPopup()
+    app.screen = Screen(stdscr)
+    app.mouse = MouseState()
+    app.mouse.app = app
+    app.keyboard = KeyboardState()
+    app.keyboard.app = app
+    app.log = Log()
+    app.git_log = GitLogView(git_args, cmd_args)
+    app.git_diff = GitDiffView()
+    app.git_refs = GitRefsView()
+    app.context_menu = ContextMenu()
+    app.preferences = PreferencesDialogPopup()
+    app.confirm_dialog = ConfirmDialogPopup()
+    app.error_dialog = ErrorDialogPopup()
 
     _cfg = load_config()
-    Gitkcli.git_log.show_commit_id     = _cfg['git_log']['show_commit_id']
-    Gitkcli.git_log.show_commit_date   = _cfg['git_log']['show_commit_date']
-    Gitkcli.git_log.show_commit_author = _cfg['git_log']['show_commit_author']
-    Gitkcli.git_log.set_pref_flags(_cfg['git_log']['flags'])
-    Gitkcli.git_diff.ignore_whitespace = _cfg['git_diff']['ignore_whitespace']
-    Gitkcli.log.view.autoscroll        = _cfg['log']['autoscroll']
-    Gitkcli.default_view_mode          = _cfg['view']['default_mode']
+    app.git_log.show_commit_id     = _cfg['git_log']['show_commit_id']
+    app.git_log.show_commit_date   = _cfg['git_log']['show_commit_date']
+    app.git_log.show_commit_author = _cfg['git_log']['show_commit_author']
+    app.git_log.set_pref_flags(_cfg['git_log']['flags'])
+    app.git_diff.ignore_whitespace = _cfg['git_diff']['ignore_whitespace']
+    app.log.view.autoscroll        = _cfg['log']['autoscroll']
+    app.default_view_mode          = _cfg['view']['default_mode']
 
-    Gitkcli.log.info('Application started')
+    app.log.info('Application started')
 
-    Gitkcli.git_refs.job.start_job()
-    Gitkcli.git_log.job.start_job()
-    Gitkcli.git_log.check_uncommitted_changes()
+    app.git_refs.job.start_job()
+    app.git_log.job.start_job()
+    app.git_log.check_uncommitted_changes()
 
-    if Gitkcli.default_view_mode in ('side', 'stacked'):
-        Gitkcli.set_split_mode(Gitkcli.default_view_mode)
+    if app.default_view_mode in ('side', 'stacked'):
+        app.set_split_mode(app.default_view_mode)
     else:
-        Gitkcli.git_log.show()
+        app.git_log.show()
 
     try:
         user_input = True
 
-        while Gitkcli.running:
+        while app.running:
 
             update_jobs = Job.process_all_jobs()
 
             # A success flash auto-expires on a timer, so keep redrawing the bottom
             # bar while one is showing even if nothing else changed.
-            flash = Gitkcli.screen.flash_active()
+            flash = app.screen.flash_active()
 
             if update_jobs or user_input or flash:
                 try:
                     # Draws dirty content, then composites the panel deck and the
                     # bottom bar in one doupdate().
-                    Gitkcli.screen.draw_visible_views()
+                    app.screen.draw_visible_views()
                 except curses.error as e:
-                    Gitkcli.log.warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
+                    app.log.warning(f"Curses exception: {str(e)}\n{traceback.format_exc()}")
 
-            active_view = Gitkcli.screen.get_active_view()
+            active_view = app.screen.get_active_view()
             if not active_view:
                 break;
 
             stdscr.timeout(5 if update_jobs or flash else 100)
 
-            user_input = Gitkcli.keyboard.read(stdscr)
+            user_input = app.keyboard.read(stdscr)
             if not user_input:
                 # no key pressed (or an unrecognized escape sequence)
                 continue
 
-            key = Gitkcli.keyboard.key
+            key = app.keyboard.key
 
             if key == curses.KEY_MOUSE:
-                if not Gitkcli.mouse.read_curses_event(stdscr):
+                if not app.mouse.read_curses_event(stdscr):
                     continue
 
-                event_type = Gitkcli.mouse.event_type
+                event_type = app.mouse.event_type
 
-                if event_type == 'right-click' and Gitkcli.mouse.left_pressed:
-                    Gitkcli.mouse.left_pressed = False
-                    Gitkcli.mouse.process_mouse_event(active_view, 'right-release')
+                if event_type == 'right-click' and app.mouse.left_pressed:
+                    app.mouse.left_pressed = False
+                    app.mouse.process_mouse_event(active_view, 'right-release')
 
-                if (event_type == 'left-click' or event_type == 'double-click') and Gitkcli.mouse.right_pressed:
-                    Gitkcli.mouse.right_pressed = False
-                    Gitkcli.mouse.process_mouse_event(active_view, 'left-release')
+                if (event_type == 'left-click' or event_type == 'double-click') and app.mouse.right_pressed:
+                    app.mouse.right_pressed = False
+                    app.mouse.process_mouse_event(active_view, 'left-release')
 
-                Gitkcli.mouse.process_mouse_event(active_view, event_type)
+                app.mouse.process_mouse_event(active_view, event_type)
 
             elif key == curses.KEY_RESIZE:
-                Gitkcli.screen._full_redraw = True
-                lines, cols = Gitkcli.screen.getmaxyx()
-                for view in Gitkcli.screen.views.values():
+                app.screen._full_redraw = True
+                lines, cols = app.screen.getmaxyx()
+                for view in app.screen.views.values():
                     view.screen_size_changed(lines, cols)
-                if Gitkcli.split_mode != 'off':
-                    Gitkcli.apply_split_layout()
+                if app.split_mode != 'off':
+                    app.apply_split_layout()
 
-            elif active_view.handle_input(Gitkcli.keyboard):
+            elif active_view.handle_input(app.keyboard):
                 active_view.dirty = True
 
             else:
                 if key == ord('q') or key == curses.KEY_EXIT:
-                    Gitkcli.screen.hide_active_view()
+                    app.screen.hide_active_view()
                 elif key == KEY_CTRL_LEFT or key == KEY_CTRL('o'):
-                    Gitkcli.git_log.move_in_jump_list(+1)
+                    app.git_log.move_in_jump_list(+1)
                 elif key == KEY_CTRL_RIGHT or key == KEY_CTRL('i'):
-                    Gitkcli.git_log.move_in_jump_list(-1)
+                    app.git_log.move_in_jump_list(-1)
                 elif key == ord('|'):
-                    Gitkcli.cycle_split_view()
-                elif key == KEY_CTRL('w') and Gitkcli.split_active():
+                    app.cycle_split_view()
+                elif key == KEY_CTRL('w') and app.split_active():
                     # toggle focus between the two split panes
-                    (Gitkcli.git_diff if Gitkcli.git_log.is_active() else Gitkcli.git_log).show()
+                    (app.git_diff if app.git_log.is_active() else app.git_log).show()
                 elif key == KEY_SHIFT_F5:
-                    Gitkcli.reload_refs_commits()
+                    app.reload_refs_commits()
                 elif key == curses.KEY_F7:
                     # From the keyboard, open at the selected row (no mouse cursor).
-                    Gitkcli.open_context_menu()
-                elif key in Gitkcli.screen.fkey_actions:
-                    Gitkcli.screen.fkey_actions[key]()
+                    app.open_context_menu()
+                elif key in app.screen.fkey_actions:
+                    app.screen.fkey_actions[key]()
 
     except KeyboardInterrupt:
         pass
 
-    Gitkcli.exit_program()
+    app.exit_program()
 
-    Gitkcli.log.info('Application ended')
+    app.log.info('Application ended')
 
 def main():
     args = sys.argv[1:]

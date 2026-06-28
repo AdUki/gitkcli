@@ -15,17 +15,17 @@
 
 ## Current status
 
-- **Phase:** 1 — nearly done. `Gitkcli` class → `App` instance + bridge.
-  ALL component code migrated off the global: views/screen via `self.app`,
-  items/segments via the `get_app()` parent chain, jobs via injected `self.app`,
-  `MouseState`/`KeyboardState` via an `app` attr, and module helpers
-  (`copy_to_clipboard`/`save_config`/`run_job`) + the ref formatter via passed
-  args. The ONLY remaining `Gitkcli` references are the **entry point**
-  (`launch_curses` + the main loop, 61) and 2 doc-comment prose lines.
-- **NEXT:** convert the entry point to a local `app`, then delete the bridge
-  global → completes Phase 1 (`grep -c 'Gitkcli\.' gitkcli.py` = 0).
-- **gitkcli.py:** 4132 lines · **Gitkcli. refs:** 63 (61 entry-point + 2
-  doc-prose) · **`class Gitkcli`:** 0 · **package:** not created.
+- **Phase:** 1 — `grep -c 'Gitkcli\.'` is now **0** (exit criterion 2 met).
+  All code (components + entry point) reaches the app via injected access; the
+  entry point uses a local `app`. What REMAINS for full Phase-1 close: the
+  module-level `Gitkcli` bridge still exists (bare `Gitkcli = app`), read by the
+  `Screen`/`View`/`Item` constructors (`self.app = Gitkcli`). Removing it (exit
+  criterion 5: no module-level app global) needs constructor injection into
+  `Screen`/`View`/`Log`.
+- **NEXT:** inject `app` into `Screen.__init__`, `View.__init__`, `Log.__init__`
+  (+ the ~14 view construction sites) and delete the `Gitkcli` bridge global.
+- **gitkcli.py:** 4135 lines · **Gitkcli. (dotted) refs:** 0 · **bare `Gitkcli`
+  bridge:** still present · **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
 
@@ -116,6 +116,15 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 16 (Phase 1: entry point → local `app`).**
+  Converted every `Gitkcli.<x>` in `launch_curses` + the main loop to a local
+  `app` (created `app = App()`; the bridge `Gitkcli = app` is retained for now
+  because Screen/View/Item constructors still read it to set `self.app`). Fixed
+  the two doc-comment prose lines that still wrote `Gitkcli.<x>`. Result:
+  `grep -c 'Gitkcli\.' gitkcli.py` = **0** — exit criterion 2 satisfied.
+  `python3 gitkcli.py --help` works, import clean. Full suite: **60 passed, 0
+  failed**; goldens clean. Bridge global removal (exit criterion 5) deferred to
+  the next iteration via constructor injection.
 - **2026-06-28 — Iteration 15 (Phase 1: thread `app` through `Job.run_job`).**
   `Job.run_job` is a classmethod (no `self`); gave it an `app` param —
   `run_job(cls, app, args)` logs via `app.log.info`. Updated all 16 call sites
