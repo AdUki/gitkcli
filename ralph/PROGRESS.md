@@ -222,6 +222,16 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 59 (docs: fix stale README Configuration section).**
+  The README's Configuration said "Adjust these settings in the code" with a
+  code-variable list — genuinely misleading for users, since those options are
+  now in the **F9 Preferences** dialog and persisted to a JSON config file.
+  Rewrote it to document the F9 toggles (id/date/author columns, ignore-
+  whitespace, autoscroll, default view mode, extra git-log flags), the config
+  file location per platform (XDG / macOS / Windows, matching get_config_path),
+  diff context via the diff view's `[+]`/`[-]`, and noted the genuinely
+  code-only knobs (rename_limit, log verbosity). User-facing accuracy fix,
+  doc-only. Full suite **62/62** (existing goldens untouched); units **39/39**.
 - **2026-06-28 — Iteration 58 (docs: README "Project structure" for contributors).**
   Verified the README had no stale structure references (it's user-facing). Added
   a concise "Project structure" section: the code lives in `gitk/` (gitkcli.py is

@@ -141,12 +141,25 @@ Right-click on items for context-sensitive operations:
 
 ## Configuration
 
-Adjust these settings in the code:
+Press **F9** to open Preferences and toggle:
 
-- `context_size`: Lines of context in diffs (default: 3)
-- `rename_limit`: Git rename similarity limit (default: 1570)
-- `log_level`: Debug logging verbosity 0-5 (default: 4)
-- `ignore_whitespace`: Ignore whitespace in diffs (default: False)
+- Commit **ID**, **date**, and **author** columns in the log
+- **Ignore whitespace** in diffs
+- Log view **autoscroll**
+- **Default view mode** (fullscreen, or a side / stacked split)
+- Extra `git log` **flags**
+
+Preferences are saved to a JSON config file and reloaded on the next launch:
+
+- Linux: `$XDG_CONFIG_HOME/gitkcli/config.json` (default `~/.config/gitkcli/config.json`)
+- macOS: `~/Library/Application Support/gitkcli/config.json`
+- Windows: `%APPDATA%\gitkcli\config.json`
+
+Other adjustments:
+
+- Diff **context size**: the `[+]` / `[-]` buttons in the diff view (default 3)
+- `rename_limit` (git rename-detection limit, default 1570) and the log
+  verbosity level are currently set in code.
 
 ## Project structure
 
