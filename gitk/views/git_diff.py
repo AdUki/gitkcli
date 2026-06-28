@@ -88,7 +88,7 @@ class GitDiffView(ListView):
 
     def handle_input(self, keyboard) -> bool:
         key = keyboard.key
-        if self.app.split_active() and (key == ord('q') or key == curses.KEY_EXIT):
+        if self.app.split.split_active() and (key == ord('q') or key == curses.KEY_EXIT):
             # Esc/q in split view steps back to the log pane and stays split,
             # rather than collapsing the split.
             self.app.git_log.show()

@@ -349,8 +349,8 @@ class GitLogView(ListView):
         if key == ord('q'):
             self.app.exit_program()
         elif key == curses.KEY_EXIT:
-            if self.app.split_active():
-                self.app.set_split_mode('off')   # Esc on the log pane leaves split view
+            if self.app.split.split_active():
+                self.app.split.set_split_mode('off')   # Esc on the log pane leaves split view
             else:
                 self.app.exit_program()
         elif key == ord('b'):

@@ -276,7 +276,7 @@ class PreferencesDialogPopup(ListView):
         self.t_show_author.set_toggled(self.app.git_log.show_commit_author)
         self.t_ign_ws.set_toggled(self.app.git_diff.ignore_whitespace)
         self.t_autoscroll.set_toggled(self.app.log.view.autoscroll)
-        self.c_view_mode.set_value(self.app.default_view_mode)
+        self.c_view_mode.set_value(self.app.split.default_view_mode)
         self.input_flags.set_text(self.app.git_log.pref_flags)
         self._button_row.reset_focus()
         self.dirty = True
@@ -301,10 +301,10 @@ class PreferencesDialogPopup(ListView):
             self.app.git_log.set_pref_flags(new_flags)
             self.app.git_log.reload_commits()
 
-        self.app.default_view_mode = self.c_view_mode.value
+        self.app.split.default_view_mode = self.c_view_mode.value
         # Apply the chosen layout right away; entering a split raises the
         # log/diff panes, so re-show this dialog to keep it on top.
-        self.app.set_split_mode(self.c_view_mode.value if self.c_view_mode.value in ('side', 'stacked') else 'off')
+        self.app.split.set_split_mode(self.c_view_mode.value if self.c_view_mode.value in ('side', 'stacked') else 'off')
         self.show()
 
         cfg = {

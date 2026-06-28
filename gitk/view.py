@@ -70,9 +70,9 @@ class View:
         (right) pane is borderless. Stacked: both panes are borderless and the
         bottom pane's title bar doubles as the draggable divider.
         """
-        if not (self.app.split_active() and self in (self.app.git_log, self.app.git_diff)):
+        if not (self.app.split.split_active() and self in (self.app.git_log, self.app.git_diff)):
             return None
-        if self.app.split_mode == 'side' and self is self.app.git_log:
+        if self.app.split.split_mode == 'side' and self is self.app.git_log:
             return {'right'}
         return set()
 
@@ -178,8 +178,8 @@ class View:
     def toggle_window_mode(self):
         # In split view the log/diff panes are managed by the split layout;
         # toggling a pane "maximizes" it by leaving split view altogether.
-        if self.app.split_active() and self in (self.app.git_log, self.app.git_diff):
-            self.app.set_split_mode('off')
+        if self.app.split.split_active() and self in (self.app.git_log, self.app.git_diff):
+            self.app.split.set_split_mode('off')
             return
         self.set_view_mode('fullscreen' if self.view_mode == 'window' else 'window')
 
@@ -196,7 +196,7 @@ class View:
         win_y, win_x = self.win.getbegyx()
         win_height, win_width = self.win.getmaxyx()
         is_log = self is self.app.git_log
-        if self.app.split_mode == 'side':
+        if self.app.split.split_mode == 'side':
             # divider is the right edge of the log pane / left edge of the diff pane
             on_divider = (x >= win_x + win_width - 1) if is_log else (x <= win_x)
         else:  # stacked: there is no line, so the bottom pane's title bar is the grip
@@ -209,7 +209,7 @@ class View:
     def start_resize(self, x:int, y:int) -> bool:
         self.resize_mode = ''
         # Split panes are fixed in place; only the shared divider can be dragged.
-        if self.app.split_active() and self in (self.app.git_log, self.app.git_diff):
+        if self.app.split.split_active() and self in (self.app.git_log, self.app.git_diff):
             return self._start_split_resize(x, y)
         if self.view_mode != 'window':
             return False
@@ -237,12 +237,12 @@ class View:
     def handle_resize(self):
         if self.resize_mode == 'split':
             lines, cols = self.app.screen.getmaxyx()
-            if self.app.split_mode == 'side':
+            if self.app.split.split_mode == 'side':
                 ratio = self.app.mouse.screen_x / max(1, cols)
             else:
                 ratio = self.app.mouse.screen_y / max(1, lines)
-            self.app.split_ratio = min(0.85, max(0.15, ratio))
-            self.app.apply_split_layout()
+            self.app.split.split_ratio = min(0.85, max(0.15, ratio))
+            self.app.split.apply_split_layout()
             return
         stdscr_height, stdscr_width = self.app.screen.getmaxyx()
         win_y, win_x = self.win.getbegyx()

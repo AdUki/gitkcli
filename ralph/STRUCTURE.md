@@ -8,8 +8,9 @@ from the original idealized plan: added `ids.py` (shared identifiers, leaf) and
 `list_view.py` (split from view.py); `dialogs.py` is a single module (not a
 `dialogs/` package); `ContextMenu` lives in `views/context_menu.py` (grouped
 with the views, not under dialogs); `OnOffToggleSegment`/`ChoiceSegment` are
-in `segments.py`; `SplitLayout` was not split out (the split logic stays on
-`App`); the red confirm/error message boxes were split from `dialogs.py` into
+in `segments.py`; `SplitLayout` was later extracted from `App` into
+`split_layout.py` (the split state + tiling logic, reached as `app.split`); the
+red confirm/error message boxes were split from `dialogs.py` into
 `message_box.py` to keep both ≤ ~600 lines. All modules ≤ ~600 lines.
 
 ```
@@ -47,6 +48,7 @@ gitk/
     log.py                 # LogView
     context_menu.py        # ContextMenu
   log.py                   # Log
+  split_layout.py          # SplitLayout: split state + tiling (reached as app.split)
   app.py                   # App struct (was Gitkcli)
   main.py                  # launch_curses, main, curses bootstrap
 ```

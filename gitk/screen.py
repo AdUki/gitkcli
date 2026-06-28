@@ -251,9 +251,9 @@ class Screen:
             # the *other* pane up fullscreen, instead of popping a single pane
             # and leaving a gap with no backdrop.
             closing = self.showed_views[-1]
-            if self.app.split_active() and closing in (self.app.git_log, self.app.git_diff):
+            if self.app.split.split_active() and closing in (self.app.git_log, self.app.git_diff):
                 other = self.app.git_log if closing is self.app.git_diff else self.app.git_diff
-                self.app.set_split_mode('off')
+                self.app.split.set_split_mode('off')
                 other.show()
                 return
             # Same as closing any top view: blank its footprint (damage-based

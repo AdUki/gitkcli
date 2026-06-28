@@ -165,10 +165,10 @@ class SplitButtonSegment(ButtonSegment):
     def __init__(self, color = 30):
         # Defer the action: at construction the segment isn't wired to its item
         # yet, so reach the app lazily (the button is clicked long after wiring).
-        super().__init__('', lambda: self.get_app().cycle_split_view(), color)
+        super().__init__('', lambda: self.get_app().split.cycle_split_view(), color)
 
     def get_text(self):
-        return self._LABELS.get(self.get_app().split_mode, '[Split]')
+        return self._LABELS.get(self.get_app().split.split_mode, '[Split]')
 
 class DynamicTextSegment(TextSegment):
     """TextSegment whose text is recomputed by a getter on every draw."""

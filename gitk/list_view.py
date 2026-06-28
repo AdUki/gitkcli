@@ -345,13 +345,13 @@ def _raise_split_sibling(view, sibling):
     we first raise the sibling so the side-by-side / stacked layout is restored
     even after a fullscreen view (logs, refs) temporarily covered it.
     """
-    if not view.app.split_active() or view.app._raising_split_sibling:
+    if not view.app.split.split_active() or view.app.split._raising_split_sibling:
         return
     views = view.app.screen.showed_views
     if len(views) >= 2 and views[-1] is view and views[-2] is sibling:
         return  # already the top two in the right order
-    view.app._raising_split_sibling = True
+    view.app.split._raising_split_sibling = True
     try:
         sibling.show()
     finally:
-        view.app._raising_split_sibling = False
+        view.app.split._raising_split_sibling = False

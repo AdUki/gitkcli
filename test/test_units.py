@@ -1023,3 +1023,25 @@ def test_run_git_success_runs_requested_refreshes(monkeypatch):
     app.log = SimpleNamespace(success=lambda m: calls.append(('ok', m)))
     app.run_git(['git', 'whatever'], ok='done', refresh_head=True, reload_refs=True, check_uncommitted=True)
     assert calls == ['refresh_head', 'reload_refs', 'check', ('ok', 'done')]
+
+
+# --- SplitLayout (extracted from App): split_active + mode cycling -----------
+
+def test_split_active_requires_mode_and_window_pane():
+    from gitk.split_layout import SplitLayout
+    sl = SplitLayout(SimpleNamespace(git_log=SimpleNamespace(view_mode='window')))
+    sl.split_mode = 'off'
+    assert sl.split_active() is False                 # intent off
+    sl.split_mode = 'side'
+    assert sl.split_active() is True                  # tiled (window) panes
+    sl.app.git_log.view_mode = 'fullscreen'
+    assert sl.split_active() is False                 # too small -> fell back to fullscreen
+
+def test_cycle_split_view_advances_off_side_stacked_off():
+    from gitk.split_layout import SplitLayout
+    sl = SplitLayout(SimpleNamespace())
+    sl.set_split_mode = lambda m: setattr(sl, 'split_mode', m)   # skip the layout side effects
+    sl.split_mode = 'off'
+    sl.cycle_split_view(); assert sl.split_mode == 'side'
+    sl.cycle_split_view(); assert sl.split_mode == 'stacked'
+    sl.cycle_split_view(); assert sl.split_mode == 'off'

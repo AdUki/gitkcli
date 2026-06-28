@@ -49,7 +49,7 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
     app.git_log.set_pref_flags(_cfg['git_log']['flags'])
     app.git_diff.ignore_whitespace = _cfg['git_diff']['ignore_whitespace']
     app.log.view.autoscroll        = _cfg['log']['autoscroll']
-    app.default_view_mode          = _cfg['view']['default_mode']
+    app.split.default_view_mode          = _cfg['view']['default_mode']
 
     app.log.info('Application started')
 
@@ -57,8 +57,8 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
     app.git_log.job.start_job()
     app.git_log.check_uncommitted_changes()
 
-    if app.default_view_mode in ('side', 'stacked'):
-        app.set_split_mode(app.default_view_mode)
+    if app.split.default_view_mode in ('side', 'stacked'):
+        app.split.set_split_mode(app.split.default_view_mode)
     else:
         app.git_log.show()
 
@@ -115,8 +115,8 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                 lines, cols = app.screen.getmaxyx()
                 for view in app.screen.views.values():
                     view.screen_size_changed(lines, cols)
-                if app.split_mode != 'off':
-                    app.apply_split_layout()
+                if app.split.split_mode != 'off':
+                    app.split.apply_split_layout()
 
             elif active_view.handle_input(app.keyboard):
                 active_view.dirty = True
@@ -129,8 +129,8 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
                 elif key == KEY_CTRL_RIGHT or key == KEY_CTRL('i'):
                     app.git_log.move_in_jump_list(-1)
                 elif key == ord('|'):
-                    app.cycle_split_view()
-                elif key == KEY_CTRL('w') and app.split_active():
+                    app.split.cycle_split_view()
+                elif key == KEY_CTRL('w') and app.split.split_active():
                     # toggle focus between the two split panes
                     (app.git_diff if app.git_log.is_active() else app.git_log).show()
                 elif key == KEY_SHIFT_F5:
