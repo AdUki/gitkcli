@@ -15,12 +15,14 @@
 
 ## Current status
 
-- **Phase:** 1 — in progress. `App` instance + bridge + `self.app` access path
-  on Screen/View established. Next: migrate view-method `Gitkcli.<x>` refs to
-  `self.app.<x>` cluster by cluster; add `get_app()` for items/segments.
-- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 298 (≈296 code + 2 doc-comment
-  prose; code refs still resolve via the bridge) · **`class Gitkcli`:** 0 (now
-  `class App`) · **package:** not created.
+- **Phase:** 1 — in progress. Migrating view-method `Gitkcli.<x>` → `self.app.<x>`
+  cluster by cluster. `GitDiffView` done. Next clusters: `GitLogView` (24),
+  `View` base (41), `PreferencesDialogPopup` (23), `ContextMenu` (22), `Screen`
+  (12), `ListView` (8), `LogView` (2). Still pending: `get_app()` for
+  items/segments/jobs (no parent chain yet); launch_curses/main-loop refs
+  (~61, become `app.` in Phase 2/3).
+- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 286 (code; +2 doc-prose are
+  inside this count) · **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
 
@@ -106,6 +108,14 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 3 (Phase 1: migrate `GitDiffView` refs to `self.app`).**
+  Replaced all 12 `Gitkcli.<x>` → `self.app.<x>` inside `GitDiffView` (scoped
+  `sed` over its class line range, 2160–2249). All sites are instance methods or
+  `__init__` lambdas that close over `self`, so `self.app` is valid everywhere;
+  the `Gitkcli.git_diff` self-references resolve to the same view object as
+  before (pure mechanical rename, behavior identical). Validates the cluster
+  pattern for the larger view classes. Full suite: **60 passed, 0 failed**;
+  goldens clean. `Gitkcli.` refs 298→286. Lines unchanged (4089).
 - **2026-06-28 — Iteration 2 (Phase 1: `self.app` access path on Screen/View).**
   Added `self.app` to `Screen.__init__` and `View.__init__`, bound from the
   transitional `Gitkcli` bridge at construction (Screen is created first, before

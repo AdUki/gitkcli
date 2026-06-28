@@ -2171,14 +2171,14 @@ class GitDiffView(ListView):
 
         self.set_header_item(WindowTopBarItem('Git commit diff', [
             TextSegment("Context:", 30),
-            DynamicTextSegment(lambda: Gitkcli.git_diff.context_size, 30),
+            DynamicTextSegment(lambda: self.app.git_diff.context_size, 30),
             ButtonSegment("[+]", lambda: self.change_context(+1), 30),
             ButtonSegment("[-]", lambda: self.change_context(-1), 30),
             HighlightToggleSegment("[Ignore whitespace]",
-                                   lambda: Gitkcli.git_diff.ignore_whitespace,
-                                   lambda: Gitkcli.git_diff.change_ignore_whitespace(), 30),
-            ButtonSegment("[<-]", lambda: Gitkcli.git_log.move_in_jump_list(+1), 30),
-            ButtonSegment("[->]", lambda: Gitkcli.git_log.move_in_jump_list(-1), 30)
+                                   lambda: self.app.git_diff.ignore_whitespace,
+                                   lambda: self.app.git_diff.change_ignore_whitespace(), 30),
+            ButtonSegment("[<-]", lambda: self.app.git_log.move_in_jump_list(+1), 30),
+            ButtonSegment("[->]", lambda: self.app.git_log.move_in_jump_list(-1), 30)
         ], title_color = 5))
 
         self.set_search_dialog(SearchDialogPopup(ID_GIT_DIFF_SEARCH))
@@ -2189,7 +2189,7 @@ class GitDiffView(ListView):
         super().clear()
 
     def show(self):
-        _raise_split_sibling(self, Gitkcli.git_log)
+        _raise_split_sibling(self, self.app.git_log)
         super().show()
 
     def _tracks_position(self) -> bool:
@@ -2228,22 +2228,22 @@ class GitDiffView(ListView):
 
     def handle_input(self, keyboard) -> bool:
         key = keyboard.key
-        if Gitkcli.split_active() and (key == ord('q') or key == curses.KEY_EXIT):
+        if self.app.split_active() and (key == ord('q') or key == curses.KEY_EXIT):
             # Esc/q in split view steps back to the log pane and stays split,
             # rather than collapsing the split.
-            Gitkcli.git_log.show()
+            self.app.git_log.show()
             return True
         if key == KEY_CTRL('n'):
-            Gitkcli.git_log.handle_input(KeyboardState(curses.KEY_DOWN))
+            self.app.git_log.handle_input(KeyboardState(curses.KEY_DOWN))
         elif key == KEY_CTRL('p'):
-            Gitkcli.git_log.handle_input(KeyboardState(curses.KEY_UP))
+            self.app.git_log.handle_input(KeyboardState(curses.KEY_UP))
         elif key in (ord('g'), ord('G'), curses.KEY_HOME, curses.KEY_END):
             track = self._tracks_position()
             if track:
-                Gitkcli.git_log.add_to_jump_list(self.commit_id, self._selected, self._offset_y)
+                self.app.git_log.add_to_jump_list(self.commit_id, self._selected, self._offset_y)
             ret = super().handle_input(keyboard)
             if track:
-                Gitkcli.git_log.add_to_jump_list(self.commit_id, self._selected, self._offset_y)
+                self.app.git_log.add_to_jump_list(self.commit_id, self._selected, self._offset_y)
             return ret
         else:
             return super().handle_input(keyboard)
