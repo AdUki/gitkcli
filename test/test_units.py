@@ -22,6 +22,7 @@ from gitk.segments import ref_color_and_title, TextSegment
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
 from gitk.jobs import GitLogJob
+from gitk.items import UserInputListItem
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -216,3 +217,31 @@ def test_process_line_keeps_graph_prefix():
 
 def test_process_line_nonmatching_returns_raw_string():
     assert GitLogJob.process_line(None, "just some text") == "just some text"
+
+
+# --- UserInputListItem word navigation (pure: uses txt + cursor_pos only) ----
+
+def _input(txt, cursor):
+    return SimpleNamespace(txt=txt, cursor_pos=cursor)
+
+def test_prev_word_pos_from_mid_word_goes_to_word_start():
+    # "foo bar baz", cursor at 6 (inside "bar") -> 4 (start of "bar")
+    assert UserInputListItem.prev_word_pos(_input("foo bar baz", 6)) == 4
+
+def test_prev_word_pos_from_word_start_skips_to_previous_word():
+    # cursor at 4 (start of "bar", preceded by a space) -> 0 (start of "foo")
+    assert UserInputListItem.prev_word_pos(_input("foo bar baz", 4)) == 0
+
+def test_prev_word_pos_at_start_is_zero():
+    assert UserInputListItem.prev_word_pos(_input("foo bar", 0)) == 0
+
+def test_next_word_pos_from_word_start_goes_to_word_end():
+    # cursor at 0 ("foo") -> 3 (the space after "foo")
+    assert UserInputListItem.next_word_pos(_input("foo bar baz", 0)) == 3
+
+def test_next_word_pos_skips_leading_spaces_then_word():
+    # cursor at 3 (the space) -> 7 (end of "bar")
+    assert UserInputListItem.next_word_pos(_input("foo bar baz", 3)) == 7
+
+def test_next_word_pos_at_end_is_length():
+    assert UserInputListItem.next_word_pos(_input("foo bar", 7)) == 7

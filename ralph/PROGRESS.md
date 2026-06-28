@@ -213,6 +213,14 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 48 (coverage: UserInputListItem word navigation).**
+  Re-confirmed #3 can't be unit-tested headlessly (`Screen.color` needs
+  `initscr()`, so `draw_line` isn't callable without curses) and its fix touches
+  the golden-locked offset=0 path with no safe oracle → stays deferred. Added 6
+  zero-risk unit tests for the pure `prev_word_pos`/`next_word_pos` cursor
+  word-navigation (mid-word→word start, word-start→previous word, BOL/EOL
+  bounds), driven on a SimpleNamespace stand-in. Full suite **60/60** (source
+  unchanged; goldens clean); units **27/27**.
 - **2026-06-28 — Iteration 47 (consolidate: health check + correct project memory).**
   Health verification: `import gitkcli` + `--help` OK; `pytest test/` collects 81
   nodes (60 golden + 21 unit); goldens byte-identical to `refactor-baseline`;
