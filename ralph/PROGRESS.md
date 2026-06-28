@@ -20,26 +20,22 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 2 — in progress. Extracted: config, ids, input, screen, segments,
-  items, view, jobs, `gitk/dialogs.py` (10 modal popups; depends only on the
-  base ListView + items/segments/jobs/helpers — no concrete-view refs).
-  gitkcli.py re-exports each. Remaining in gitkcli.py: the 5 concrete views
-  (GitLogView/GitDiffView/GitRefsView/LogView/ContextMenu), Log, App,
-  launch_curses/main.
-  NOTE: items.py 654, view.py 743, dialogs.py 559 — items/view > ~600 cap,
-  split in Phase 4.
-- **NEXT (Phase 2):** the 5 concrete views — GitLogView/GitDiffView/GitRefsView/
-  LogView/ContextMenu → `gitk/views.py` (or views/ package). They import view
-  (ListView), items, segments, jobs, dialogs, ids, Screen, config; reach each
-  other via app at runtime. Then `gitk/log.py` (Log, needs LogView), `gitk/app.py`
-  (App), `gitk/main.py` (launch_curses+main → thin gitkcli.py shim, Phase 3).
-  STANDING LESSON: after each extraction run the AST undefined-name check
-  (scratchpad) — re-exported names aren't `class` defs so a class-only scan
-  misses them, and thread/runtime NameErrors only surface as wrong goldens.
-- **gitkcli.py:** 1018 lines · **package:**
-  `gitk/{__init__,config,ids,input,screen,segments,items,view,jobs,dialogs}.py`
-  (screen 347, segments 245, items 654, view 743, jobs 427, ids 23, dialogs 559)
-  · **Gitkcli refs:** 0.
+- **Phase:** 2 — nearly done. Extracted: config, ids, input, screen, segments,
+  items, view, jobs, dialogs, `gitk/views.py` (GitLogView/GitDiffView/
+  GitRefsView/LogView/ContextMenu). gitkcli.py re-exports each. Remaining in
+  gitkcli.py (392 lines): `Log`, `App`, `launch_curses`, `main`.
+  NOTE: items 654, view 743, views 658 are > ~600 cap — split in Phase 4.
+- **NEXT (Phase 2):** `gitk/log.py` (Log — needs LogView from gitk.views) and
+  `gitk/app.py` (App — needs views/dialogs/Log/jobs/Screen). Then Phase 3:
+  `gitk/main.py` (launch_curses + main) and reduce gitkcli.py to a thin shim
+  `from gitk.main import main`, drop the re-export crutches, update setup.py.
+  STANDING LESSON: run the AST undefined-name check (scratchpad) after each
+  extraction — re-exported names aren't `class` defs so a class-only scan misses
+  them, and thread/runtime NameErrors only surface as wrong goldens.
+- **gitkcli.py:** 392 lines · **package:** `gitk/{__init__,config,ids,input,
+  screen,segments,items,view,jobs,dialogs,views}.py` (items 654, view 743,
+  views 658, dialogs 559, jobs 427, screen 347, segments 245) ·
+  **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
 
@@ -116,7 +112,10 @@
 - [x] `gitk/view.py` — View + ListView + `_raise_split_sibling` +
       HORIZONTAL_OFFSET_JUMP/SPLIT_DIVIDER_COLOR. Imports items (no cycle).
       743 lines → split into view.py + list_view.py in Phase 4.
-- [ ] `gitk/views/` (git_log, git_diff, git_refs, log)
+- [x] `gitk/views.py` — GitLogView, GitDiffView, GitRefsView, LogView,
+      ContextMenu. Single module for now (STRUCTURE's views/ package split
+      deferred to Phase 4). Imports view/items/segments/jobs/dialogs/ids/Screen/
+      config/input; no module imports it back (no cycle).
 - [x] `gitk/dialogs.py` — 10 modal popups (reset, ref-push, _RedMessageBox,
       confirm, error, user-input base, preferences, new-ref, search, git-search).
       Single module for now (STRUCTURE's dialogs/ package split deferred to
@@ -157,6 +156,15 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 27 (Phase 2: extract `gitk/views.py`).**
+  Moved the 5 concrete views (GitLogView, GitDiffView, GitRefsView, LogView,
+  ContextMenu) into `gitk/views.py`. They import the lower layers
+  (view/items/segments/jobs/dialogs/ids/Screen/config/input) and reach each
+  other via the app at runtime; nothing imports views.py back, so no cycle. AST
+  check clean for views.py (remaining flags are annotation-only: Item/View/
+  SearchDialogPopup). gitkcli.py re-exports the views. Full suite: **60 passed,
+  0 failed**; goldens clean. gitkcli.py 1018→392 (now just Log, App,
+  launch_curses, main + the re-export block).
 - **2026-06-28 — Iteration 26 (Phase 2: extract `gitk/dialogs.py`).**
   Moved the 10 modal dialog popups (contiguous block) into `gitk/dialogs.py`.
   Audit confirmed NO references to the concrete view classes (dialogs subclass
