@@ -24,13 +24,17 @@
   `gitk/screen.py` (Screen — a clean near-leaf: only curses/stdlib; its view/item
   refs are duck-typed at runtime, so `from __future__ import annotations` + no UI
   imports). gitkcli.py re-exports each.
-- **NEXT (Phase 2):** `gitk/segments.py` is the natural next layer but has two
-  couplings to break first: segments call `Screen.color` (now importable from
-  gitk.screen ✓) and `RefSegment` calls `GitRefsView.get_ref_color_and_title`
-  (a pure formatter that should move out of the view — relocate it so segments
-  don't depend on a view). Segment classes are also scattered (636–756, 910,
-  2132, 2872, 2911) and interleaved with items. Plan: gather them, move
-  `get_ref_color_and_title` to segments (or a refs helper), import Screen.
+- **NEXT (Phase 2):** `gitk/segments.py`. Couplings now resolved: segments call
+  `Screen.color` (importable from gitk.screen ✓) and the ref formatter is now a
+  free `ref_color_and_title()` (no longer on GitRefsView ✓). Remaining work for
+  the extraction: segment classes are scattered (now ~660–780, ~930, ~2150,
+  ~2890, ~2930) and interleaved with items; gather Segment + FillerSegment +
+  TextSegment + RefSegment + ButtonSegment + ToggleSegment + SplitButtonSegment
+  + DynamicTextSegment + HighlightToggleSegment + OnOffToggleSegment +
+  ChoiceSegment + the `ref_color_and_title` helper into segments.py, importing
+  Screen. (RefSegment also needs `RefListItem` at runtime for its context menu —
+  that's a method-body ref, late-bound, so it only needs the name in the module
+  namespace; handle via the re-export direction or a local import.)
 - **gitkcli.py:** 3531 lines · **package:**
   `gitk/{__init__,config,input,screen}.py` (screen.py 347) · **Gitkcli refs:** 0.
 
@@ -131,6 +135,14 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 21 (Phase 2 prep: decouple ref formatter from view).**
+  Relocated `GitRefsView.get_ref_color_and_title` (classmethod) to a pure
+  module-level function `ref_color_and_title(ref, head_branch='')`. Updated its
+  two callers (`RefListItem.draw_line`, `RefSegment.__init__`). This removes the
+  segment→view dependency that would have blocked a clean `gitk/segments.py`
+  extraction (a segment no longer reaches into `GitRefsView`). No behavior
+  change — same colour/title logic. Full suite: **60 passed, 0 failed**; goldens
+  clean. gitkcli.py 3531→3531 (net ~0; logic moved, not added).
 - **2026-06-28 — Iteration 20 (Phase 2: extract `gitk/screen.py`).**
   Moved the `Screen` class (331 lines) into `gitk/screen.py`. Audited it as a
   clean near-leaf: the only seeming external refs were a `'Git Log'` string

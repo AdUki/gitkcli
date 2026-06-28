@@ -516,7 +516,7 @@ class RefListItem(Item):
 
     def draw_line(self, win, offset, width, selected, matched, marked):
         line = self.get_text()[offset:]
-        color, _ = GitRefsView.get_ref_color_and_title(self.data, self.get_app().git_log.head_branch)
+        color, _ = ref_color_and_title(self.data, self.get_app().git_log.head_branch)
         if selected or marked:
             line += ' ' * (width - len(line))
         if len(line) > width:
@@ -635,6 +635,28 @@ class DiffListItem(TextListItem):
         self.jump_to_origin()
         return True
 
+def ref_color_and_title(ref, head_branch=''):
+    """Colour pair and display title for a git ref record. Pure: depends only on
+    the ref dict and (for the current HEAD) the branch name. Used by RefSegment
+    and RefListItem so neither has to reach into GitRefsView."""
+    title = f"({ref['name']})"
+    color = 11
+    if ref['type'] == 'head':
+        color = 13
+        if head_branch:
+            title += ' ->'
+    elif ref['type'] == 'heads':
+        title = f"[{ref['name']}]"
+    elif ref['type'] == 'remotes':
+        color = 15
+        title = f"{{{ref['name']}}}"
+    elif ref['type'] == 'tags':
+        color = 12
+        title = f"<{ref['name']}>"
+    elif ref['type'] == 'stash':
+        color = 14
+    return color, title
+
 class Segment:
     # Back-reference to the owning SegmentedListItem, set in its __init__.
     # Lets a segment reach the App struct (segment -> item -> view -> app).
@@ -684,7 +706,7 @@ class TextSegment(Segment):
 class RefSegment(TextSegment):
     def __init__(self, ref, head_branch=''):
         self.ref = ref
-        color, txt = GitRefsView.get_ref_color_and_title(ref, head_branch)
+        color, txt = ref_color_and_title(ref, head_branch)
         super().__init__(txt, color)
 
     def handle_mouse_input(self, mouse) -> bool:
@@ -2258,26 +2280,6 @@ class GitRefsView(ListView):
     def reload_refs(self):
         self.clear()
         self.job.start_job()
-
-    @classmethod
-    def get_ref_color_and_title(cls, ref, head_branch=''):
-        title = f"({ref['name']})"
-        color = 11
-        if ref['type'] == 'head':
-            color = 13
-            if head_branch:
-                title += ' ->'
-        elif ref['type'] == 'heads':
-            title = f"[{ref['name']}]"
-        elif ref['type'] == 'remotes':
-            color = 15
-            title = f"{{{ref['name']}}}"
-        elif ref['type'] == 'tags':
-            color = 12
-            title = f"<{ref['name']}>"
-        elif ref['type'] == 'stash':
-            color = 14
-        return color, title
 
 class LogView(ListView):
     def __init__(self, app):
