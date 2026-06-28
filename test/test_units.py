@@ -26,7 +26,7 @@ from gitk.segmented_items import SegmentedListItem, ButtonRowItem
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
 from gitk.jobs import GitLogJob, Job, _CONTROL_CHARS
-from gitk.items import UserInputListItem
+from gitk.items import UserInputListItem, StatListItem
 from gitk.screen import Screen
 from gitk.dialogs import SearchDialogPopup
 
@@ -425,3 +425,28 @@ def test_matches_plain_substring_paths_unaffected_by_regex_guard():
 
 def test_matches_empty_query_never_matches():
     assert not SearchDialogPopup.matches(_search('', regexp=True), _item('anything'))
+
+
+# --- StatListItem.jump_to_file: file paths must be regex-escaped --------------
+# The diff stat row builds an `re.compile(f'diff.*{path}')` to jump to the file's
+# hunk. Git paths can contain regex metachars, so the path must be escaped: an
+# unescaped "[" crashes re.compile, and "." would wildcard-match the wrong line.
+
+def _jump_env(stat_file_path):
+    captured = {}
+    diff = SimpleNamespace(commit_id='c', _selected=0, _offset_y=0,
+                           set_selected=lambda pat, mode: captured.__setitem__('pat', pat))
+    app = SimpleNamespace(git_diff=diff,
+                          git_log=SimpleNamespace(add_to_jump_list=lambda *a: None))
+    item = SimpleNamespace(get_app=lambda: app, stat_file_path=stat_file_path)
+    StatListItem.jump_to_file(item)          # must not raise
+    return captured['pat']
+
+def test_jump_to_file_does_not_crash_on_metachar_path():
+    pat = _jump_env('test[1].txt')           # unescaped this raises re.error
+    assert pat.match('diff --git a/test[1].txt b/test[1].txt')
+
+def test_jump_to_file_treats_dot_as_literal_not_wildcard():
+    pat = _jump_env('a.txt')
+    assert pat.match('diff --git a/a.txt b/a.txt')   # the real path still matches
+    assert not pat.match('diff --git a/aXtxt b/aXtxt')  # '.' is literal, no wildcard

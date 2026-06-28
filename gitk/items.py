@@ -141,7 +141,10 @@ class StatListItem(TextListItem):
         app = self.get_app()
         diff = app.git_diff
         app.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
-        diff.set_selected(re.compile(f'diff.*{self.stat_file_path}'), 'top')
+        # Escape the path: filenames can legally contain regex metacharacters
+        # ('[', '(', '+', '.', ...); without re.escape a name like "test[1].txt"
+        # makes re.compile raise (crash) and benign metachars mis-match the line.
+        diff.set_selected(re.compile(f'diff.*{re.escape(self.stat_file_path)}'), 'top')
         app.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
 
     def activate(self) -> bool:

@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 71 (BUG: unescaped file path in diff-jump regex).**
+  Sibling of iter-70, found auditing `StatListItem.jump_to_file` (gitk/items.py).
+  Clicking/Enter on a diff *stat* row jumps to that file's hunk via
+  `diff.set_selected(re.compile(f'diff.*{self.stat_file_path}'), 'top')` — the
+  raw path interpolated into a regex. Git filenames may legally contain regex
+  metacharacters, so a file named e.g. `test[1].txt` makes `re.compile` raise
+  `re.error` (crash on jump), and a benign `.` in a name wildcard-matches the
+  wrong diff header. FIX: `re.escape(self.stat_file_path)` so the path is a
+  literal while `diff.*` stays the intended fuzzy prefix. Added 2 unit tests
+  (metachar path no longer crashes + still matches its header; `.` is treated
+  literally, not as a wildcard). Suite **67/67** (goldens untouched); units
+  **50/50**. (15th genuine bug; 2nd real crash.)
 - **2026-06-28 — Iteration 70 (BUG: invalid regex in search crashed the draw loop).**
   Genuine crash bug found by auditing `SearchDialogPopup.matches` (gitk/dialogs.py).
   With the `<Regexp>` toggle on, it called `re.search(self.input.txt, text, …)`
