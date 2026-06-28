@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 75 (BUG: autoscroll didn't redraw the body when the list overflowed).**
+  Swept the other `self.height`/offset boundary checks in list_view.py/view.py
+  after the iter-74 off-by-one — lines 157/162/166/202/210/259/265/286 all check
+  out as consistent. But found a sibling redraw bug in `ListView.append`'s
+  autoscroll branch (gitk/list_view.py, used by the F4 LogView): when the list
+  overflows the screen, append recomputes `_offset_y` to follow the tail, but the
+  on-screen dirty check above it ran against the OLD offset and only set
+  `header_dirty` — so the autoscroll scroll never marked the body dirty and the
+  view went stale (new log lines didn't appear until another redraw trigger).
+  FIX: set `dirty=True` when autoscroll actually moves the offset. Added 2 unit
+  tests (overflow scrolls + marks dirty; within-screen keeps offset 0). Suite
+  **69/69** (goldens untouched); units **58/58**. (20th genuine bug.)
 - **2026-06-28 — Iteration 74 (BUG: off-by-one left the bottom row blank as items stream).**
   Chased the `log_flags_quoted_author` flake from iter-73 (failed ~1-in-6, bottom
   commit row intermittently blank) and it led to a real user-facing rendering

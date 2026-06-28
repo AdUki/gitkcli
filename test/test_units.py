@@ -510,3 +510,23 @@ def test_append_marks_dirty_for_a_clearly_visible_row():
     lv = _appendable(height=5, n_existing=1)   # len becomes 2, well on-screen
     ListView.append(lv, SimpleNamespace())
     assert lv.dirty is True
+
+
+# --- ListView.append autoscroll follows the tail (dirty + offset) -------------
+# With autoscroll on and the list overflowing, appending must scroll to keep the
+# newest row visible AND mark the body dirty (the on-screen check ran against the
+# pre-scroll offset, so without this the autoscrolled view went stale).
+
+def test_append_autoscroll_overflow_scrolls_and_marks_dirty():
+    lv = _appendable(height=5, offset=0, n_existing=5)  # full screen, at top
+    lv.autoscroll = True
+    ListView.append(lv, SimpleNamespace())              # len -> 6, overflows
+    assert lv._offset_y == 1                            # scrolled to show the tail
+    assert lv.dirty is True                             # body redraw requested
+
+def test_append_autoscroll_within_screen_keeps_offset_zero():
+    lv = _appendable(height=5, offset=0, n_existing=1)
+    lv.autoscroll = True
+    ListView.append(lv, SimpleNamespace())              # len -> 2, fits
+    assert lv._offset_y == 0
+    assert lv.dirty is True                             # on-screen row -> dirty anyway

@@ -104,8 +104,15 @@ class ListView(View):
             # header-only redraw to keep it current while items stream in.
             self.header_dirty = True
         if self.autoscroll:
-            self._offset_y = max(0, len(self.items) - self.height)
-        
+            # Follow the tail. When the list overflows, this scrolls the view, so
+            # the body must be redrawn — but the on-screen check above ran against
+            # the OLD offset and would only have set header_dirty, leaving the
+            # autoscrolled body stale. Mark dirty whenever the offset moves.
+            new_offset = max(0, len(self.items) - self.height)
+            if new_offset != self._offset_y:
+                self._offset_y = new_offset
+                self.dirty = True
+
     def clear(self):
         self.app.log.debug(f'Clear view {self.id}')
         self.items = []
