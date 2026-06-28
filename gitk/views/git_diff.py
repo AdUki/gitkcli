@@ -93,7 +93,13 @@ class GitDiffView(ListView):
             # rather than collapsing the split.
             self.app.git_log.show()
             return True
-        if key == KEY_CTRL('n'):
+        if key == ord('+'):
+            # Documented diff keys (README); previously only the [+]/[-] header
+            # buttons changed the context size.
+            self.change_context(+1)
+        elif key == ord('-'):
+            self.change_context(-1)
+        elif key == KEY_CTRL('n'):
             self.app.git_log.handle_input(KeyboardState(curses.KEY_DOWN))
         elif key == KEY_CTRL('p'):
             self.app.git_log.handle_input(KeyboardState(curses.KEY_UP))

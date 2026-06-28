@@ -1,0 +1,15 @@
+# The '+' / '-' keys change the diff context size (documented in the README;
+# previously only the [+]/[-] header buttons did). Open a commit diff, press
+# '+' twice: the header "Context:" counter goes 3 -> 5 and the reloaded diff
+# shows more surrounding context lines.
+size      120x40
+config    default
+run       git checkout --detach a3d1fd1
+launch
+key       <Enter>
+wait      stable
+key       +
+wait      stable
+key       +
+wait      stable
+capture   context_5

@@ -222,6 +222,16 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 85 (BUG: documented '+'/'-' diff-context keys did nothing).**
+  Systematic index/modulo/division scan came up clean (all guarded). Then found
+  a doc-vs-behavior bug: README lists '+'/'-' as diff-view keys to change the
+  context size, but `GitDiffView.handle_input` never handled them — only the
+  [+]/[-] header BUTTONS called change_context, so the keys were silently
+  swallowed by the base handler. FIX: wire `ord('+')`/`ord('-')` to
+  change_context(+1)/(-1). Added an additive golden `diff_context_key` (open a
+  diff, press '+' twice -> header "Context:" goes 3 -> 5, more context shown),
+  deterministic 5/5. Suite **73/73** (existing goldens untouched; one new case);
+  units **84/84**. (28th genuine bug.)
 - **2026-06-28 — Iteration 84 (BUG: search next/previous didn't wrap around).**
   Examined the mouse decode + view-stack lifecycle (sound, golden-covered) then
   found a real UX bug in `ListView.handle_input`: 'n'/'N' called `search()` with
