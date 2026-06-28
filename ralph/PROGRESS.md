@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 89 (coverage: tag-annotation display; audit found no bug).**
+  Completed the interactive-callback audit: reset dialog (ResetModeItem.activate
+  and [Ok] both reset the same highlighted mode), ButtonRowItem (Enter activates
+  the focused button, Left/Right navigate, Up/Down fall through), the
+  confirm-dialog safe-default focus (`_show_message_box`/`_focus_button_row`
+  honour focus='last' -> [Cancel]) — all correct, no bug. Then locked a flagship
+  feature that had zero coverage: "Show tag annotation" (refs context menu ->
+  `git cat-file -p <tagobj>`). Verified it renders the tag object (object/type/
+  tag/tagger/message); the fixture pins the tagger date (1735615014) so it's
+  deterministic. Added golden `tag_annotation` (F2 -> '/'search v0.1.0 -> F7 ->
+  Down*2 -> Enter), deterministic 5/5. No code change. Suite **74/74** (existing
+  goldens untouched; one new case); units **91/91**.
 - **2026-06-28 — Iteration 88 (BUG: search-dialog buttons didn't wrap like the keys).**
   Audited the header/footer button callbacks (jump [<-]/[->] match between
   git_log/git_diff and the README; diff [+]/[-]/[Ignore whitespace], log

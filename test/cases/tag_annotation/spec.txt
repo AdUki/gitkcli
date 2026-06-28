@@ -1,0 +1,20 @@
+# "Show tag annotation" (refs view context menu) runs `git cat-file -p <tagobj>`
+# and shows the annotated tag's object (tagger line + message). Flagship feature
+# with no prior coverage. F2 -> refs, search to the annotated tag v0.1.0, F7
+# opens its context menu, select "Show tag annotation". Tagger date is pinned in
+# the fixture so the annotation is deterministic.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       /
+text      "v0.1.0"
+key       <Enter>
+wait      stable
+key       <F7>
+wait      stable
+key       <Down>*2
+key       <Enter>
+wait      stable
+capture   annotation
