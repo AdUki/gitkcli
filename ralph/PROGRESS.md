@@ -1,0 +1,99 @@
+# Ralph Loop Progress — gitkcli modularization
+
+> Living state. The loop updates this every iteration. Newest notes at the top
+> of the log. Check off tasks as they complete. See `ralph/PLAN.md` for rules.
+
+## Baseline (captured 2026-06-28, before any refactor)
+
+- `gitkcli.py`: **3987 lines**, **55 classes**, single file.
+- `Gitkcli.` references in `gitkcli.py`: **297** (top: git_log 85, git_diff 52,
+  screen 41, log 37, mouse 28, git_refs 18).
+- `Gitkcli` classmethods: **10**.
+- Golden test suite: **60 cases, all passing** (verified `log_startup`).
+- Harness launches `python3 gitkcli.py` (`test/run.py` → `GITKCLI`). Do not
+  break this path.
+
+## Current status
+
+- **Phase:** 1 — about to begin (App struct). Iteration 0 setup complete.
+- **gitkcli.py:** 4066 lines · **Gitkcli. refs:** 297 · **package:** not created.
+
+## Iteration 0 (setup) — DONE
+
+- [x] Create branch `refactor-modularize` off `master`; tag current commit
+      `refactor-baseline`. NOTE: a branch named `refactor` already exists, which
+      blocks `refactor/modularize` (git ref hierarchy conflict). Using
+      `refactor-modularize` instead.
+- [x] Run the FULL suite once (`python3 test/run.py`): **60 passed, 0 failed**
+      (confirmed baseline, 2026-06-28).
+- [x] Commit (plan files only) and update "Current status".
+
+## Phase 1 — Dissolve `Gitkcli` global into an `App` struct (still one file)
+
+- [ ] Introduce `App` instance + access path (`self.app` on views; `get_app()`
+      parent-chain walk for items/segments; Screen holds `app`).
+- [ ] Migrate the 10 classmethods to `App` methods (consider `SplitLayout`).
+- [ ] Replace all `Gitkcli.<x>` references with injected access, cluster by
+      cluster (e.g. one iteration: all `Gitkcli.git_diff` in the diff view).
+- [ ] Remove the `Gitkcli` class. Confirm `grep -c 'Gitkcli\.' gitkcli.py` = 0.
+      Suite green throughout.
+
+## Phase 2 — Extract clusters into `gitk/` (one per iteration, re-export crutch)
+
+- [ ] `gitk/config.py`
+- [ ] `gitk/input.py`
+- [ ] `gitk/log.py`
+- [ ] `gitk/screen.py`
+- [ ] `gitk/jobs.py`
+- [ ] `gitk/segments.py`
+- [ ] `gitk/items.py`
+- [ ] `gitk/segmented_items.py`
+- [ ] `gitk/view.py`
+- [ ] `gitk/views/` (git_log, git_diff, git_refs, log)
+- [ ] `gitk/dialogs/` (base, context_menu, confirm, error, preferences, reset,
+      ref_push, new_ref, search)
+- [ ] `gitk/app.py` (App + SplitLayout)
+- [ ] `gitk/main.py` (launch_curses, main)
+
+## Phase 3 — Thin entry point & packaging
+
+- [ ] `gitkcli.py` reduced to the thin shim (≤ ~15 lines).
+- [ ] Remove `from gitk... import *` re-export crutches.
+- [ ] Update `setup.py` / `pyproject.toml`; console script + `python3
+      gitkcli.py` both work.
+
+## Phase 4 — Loose-coupling, readability, new tests
+
+- [ ] Cross-module import audit (base classes + App only; no sibling internals).
+- [ ] Every module ≤ ~600 lines (or documented exception below).
+- [ ] Introduce passed structs/dataclasses where it improves clarity (no
+      behavior change).
+- [ ] Add unit tests for pure pieces (config parsing, KEY_CTRL, job line
+      parsers, segment geometry).
+
+## Exit-criteria check (fill in when claiming completion)
+
+- [ ] `grep -rn 'class Gitkcli' .` → none
+- [ ] `grep -rn 'Gitkcli\.' gitkcli.py gitk/` → 0
+- [ ] `gitkcli.py` is a thin shim; code in `gitk/` modules
+- [ ] no module > ~600 lines (exceptions: …)
+- [ ] full golden suite passes; `git status test/cases` clean vs baseline
+- [ ] `import gitkcli` works; console script works
+- [ ] all tasks above checked; STRUCTURE.md matches reality
+- [ ] added unit tests pass
+
+---
+
+## Log (newest first)
+
+- **2026-06-28 — Iteration 0 (setup).** Created branch `refactor-modularize`
+  (the planned `refactor/modularize` is blocked by an existing `refactor`
+  branch — git can't nest a ref under an existing leaf ref). Tagged
+  `refactor-baseline` at the current master HEAD. Ran the full golden suite:
+  **60 passed, 0 failed**. `gitkcli.py` = 4066 lines (baseline doc said 3987;
+  file grew on master since the doc was written), `Gitkcli.` refs = 297,
+  `class Gitkcli` = 1. Committed plan files. Next: Phase 1 — introduce the `App`
+  instance + access path.
+
+## BLOCKED
+- _(none)_
