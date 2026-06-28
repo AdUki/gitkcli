@@ -6,6 +6,7 @@ regression in that logic is caught quickly and pinpointed. The golden suite
 remains the behavioural oracle.
 """
 
+import datetime
 import json
 import os
 import sys
@@ -20,6 +21,7 @@ from gitk.config import (KEY_CTRL, DEFAULT_CONFIG, load_config, save_config,
 from gitk.segments import ref_color_and_title, TextSegment
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
+from gitk.jobs import GitLogJob
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -185,3 +187,32 @@ def test_draw_text_width_beyond_text_is_clamped():
     win = _FakeWin()
     n = TextSegment('abc')._draw_text(win, 1, 10, color=0)
     assert win.drawn == ['bc'] and n == 2
+
+
+# --- GitLogJob.process_line (pure parser; does not use self) -----------------
+# Lines come from `git log --format=#%H#%P#%aI#%an#%s`, i.e.
+# <prefix>#<hash>#<parents>#<iso-date>#<author>#<subject>.
+
+def test_process_line_parses_a_commit():
+    line = "#abc123#p1 p2#2024-10-10T12:31:35+00:00#Alice#Fix the bug"
+    id, commit = GitLogJob.process_line(None, line)
+    assert id == 'abc123'
+    assert commit['prefix'] == ''
+    assert commit['parents'] == ['p1', 'p2']
+    assert commit['author'] == 'Alice'
+    assert commit['title'] == 'Fix the bug'
+    assert isinstance(commit['date'], datetime.datetime)
+
+def test_process_line_subject_may_contain_hashes():
+    # split('#', 5) caps the split so '#' in the subject is preserved.
+    _, commit = GitLogJob.process_line(None,
+        "#id#p#2024-10-10T12:31:35+00:00#Bob#subject with # hash")
+    assert commit['title'] == 'subject with # hash'
+
+def test_process_line_keeps_graph_prefix():
+    _, commit = GitLogJob.process_line(None,
+        "* #id#p#2024-10-10T12:31:35+00:00#Carol#msg")
+    assert commit['prefix'] == '* '
+
+def test_process_line_nonmatching_returns_raw_string():
+    assert GitLogJob.process_line(None, "just some text") == "just some text"

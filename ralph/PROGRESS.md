@@ -213,6 +213,20 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 46 (defer #3 separator-offset; add process_line tests).**
+  Assessed the last review note (#3): under horizontal scroll of a segmented row,
+  `draw_line`'s offset bookkeeping (`offset -= len(txt) - length`) doesn't account
+  for the inter-segment separators that `get_text()`/`get_segment_on_offset`/
+  `_offset_x` DO count, so draw and hit-test drift by a few columns. DEFERRED:
+  impact is cosmetic + a rare mis-click only while the commit log is scrolled
+  right; no golden exercises `offset>0` so a fix can't be regression-verified
+  against the oracle, and touching `draw_line` risks the byte-identical
+  `offset=0` golden path. Prereq for fixing safely: add an h-scroll golden case
+  first (a behavior-adding change to the suite, out of scope for the
+  never-touch-goldens loop). Instead added zero-risk coverage: 4 unit tests for
+  the pure `GitLogJob.process_line` commit parser (normal parse, '#'-in-subject,
+  graph prefix, non-matching → raw string). Full suite **60/60** (source
+  unchanged this iteration; goldens clean); units **21/21**.
 - **2026-06-28 — Iteration 45 (post-refactor bugfix: UserInputListItem field scroll).**
   `UserInputListItem.draw_line` never updated `self.offset` (the long-standing
   TODO), so once `cursor_pos > width-1` the `left_txt` (= `txt[:cursor_pos]`)
