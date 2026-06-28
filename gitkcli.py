@@ -112,8 +112,8 @@ class Job:
         cls.jobs[id] = job
 
     @classmethod
-    def run_job(cls, args):
-        Gitkcli.log.info('Run job: ' + ' '.join(args))
+    def run_job(cls, app, args):
+        app.log.info('Run job: ' + ' '.join(args))
         # Pin LC_ALL=C so git speaks English: callers parse stderr to detect
         # conditions like "already exists" / "non-fast-forward".
         return subprocess.run(args, capture_output=True, text=True,
@@ -475,7 +475,7 @@ class GitRefsJob(Job):
     def start_job(self, args = [], on_finished = None):
         self.app.git_refs.refs.clear()
 
-        self.app.git_log.head_branch = Job.run_job(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).stdout.rstrip()
+        self.app.git_log.head_branch = Job.run_job(self.app, ['git', 'rev-parse', '--abbrev-ref', 'HEAD']).stdout.rstrip()
         if self.app.git_log.head_branch == 'HEAD': self.app.git_log.head_branch = ''
 
         super().start_job(args, on_finished) 
@@ -654,7 +654,7 @@ class DiffListItem(TextListItem):
                     blame_revision,
                     '--', self.old_file_path]
 
-            result = Job.run_job(args)
+            result = Job.run_job(app, args)
             if result.returncode == 0:
                 # Example output:
                 # a42cadebfe42d85cbf36f4887be166b34077b3e2 test test.txt 1 1) aaa
@@ -667,7 +667,7 @@ class DiffListItem(TextListItem):
                     # When commit id starts with '^' it means this is initial git-id and is 1 char shorer
                     # ^1af87e6c2614c1aea4a81476df0deb8206d5489 451)         except Exception:
                     if id.startswith('^'):
-                        id = Job.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
+                        id = Job.run_job(app, ['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
                     commit = app.git_log.select_commit(id)
                     if commit:
                         diff = app.git_diff
@@ -1882,7 +1882,7 @@ class GitLogView(ListView):
         # --graph may also arrive via the preferences "flags" field.
         self._graph_mode = '--graph' in self.job.args
 
-        repo_name = os.path.basename(Job.run_job(['git', 'rev-parse', '--show-toplevel']).stdout.strip())
+        repo_name = os.path.basename(Job.run_job(self.app, ['git', 'rev-parse', '--show-toplevel']).stdout.strip())
         self.set_header_item(WindowTopBarItem(repo_name, [
                 SplitButtonSegment(30),
                 ButtonSegment("[<-]", lambda: self.move_in_jump_list(+1), 30),
@@ -1902,7 +1902,7 @@ class GitLogView(ListView):
         lane art is computed by git over the whole commit set, so a single new
         commit cannot be appended with correct art - reload the full log instead.
         Otherwise fetch just the new commits cheaply with `old..HEAD`."""
-        new_head = Job.run_job(['git', 'rev-parse', 'HEAD']).stdout.strip()
+        new_head = Job.run_job(self.app, ['git', 'rev-parse', 'HEAD']).stdout.strip()
         if self._graph_mode:
             self.head_id = new_head
             self.reload_commits()
@@ -1936,8 +1936,8 @@ class GitLogView(ListView):
 
     def check_uncommitted_changes(self):
         """Probe the working tree / index and (re)place the pseudo-rows."""
-        self._has_staged = Job.run_job(['git', 'diff', '--cached', '--quiet']).returncode != 0
-        self._has_working = Job.run_job(['git', 'diff', '--quiet']).returncode != 0
+        self._has_staged = Job.run_job(self.app, ['git', 'diff', '--cached', '--quiet']).returncode != 0
+        self._has_working = Job.run_job(self.app, ['git', 'diff', '--quiet']).returncode != 0
         self._place_uncommitted_rows()
 
     def _place_uncommitted_rows(self):
@@ -2103,7 +2103,7 @@ class GitLogView(ListView):
         if not commit_id:
             self.app.log.warning('Select a commit to cherry-pick')
             return
-        Job.run_job(['git', 'cherry-pick', '--abort'])
+        Job.run_job(self.app, ['git', 'cherry-pick', '--abort'])
         self.app.run_git(['git', 'cherry-pick', '-m', '1', commit_id],
                         ok=f'Commit {commit_id} cherry picked successfully',
                         err='Error during cherry-pick', refresh_head=True, reload_refs=True)
@@ -2134,13 +2134,13 @@ class GitLogView(ListView):
 
     def clean_uncommitted_changes(self, staged:bool = False):
         if staged:
-            result = Job.run_job(['git', 'stash', 'save', '--keep-index'])
+            result = Job.run_job(self.app, ['git', 'stash', 'save', '--keep-index'])
             if result.returncode == 0:
-                result = Job.run_job(['git', 'reset', '--hard'])
+                result = Job.run_job(self.app, ['git', 'reset', '--hard'])
             if result.returncode == 0:
-                result = Job.run_job(['git', 'stash', 'pop'])
+                result = Job.run_job(self.app, ['git', 'stash', 'pop'])
         else:
-            result = Job.run_job(['git', 'restore', '.'])
+            result = Job.run_job(self.app, ['git', 'restore', '.'])
         if result.returncode == 0:
             self.app.git_refs.reload_refs()
             self.app.git_log.check_uncommitted_changes()
@@ -2498,15 +2498,15 @@ class ContextMenu(ListView):
                         err='Error deleting branch', reload_refs=True)
 
     def remove_tag(self, tag_name):
-        remotes = Job.run_job(['git', 'remote']).stdout.splitlines()
+        remotes = Job.run_job(self.app, ['git', 'remote']).stdout.splitlines()
         removed_from_remotes = []
 
-        result = Job.run_job(['git', 'tag', '-d', tag_name])
+        result = Job.run_job(self.app, ['git', 'tag', '-d', tag_name])
         if result.returncode == 0:
             removed_from_remotes.append('<local>')
 
         for remote in remotes:
-            result = Job.run_job(['git', 'push', '--delete', remote, tag_name])
+            result = Job.run_job(self.app, ['git', 'push', '--delete', remote, tag_name])
             if result.returncode == 0:
                 removed_from_remotes.append(remote)
 
@@ -2710,7 +2710,7 @@ class RefPushDialogPopup(ListView):
         self.is_popup = True
 
         self.remotes = []
-        for remote in Job.run_job(['git', 'remote']).stdout.rstrip().split('\n'):
+        for remote in Job.run_job(self.app, ['git', 'remote']).stdout.rstrip().split('\n'):
             self.remotes.append(ToggleSegment(remote, callback = lambda val: self.change_remote(val.txt)))
         self.change_remote(self.remotes[0].txt)
 
@@ -3884,7 +3884,7 @@ class App:
         requested refreshes and log `ok`. On a forceable rejection (`retry` set,
         not already forcing, and a `reasons` substring in stderr): pop a confirm
         dialog. Otherwise log `err` + stderr. Returns the CompletedProcess."""
-        result = Job.run_job(args)
+        result = Job.run_job(self, args)
         if result.returncode == 0:
             if refresh_head: self.git_log.refresh_head()
             if reload_refs: self.git_refs.reload_refs()

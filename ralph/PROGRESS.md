@@ -15,32 +15,17 @@
 
 ## Current status
 
-- **Phase:** 1 — in progress. Migrating view-method `Gitkcli.<x>` → `self.app.<x>`
-  cluster by cluster. View/Screen instance-scope migration COMPLETE: done
-  `GitDiffView`, `GitLogView`, `View` base, `ContextMenu`,
-  `PreferencesDialogPopup`, `Screen`, `ListView` (+ module fn
-  `_raise_split_sibling` via `view.app`), `LogView`, `ResetDialogPopup`,
-  `RefPushDialogPopup`, `NewRefDialogPopup`, `GitSearchDialogPopup`. Remaining
-  `Gitkcli.` refs are now in: items/segments (migrating via the new
-  `get_app()`), jobs (no view; need a different access path), one `GitRefsView`
-  classmethod, `MouseState`/`KeyboardState` helpers, and the
-  App/launch_curses/main-loop entry point (~61). `get_app()` chain is BUILT and
-  validated. Item clusters DONE: CommitListItem, UncommittedChangesListItem,
-  WindowTopBarItem, DiffListItem, StatListItem, ResetModeItem (+ earlier
-  ContextMenuItem, RefListItem, Item base). Segment clusters DONE: RefSegment,
-  SplitButtonSegment (callback deferred via lambda). Jobs DONE (instance
-  methods): Job base + GitLogJob/GitRefreshHeadJob/GitDiffJob/GitSearchJob/
-  GitRefsJob now hold `self.app` (injected via constructor by the owning view).
-  `MouseState`/`KeyboardState` DONE. Module-fn helpers DONE:
-  `copy_to_clipboard(txt, app)`, `save_config(cfg, app)` now take `app`;
-  `GitRefsView.get_ref_color_and_title(ref, head_branch='')` takes `head_branch`
-  as data (decoupled from the global — nice for the module split), threaded from
-  `RefListItem.draw_line`, `RefSegment.__init__`, and
-  `CommitListItem.get_segments`. ONLY remaining non-entry-point code ref: the
-  `Job.run_job` classmethod (1). Everything else (61) is the
-  App/launch_curses/main-loop entry point + 2 doc-comment prose lines.
-- **gitkcli.py:** 4132 lines · **Gitkcli. refs:** 64 (61 entry-point + 1
-  run_job + 2 doc-prose) · **`class Gitkcli`:** 0 · **package:** not created.
+- **Phase:** 1 — nearly done. `Gitkcli` class → `App` instance + bridge.
+  ALL component code migrated off the global: views/screen via `self.app`,
+  items/segments via the `get_app()` parent chain, jobs via injected `self.app`,
+  `MouseState`/`KeyboardState` via an `app` attr, and module helpers
+  (`copy_to_clipboard`/`save_config`/`run_job`) + the ref formatter via passed
+  args. The ONLY remaining `Gitkcli` references are the **entry point**
+  (`launch_curses` + the main loop, 61) and 2 doc-comment prose lines.
+- **NEXT:** convert the entry point to a local `app`, then delete the bridge
+  global → completes Phase 1 (`grep -c 'Gitkcli\.' gitkcli.py` = 0).
+- **gitkcli.py:** 4132 lines · **Gitkcli. refs:** 63 (61 entry-point + 2
+  doc-prose) · **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
 
@@ -131,6 +116,16 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 15 (Phase 1: thread `app` through `Job.run_job`).**
+  `Job.run_job` is a classmethod (no `self`); gave it an `app` param —
+  `run_job(cls, app, args)` logs via `app.log.info`. Updated all 16 call sites
+  to pass their app handle: `self.app` (GitRefsJob/GitLogView/ContextMenu/
+  RefPushDialogPopup), the `app` local (DiffListItem.jump_to_origin), and `self`
+  (App.run_git, where self is the App). Verified RefPushDialogPopup.__init__
+  calls `super().__init__` (which sets self.app) before its run_job. This clears
+  the LAST non-entry-point `Gitkcli.` reference. Full suite: **60 passed, 0
+  failed**; goldens clean. `Gitkcli.` refs 64→63 (now only 61 entry-point + 2
+  doc-prose).
 - **2026-06-28 — Iteration 14 (Phase 1: migrate module-fn helpers + a classmethod).**
   `copy_to_clipboard` and `save_config` now take an explicit `app` arg (passed
   by callers that have `self.app`/`get_app()`).
