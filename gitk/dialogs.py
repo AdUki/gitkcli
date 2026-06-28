@@ -476,7 +476,13 @@ class SearchDialogPopup(UserInputDialogPopup):
             return False
         text = item.get_text()
         if self.use_regexp.toggled:
-            return re.search(self.input.txt, text, 0 if self.case_sensitive.toggled else re.IGNORECASE)
+            # matches() runs on every redraw (to highlight hits) and on each
+            # keystroke, so a half-typed / invalid pattern (e.g. "[", "(") must
+            # not raise: an invalid regex simply matches nothing until valid.
+            try:
+                return re.search(self.input.txt, text, 0 if self.case_sensitive.toggled else re.IGNORECASE)
+            except re.error:
+                return None
         if self.case_sensitive.toggled:
             return self.input.txt in text
         return self.input.txt.lower() in text.lower()

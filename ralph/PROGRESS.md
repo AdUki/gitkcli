@@ -222,6 +222,21 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 70 (BUG: invalid regex in search crashed the draw loop).**
+  Genuine crash bug found by auditing `SearchDialogPopup.matches` (gitk/dialogs.py).
+  With the `<Regexp>` toggle on, it called `re.search(self.input.txt, text, …)`
+  with the raw, possibly half-typed user pattern. `matches()` runs on the MAIN
+  thread both from `ListView.search` (Enter/n/N) and — worse — from
+  `ListView.draw` (line 283, every redraw, to highlight hits). So toggling Regexp
+  and typing a single `[` (or `(`, `*`, `a{2,1}`) raised `re.error` straight into
+  the render loop → crash. Confirmed `re.search('[', 'abc')` raises
+  `unterminated character set`. FIX: wrap the regexp branch in `try/except
+  re.error: return None`, so an invalid/incomplete pattern just matches nothing
+  until it becomes valid (standard incremental-search behaviour). Added 5 unit
+  tests (invalid patterns return no-match; valid regex hits; case-sensitivity
+  toggle; plain-substring path with bracket chars unaffected; empty query).
+  Suite **67/67** (goldens untouched); units **48/48** (was 43). (14th genuine
+  bug — and the first *real* crash; cf. the iter-67 correction below.)
 - **2026-06-28 — Iteration 69 (CORRECTION: the iter-67 "terminal-injection
   security bug" framing was WRONG — it's display hygiene, not a vulnerability).**
   Re-examined the iter-67 claim and disproved it with a definitive minimal curses

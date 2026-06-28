@@ -28,6 +28,7 @@ from gitk.list_view import ListView
 from gitk.jobs import GitLogJob, Job, _CONTROL_CHARS
 from gitk.items import UserInputListItem
 from gitk.screen import Screen
+from gitk.dialogs import SearchDialogPopup
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -391,3 +392,36 @@ def test_to_pal_negative_is_the_default_bg():
         assert Screen._to_pal(-1) == -1
     with _screen_tier(0, default_bg=curses.COLOR_BLACK):
         assert Screen._to_pal(-1) == curses.COLOR_BLACK
+
+
+# --- SearchDialogPopup.matches: regex search must not crash on bad patterns ----
+# matches() runs on every redraw and keystroke, so a half-typed/invalid regex
+# (e.g. "[") must yield "no match", never raise re.error into the draw loop.
+
+def _search(txt, regexp=False, case=False):
+    return SimpleNamespace(input=SimpleNamespace(txt=txt),
+                           use_regexp=SimpleNamespace(toggled=regexp),
+                           case_sensitive=SimpleNamespace(toggled=case))
+
+def _item(text):
+    return SimpleNamespace(get_text=lambda: text)
+
+def test_matches_invalid_regex_returns_no_match_instead_of_raising():
+    for bad in ('[', '(', '*', '(?P<', 'a{2,1}'):
+        assert not SearchDialogPopup.matches(_search(bad, regexp=True), _item('anything'))
+
+def test_matches_valid_regex_finds_hit_case_insensitive_by_default():
+    assert SearchDialogPopup.matches(_search('fi.', regexp=True), _item('a FIX b'))
+    assert not SearchDialogPopup.matches(_search('zzz', regexp=True), _item('a fix b'))
+
+def test_matches_regex_respects_case_sensitivity_toggle():
+    assert not SearchDialogPopup.matches(_search('FIX', regexp=True, case=True), _item('a fix b'))
+    assert SearchDialogPopup.matches(_search('fix', regexp=True, case=True), _item('a fix b'))
+
+def test_matches_plain_substring_paths_unaffected_by_regex_guard():
+    assert SearchDialogPopup.matches(_search('[lit]', regexp=False), _item('has [lit] bracket'))
+    assert SearchDialogPopup.matches(_search('FIX', regexp=False, case=False), _item('a fix b'))
+    assert not SearchDialogPopup.matches(_search('FIX', regexp=False, case=True), _item('a fix b'))
+
+def test_matches_empty_query_never_matches():
+    assert not SearchDialogPopup.matches(_search('', regexp=True), _item('anything'))
