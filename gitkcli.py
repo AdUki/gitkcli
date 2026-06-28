@@ -735,9 +735,9 @@ class RefSegment(TextSegment):
 
     def handle_mouse_input(self, mouse) -> bool:
         if mouse.event_type == 'right-click':
-            return Gitkcli.context_menu.show_context_menu(RefListItem(self.ref), 'git-refs')
+            return self.get_app().context_menu.show_context_menu(RefListItem(self.ref), 'git-refs')
         elif mouse.event_type == 'double-click' and 'tag_id' in self.ref:
-            Gitkcli.git_diff.job.show_tag_annotation(self.ref['tag_id'])
+            self.get_app().git_diff.job.show_tag_annotation(self.ref['tag_id'])
             return True
         else:
             return super().handle_mouse_input(mouse)
@@ -960,10 +960,12 @@ class SplitButtonSegment(ButtonSegment):
     _LABELS = {'off': '[Split]', 'side': '[Split |]', 'stacked': '[Split =]'}
 
     def __init__(self, color = 30):
-        super().__init__('', Gitkcli.cycle_split_view, color)
+        # Defer the action: at construction the segment isn't wired to its item
+        # yet, so reach the app lazily (the button is clicked long after wiring).
+        super().__init__('', lambda: self.get_app().cycle_split_view(), color)
 
     def get_text(self):
-        return self._LABELS.get(Gitkcli.split_mode, '[Split]')
+        return self._LABELS.get(self.get_app().split_mode, '[Split]')
 
 class WindowTopBarItem(SegmentedListItem):
     """Top title bar of a main view, rendered as a horizontal rule line with the

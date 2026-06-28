@@ -27,13 +27,14 @@
   App/launch_curses/main-loop entry point (~61). `get_app()` chain is BUILT and
   validated. Item clusters DONE: CommitListItem, UncommittedChangesListItem,
   WindowTopBarItem, DiffListItem, StatListItem, ResetModeItem (+ earlier
-  ContextMenuItem, RefListItem, Item base). Next: segment clusters (RefSegment,
-  SplitButtonSegment — note SplitButtonSegment resolves its callback at
-  construction, needs a lambda-defer); the GitRefsView classmethod; jobs
-  (GitDiffJob, GitRefsJob, GitLogJob, GitRefreshHeadJob, GitSearchJob, Job);
-  MouseState/KeyboardState; the copy_to_clipboard module fn; and the
-  App/launch_curses/main-loop entry point.
-- **gitkcli.py:** 4117 lines · **Gitkcli. refs:** 119 (code; +2 doc-prose) ·
+  ContextMenuItem, RefListItem, Item base). Segment clusters DONE: RefSegment,
+  SplitButtonSegment (callback deferred via lambda). Next: the GitRefsView
+  classmethod; jobs (GitDiffJob, GitRefsJob, GitLogJob, GitRefreshHeadJob,
+  GitSearchJob, Job); MouseState/KeyboardState; the copy_to_clipboard module fn;
+  and the App/launch_curses/main-loop entry point. After items/segments/jobs,
+  ALL remaining refs should be in the entry point (become `app.`) + a few
+  helpers that need an app handle passed in.
+- **gitkcli.py:** 4119 lines · **Gitkcli. refs:** 115 (code; +2 doc-prose) ·
   **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
@@ -125,6 +126,16 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 11 (Phase 1: migrate segment clusters to `get_app()`).**
+  `RefSegment.handle_mouse_input` → `self.get_app()` (right-click context menu +
+  tag-annotation double-click). `SplitButtonSegment`: `get_text` →
+  `self.get_app().split_mode`, and the constructor callback deferred from
+  `Gitkcli.cycle_split_view` (resolved at construction, before `_item` wiring)
+  to `lambda: self.get_app().cycle_split_view()` (resolved at click, after
+  wiring). Verified both segment types are only instantiated where `_item` gets
+  wired (RefSegment in CommitListItem.get_segments; SplitButtonSegment in the
+  GitLogView header). Full suite: **60 passed, 0 failed**; goldens clean.
+  `Gitkcli.` refs 119→115.
 - **2026-06-28 — Iteration 10 (Phase 1: migrate item clusters to `get_app()`).**
   Migrated all six remaining item classes off the global, introducing an `app =
   self.get_app()` local where a method had several refs (readability):
