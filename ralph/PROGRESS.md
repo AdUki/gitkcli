@@ -213,6 +213,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 45 (post-refactor bugfix: UserInputListItem field scroll).**
+  `UserInputListItem.draw_line` never updated `self.offset` (the long-standing
+  TODO), so once `cursor_pos > width-1` the `left_txt` (= `txt[:cursor_pos]`)
+  was wider than the field and `addstr` ran past the window edge → `curses.error`
+  (caught by the draw guard, but it aborts the frame mid-render → an unusable,
+  flickering input field for long text). Implemented the field scroll: keep the
+  cursor within the visible `width-1` columns by adjusting `self.offset`, slice
+  `left/right` from it, and clamp the trailing pad with `max(0, …)`. Also made
+  the click handler use `self.offset + mouse.x` so clicks map correctly in a
+  scrolled field. Identical rendering at offset 0 (cursor in view) — every
+  golden types short strings, so all stay green. Full suite **60/60** (goldens
+  unchanged); units **17/17**.
 - **2026-06-28 — Iteration 44 (post-refactor bugfix: segment horizontal-scroll clipping).**
   Third review (segment/item draw geometry) found `Segment._draw_text` sliced
   `get_text()[offset:width]`, but `width` is a column COUNT (remaining space),

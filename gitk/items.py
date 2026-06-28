@@ -305,21 +305,31 @@ class UserInputListItem(Item):
 
     def handle_mouse_input(self, mouse) -> bool:
         if mouse.event_type == 'left-click' or mouse.event_type == 'double-click':
-            self.cursor_pos = mouse.x if mouse.x < len(self.txt) else len(self.txt)
+            # mouse.x is a column within the (possibly scrolled) field.
+            self.cursor_pos = min(self.offset + mouse.x, len(self.txt))
             return True
         else:
             return super().handle_mouse_input(mouse)
 
     def draw_line(self, win, offset, width, selected, matched, marked):
-        # TODO: update self.offset according to offset so that cursor is always visible
+        # Scroll the field horizontally so the cursor stays visible and we never
+        # addstr past `width`. The cursor is a 1-col block between the text to
+        # its left and right, so the text occupies `field` = width-1 columns.
+        # (At offset 0 with the cursor in view this matches the old rendering.)
+        field = max(1, width - 1)
+        if self.cursor_pos < self.offset:
+            self.offset = self.cursor_pos
+        elif self.cursor_pos - self.offset > field:
+            self.offset = self.cursor_pos - field
 
-        left_txt = self.txt[self.offset:self.offset+self.cursor_pos]
-        right_txt = self.txt[self.offset+self.cursor_pos:self.offset+width-1]
+        left_txt = self.txt[self.offset:self.cursor_pos]
+        right_txt = self.txt[self.cursor_pos:self.offset + field]
+        pad = max(0, width - len(left_txt) - len(right_txt) - 1)
 
         win.addstr(left_txt, Screen.color(self.color, selected, marked, matched))
         win.addch(ord(' '), curses.A_REVERSE | curses.A_BLINK)
         win.addstr(right_txt, Screen.color(self.color, selected, marked, matched))
-        win.addstr(' ' * (width - len(left_txt) - len(right_txt) - 1), Screen.color(self.color, selected, marked, matched))
+        win.addstr(' ' * pad, Screen.color(self.color, selected, marked, matched))
 
 class ResetModeItem(TextListItem):
     def __init__(self, dialog, mode, txt, color = 1):
