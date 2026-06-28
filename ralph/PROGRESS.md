@@ -16,12 +16,12 @@
 ## Current status
 
 - **Phase:** 1 — in progress. Migrating view-method `Gitkcli.<x>` → `self.app.<x>`
-  cluster by cluster. `GitDiffView` done. Next clusters: `GitLogView` (24),
-  `View` base (41), `PreferencesDialogPopup` (23), `ContextMenu` (22), `Screen`
-  (12), `ListView` (8), `LogView` (2). Still pending: `get_app()` for
+  cluster by cluster. Done: `GitDiffView`, `GitLogView`. Next clusters: `View`
+  base (41), `PreferencesDialogPopup` (23), `ContextMenu` (22), `Screen` (12),
+  `ListView` (8), `LogView` (2). Still pending: `get_app()` for
   items/segments/jobs (no parent chain yet); launch_curses/main-loop refs
   (~61, become `app.` in Phase 2/3).
-- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 286 (code; +2 doc-prose are
+- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 262 (code; +2 doc-prose are
   inside this count) · **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
@@ -108,6 +108,12 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 4 (Phase 1: migrate `GitLogView` refs to `self.app`).**
+  Replaced all 24 `Gitkcli.<x>` → `self.app.<x>` inside `GitLogView`
+  (1801–2141). Pre-checked: no `@staticmethod`/`@classmethod` in range and every
+  `def` takes `self`, so `self.app` is in scope at every site (incl. App-method
+  calls like `run_git`, `exit_program`, `set_split_mode`, `split_active`).
+  Full suite: **60 passed, 0 failed**; goldens clean. `Gitkcli.` refs 286→262.
 - **2026-06-28 — Iteration 3 (Phase 1: migrate `GitDiffView` refs to `self.app`).**
   Replaced all 12 `Gitkcli.<x>` → `self.app.<x>` inside `GitDiffView` (scoped
   `sed` over its class line range, 2160–2249). All sites are instance methods or

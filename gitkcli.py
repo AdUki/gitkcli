@@ -1883,12 +1883,12 @@ class GitLogView(ListView):
         self.check_uncommitted_changes()
 
     def show(self):
-        _raise_split_sibling(self, Gitkcli.git_diff)
+        _raise_split_sibling(self, self.app.git_diff)
         super().show()
 
     def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
         ret = super().set_selected(what, visible_mode)
-        if Gitkcli.screen.is_view_visible(Gitkcli.git_diff):
+        if self.app.screen.is_view_visible(self.app.git_diff):
             item = self.get_selected()
             if item:
                 item.load_to_view()
@@ -2027,10 +2027,10 @@ class GitLogView(ListView):
             return True
 
         if line is not None:
-            Gitkcli.git_diff.job.selected_line_map[commit_id] = (line, offset_y)
+            self.app.git_diff.job.selected_line_map[commit_id] = (line, offset_y)
 
-        was_same_commit = (Gitkcli.git_diff.commit_id == commit_id
-                           and (not Gitkcli.git_diff.is_diff or is_local))
+        was_same_commit = (self.app.git_diff.commit_id == commit_id
+                           and (not self.app.git_diff.is_diff or is_local))
 
         # Move the git_log cursor without going through GitLogView.set_selected →
         # *ListItem.load_to_view → show_commit/show_diff, which would re-push to
@@ -2039,13 +2039,13 @@ class GitLogView(ListView):
 
         if was_same_commit:
             if line is not None:
-                Gitkcli.git_diff.restore_view_position(line, offset_y)
+                self.app.git_diff.restore_view_position(line, offset_y)
         elif is_local:
             item = self.items[idx]
-            Gitkcli.git_diff.job.show_diff('HEAD', cached=item._staged, title=item.txt,
+            self.app.git_diff.job.show_diff('HEAD', cached=item._staged, title=item.txt,
                                             view_id=item.id, add_to_jump_list=False)
         else:
-            Gitkcli.git_diff.job.show_commit(commit_id, add_to_jump_list=False)
+            self.app.git_diff.job.show_commit(commit_id, add_to_jump_list=False)
         return True
 
     def get_selected_commit_id(self):
@@ -2059,26 +2059,26 @@ class GitLogView(ListView):
     def cherry_pick(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
         if not commit_id:
-            Gitkcli.log.warning('Select a commit to cherry-pick')
+            self.app.log.warning('Select a commit to cherry-pick')
             return
         Job.run_job(['git', 'cherry-pick', '--abort'])
-        Gitkcli.run_git(['git', 'cherry-pick', '-m', '1', commit_id],
+        self.app.run_git(['git', 'cherry-pick', '-m', '1', commit_id],
                         ok=f'Commit {commit_id} cherry picked successfully',
                         err='Error during cherry-pick', refresh_head=True, reload_refs=True)
 
     def revert(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
         if not commit_id:
-            Gitkcli.log.warning('Select a commit to revert')
+            self.app.log.warning('Select a commit to revert')
             return
-        Gitkcli.run_git(['git', 'revert', '--no-edit', '-m', '1', commit_id],
+        self.app.run_git(['git', 'revert', '--no-edit', '-m', '1', commit_id],
                         ok=f'Commit {commit_id} reverted successfully',
                         err='Error during revert', refresh_head=True, reload_refs=True)
 
     def confirm_reset(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
         if not commit_id or commit_id.startswith('local'):
-            Gitkcli.log.warning('Select a commit to reset the current branch to')
+            self.app.log.warning('Select a commit to reset the current branch to')
             return
         self.view_reset.open(commit_id)
 
@@ -2086,7 +2086,7 @@ class GitLogView(ListView):
         commit_id = commit_id or self.get_selected_commit_id()
         # refresh_head so --graph mode reloads the log (HEAD moved); it also
         # re-probes uncommitted changes, so check_uncommitted is not needed.
-        Gitkcli.run_git(['git', 'reset', mode, commit_id],
+        self.app.run_git(['git', 'reset', mode, commit_id],
                         ok=f'{mode[2:].capitalize()} reset to {commit_id[:8]}',
                         err=f'Error during {mode} reset', refresh_head=True, reload_refs=True)
 
@@ -2100,10 +2100,10 @@ class GitLogView(ListView):
         else:
             result = Job.run_job(['git', 'restore', '.'])
         if result.returncode == 0:
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.git_log.check_uncommitted_changes()
+            self.app.git_refs.reload_refs()
+            self.app.git_log.check_uncommitted_changes()
         else:
-            Gitkcli.log.error(f"Error cleaning {'staged' if staged else 'unstaged'} changes: {result.stderr}")
+            self.app.log.error(f"Error cleaning {'staged' if staged else 'unstaged'} changes: {result.stderr}")
 
     def mark_commit(self, commit_id = None):
         commit_id = commit_id or self.get_selected_commit_id()
@@ -2111,20 +2111,20 @@ class GitLogView(ListView):
         self.dirty = True
     
     def diff_commits(self, old_commit_id, new_commit_id):
-        Gitkcli.git_diff.job.show_diff(old_commit_id, new_commit_id)
-        Gitkcli.git_diff.show()
+        self.app.git_diff.job.show_diff(old_commit_id, new_commit_id)
+        self.app.git_diff.show()
 
     def handle_input(self, keyboard):
         key = keyboard.key
         if key == ord('q'):
-            Gitkcli.exit_program()
+            self.app.exit_program()
         elif key == curses.KEY_EXIT:
-            if Gitkcli.split_active():
-                Gitkcli.set_split_mode('off')   # Esc on the log pane leaves split view
+            if self.app.split_active():
+                self.app.set_split_mode('off')   # Esc on the log pane leaves split view
             else:
-                Gitkcli.exit_program()
+                self.app.exit_program()
         elif key == ord('b'):
-            Gitkcli.git_refs.view_new_ref.create_ref(self.get_selected_commit_id())
+            self.app.git_refs.view_new_ref.create_ref(self.get_selected_commit_id())
         elif key in (ord('r'), ord('R')):
             self.confirm_reset()
         elif key == ord('c'):
