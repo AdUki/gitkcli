@@ -2335,11 +2335,11 @@ class ContextMenu(ListView):
 
     def on_activated(self):
         super().on_activated()
-        Gitkcli.mouse.capture_mouse_movement(True, self)
+        self.app.mouse.capture_mouse_movement(True, self)
 
     def on_deactivated(self):
         super().on_deactivated()
-        Gitkcli.mouse.capture_mouse_movement(False, self)
+        self.app.mouse.capture_mouse_movement(False, self)
         
     def _append_copy_items(self, view, item):
         """The line/range/all clipboard trio shared by the git-log, git-diff and
@@ -2349,16 +2349,16 @@ class ContextMenu(ListView):
         self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
 
     def show_context_menu(self, item, view_id:str = '') -> bool:
-        if Gitkcli.screen.showed_views[-1] == self:
+        if self.app.screen.showed_views[-1] == self:
             return True
         self.clear()
         self._selected = -1
         if not view_id:
-            view_id = Gitkcli.screen.showed_views[-1].id
-        view = Gitkcli.screen.get_active_view()
-        x = Gitkcli.mouse.screen_x
-        y = Gitkcli.mouse.screen_y
-        if item == Gitkcli: # main menu
+            view_id = self.app.screen.showed_views[-1].id
+        view = self.app.screen.get_active_view()
+        x = self.app.mouse.screen_x
+        y = self.app.mouse.screen_y
+        if item is self.app: # main menu
             win_y, win_x = view.win.getbegyx()
             x = win_x + view.x
             y = win_y + view.y
@@ -2373,7 +2373,7 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Refresh <F5>", item.git_log.refresh_head))
             self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_refs_commits))
             self.append(SeparatorItem())
-            self.append(ContextMenuItem("Preferences", Gitkcli.preferences.show))
+            self.append(ContextMenuItem("Preferences", self.app.preferences.show))
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Quit", item.exit_program))
         elif view_id == 'git-log' and hasattr(item, 'id'):
@@ -2381,8 +2381,8 @@ class ContextMenu(ListView):
                 label = "Clear staged changes" if item._staged else "Clear unstaged changes"
                 self.append(ContextMenuItem(label, view.clean_uncommitted_changes, [item._staged]))
             else:
-                self.append(ContextMenuItem("Create new branch", Gitkcli.git_refs.view_new_ref.create_ref, [item.id]))
-                self.append(ContextMenuItem("Create new tag", Gitkcli.git_refs.view_new_ref.create_ref, [item.id, 'tag']))
+                self.append(ContextMenuItem("Create new branch", self.app.git_refs.view_new_ref.create_ref, [item.id]))
+                self.append(ContextMenuItem("Create new tag", self.app.git_refs.view_new_ref.create_ref, [item.id, 'tag']))
                 self.append(ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id]))
                 self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
                 self.append(SeparatorItem())
@@ -2405,7 +2405,7 @@ class ContextMenu(ListView):
         elif view_id == 'git-refs' and hasattr(item, 'data'):
             if item.data['type'] == 'heads':
                 self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
-                self.append(ContextMenuItem("Rename this branch", Gitkcli.git_refs.view_new_ref.create_ref, [item.data['name']]))
+                self.append(ContextMenuItem("Rename this branch", self.app.git_refs.view_new_ref.create_ref, [item.data['name']]))
                 self.append(ContextMenuItem("Copy branch name", copy_to_clipboard, [item.data['name']]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Push branch to remote", self.push_ref_to_remote, [item.data['name']]))
@@ -2413,7 +2413,7 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
             elif item.data['type'] == 'tags':
                 self.append(ContextMenuItem("Copy tag name", copy_to_clipboard, [item.data['name']]))
-                self.append(ContextMenuItem("Show tag annotation", Gitkcli.git_diff.job.show_tag_annotation, [item.data.get('tag_id')], 'tag_id' in item.data))
+                self.append(ContextMenuItem("Show tag annotation", self.app.git_diff.job.show_tag_annotation, [item.data.get('tag_id')], 'tag_id' in item.data))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Push tag to remote", self.push_ref_to_remote, [item.data['name']]))
                 self.append(SeparatorItem())
@@ -2434,7 +2434,7 @@ class ContextMenu(ListView):
 
     def checkout_branch(self, branch_name, force = False):
         args = ['git', 'checkout'] + (['-f'] if force else []) + [branch_name]
-        Gitkcli.run_git(args, ok=f'Switched to branch {branch_name}',
+        self.app.run_git(args, ok=f'Switched to branch {branch_name}',
                         err='Error checking out branch',
                         refresh_head=True, reload_refs=True, check_uncommitted=True,
                         force=force, reasons=('would be overwritten by checkout',),
@@ -2445,13 +2445,13 @@ class ContextMenu(ListView):
                         label='[Force checkout]')
 
     def push_ref_to_remote(self, branch_name):
-        Gitkcli.git_refs.view_ref_push.ref_name = branch_name
-        Gitkcli.git_refs.view_ref_push.header_item.set_text(f"Push ref: {branch_name}")
-        Gitkcli.git_refs.view_ref_push.clear()
-        Gitkcli.git_refs.view_ref_push.show()
+        self.app.git_refs.view_ref_push.ref_name = branch_name
+        self.app.git_refs.view_ref_push.header_item.set_text(f"Push ref: {branch_name}")
+        self.app.git_refs.view_ref_push.clear()
+        self.app.git_refs.view_ref_push.show()
 
     def remove_branch(self, branch_name):
-        Gitkcli.run_git(['git', 'branch', '-D', branch_name],
+        self.app.run_git(['git', 'branch', '-D', branch_name],
                         ok=f'Deleted branch {branch_name}',
                         err='Error deleting branch', reload_refs=True)
 
@@ -2469,14 +2469,14 @@ class ContextMenu(ListView):
                 removed_from_remotes.append(remote)
 
         if removed_from_remotes:
-            Gitkcli.git_refs.reload_refs()
-            Gitkcli.log.success(f'Deleted tag {tag_name} from remotes: ' + ' '.join(removed_from_remotes))
+            self.app.git_refs.reload_refs()
+            self.app.log.success(f'Deleted tag {tag_name} from remotes: ' + ' '.join(removed_from_remotes))
         else:
-            Gitkcli.log.error(f"Error deleting tag: {result.stderr}")
+            self.app.log.error(f"Error deleting tag: {result.stderr}")
 
     def remove_remote_ref(self, remote_ref):
         remote, branch = remote_ref.split('/', 1)
-        Gitkcli.run_git(['git', 'push', '--delete', remote, branch],
+        self.app.run_git(['git', 'push', '--delete', remote, branch],
                         ok=f'Deleted remote branch {remote_ref}',
                         err='Error deleting remote branch', reload_refs=True)
 

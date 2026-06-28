@@ -16,12 +16,12 @@
 ## Current status
 
 - **Phase:** 1 — in progress. Migrating view-method `Gitkcli.<x>` → `self.app.<x>`
-  cluster by cluster. Done: `GitDiffView`, `GitLogView`, `View` base. Next
-  clusters: `PreferencesDialogPopup` (23), `ContextMenu` (22), `Screen` (12),
+  cluster by cluster. Done: `GitDiffView`, `GitLogView`, `View` base,
+  `ContextMenu`. Next clusters: `PreferencesDialogPopup` (23), `Screen` (12),
   `ListView` (8), `LogView` (2). Still pending: `get_app()` for
   items/segments/jobs (no parent chain yet); launch_curses/main-loop refs
   (~61, become `app.` in Phase 2/3).
-- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 221 (code; +2 doc-prose are
+- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 199 (code; +2 doc-prose are
   inside this count) · **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
@@ -108,6 +108,14 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 6 (Phase 1: migrate `ContextMenu` refs to `self.app`).**
+  Replaced all 22 `Gitkcli.<x>` → `self.app.<x>` inside `ContextMenu`
+  (2331–2482). Also converted the main-menu sentinel `item == Gitkcli` →
+  `item is self.app` (equivalent: identity on the single App instance, and now
+  bridge-free). Note: no call site currently passes the App instance as the
+  menu `item`, so that branch is latent in the present code — the change is
+  behavior-identical whether or not it is reached. Full suite: **60 passed, 0
+  failed**; goldens clean. `Gitkcli.` refs 221→199.
 - **2026-06-28 — Iteration 5 (Phase 1: migrate `View` base refs to `self.app`).**
   Replaced all 41 `Gitkcli.<x>` → `self.app.<x>` inside the `View` base class
   (1083–1484). All sites are instance methods (no static/class methods; every
