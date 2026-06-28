@@ -222,6 +222,15 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 57 (coverage: Screen._to_pal colour-tier degradation).**
+  Added 3 pure unit tests for the palette-index → tier mapping that backs the
+  `--no-color`/8-colour degradation (the non-obvious arithmetic behind the
+  `log_nocolor` golden): full tier passes 256-only indices through; the 8/mono
+  tiers collapse indices ≥8 to `COLOR_WHITE` while keeping the 8 base colours;
+  the negative sentinel maps to `_default_bg`. `_to_pal` is pure (uses
+  `curses.COLOR_WHITE` constant, no `initscr`); tests save/restore the shared
+  `color_depth`/`_default_bg` class attrs via a context manager. Full suite
+  **62/62** (existing goldens untouched); units **39/39**.
 - **2026-06-28 — Iteration 56 (verify combined CI suite: `pytest test/`).**
   Ran the project's actual CI invocation `python3 -m pytest test/` end-to-end
   (not the golden + unit suites separately): **98 passed** (62 golden cases via

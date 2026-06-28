@@ -6,6 +6,8 @@ regression in that logic is caught quickly and pinpointed. The golden suite
 remains the behavioural oracle.
 """
 
+import contextlib
+import curses
 import datetime
 import json
 import os
@@ -25,6 +27,7 @@ from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
 from gitk.jobs import GitLogJob, Job
 from gitk.items import UserInputListItem
+from gitk.screen import Screen
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -336,3 +339,36 @@ def test_button_row_no_buttons_focus_zero():
     assert r.focused == 0
     r._move_focus(1)                 # no-op, must not raise
     assert r.focused == 0
+
+
+# --- Screen._to_pal colour-tier degradation (pure: arithmetic on the index) ---
+# color_depth/_default_bg are class attributes; save/restore so we don't leak
+# state into other tests.
+
+@contextlib.contextmanager
+def _screen_tier(depth, default_bg=-1):
+    odepth, obg = Screen.color_depth, Screen._default_bg
+    Screen.color_depth, Screen._default_bg = depth, default_bg
+    try:
+        yield
+    finally:
+        Screen.color_depth, Screen._default_bg = odepth, obg
+
+def test_to_pal_full_tier_passes_through():
+    with _screen_tier(256):
+        assert Screen._to_pal(5) == 5
+        assert Screen._to_pal(20) == 20       # 256-only index preserved
+        assert Screen._to_pal(247) == 247
+
+def test_to_pal_8_and_mono_collapse_high_indices_to_white():
+    for depth in (8, 0):
+        with _screen_tier(depth):
+            assert Screen._to_pal(5) == 5      # the 8 base ANSI colours survive
+            assert Screen._to_pal(20) == curses.COLOR_WHITE
+            assert Screen._to_pal(247) == curses.COLOR_WHITE
+
+def test_to_pal_negative_is_the_default_bg():
+    with _screen_tier(8, default_bg=-1):
+        assert Screen._to_pal(-1) == -1
+    with _screen_tier(0, default_bg=curses.COLOR_BLACK):
+        assert Screen._to_pal(-1) == curses.COLOR_BLACK
