@@ -621,10 +621,11 @@ class StatListItem(TextListItem):
         super().__init__(txt, color)
 
     def jump_to_file(self):
-        diff = Gitkcli.git_diff
-        Gitkcli.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
+        app = self.get_app()
+        diff = app.git_diff
+        app.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
         diff.set_selected(re.compile(f'diff.*{self.stat_file_path}'), 'top')
-        Gitkcli.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
+        app.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
 
     def activate(self) -> bool:
         self.jump_to_file()
@@ -642,7 +643,8 @@ class DiffListItem(TextListItem):
         super().__init__(txt, color)
 
     def jump_to_origin(self):
-        blame_revision = Gitkcli.git_diff.job.get_old_revision()
+        app = self.get_app()
+        blame_revision = app.git_diff.job.get_old_revision()
         if self.old_file_path and self.old_file_line and blame_revision:
             args = ['git', 'blame', '-lsfn', '-L',
                     f'{self.old_file_line},{self.old_file_line}',
@@ -663,14 +665,14 @@ class DiffListItem(TextListItem):
                     # ^1af87e6c2614c1aea4a81476df0deb8206d5489 451)         except Exception:
                     if id.startswith('^'):
                         id = Job.run_job(['git', 'rev-parse', id]).stdout.lstrip('^').rstrip()
-                    commit = Gitkcli.git_log.select_commit(id)
+                    commit = app.git_log.select_commit(id)
                     if commit:
-                        diff = Gitkcli.git_diff
-                        Gitkcli.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
+                        diff = app.git_diff
+                        app.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
 
                         def on_finished():
                             diff.select_line(file_path, file_line)
-                            Gitkcli.git_log.add_to_jump_list(commit.id, diff._selected, diff._offset_y)
+                            app.git_log.add_to_jump_list(commit.id, diff._selected, diff._offset_y)
 
                         diff.job.show_commit(commit.id, on_finished=on_finished, add_to_jump_list=False)
 
@@ -986,7 +988,7 @@ class WindowTopBarItem(SegmentedListItem):
         self.title_segment = TextSegment(title, self.TEXT_ACTIVE)
         self._title_color = title_color
         self._leading = TextSegment('─', self.LINE_ACTIVE)
-        self._close_segment = ButtonSegment("[X]", lambda: Gitkcli.screen.hide_active_view(), self.TEXT_ACTIVE)
+        self._close_segment = ButtonSegment("[X]", lambda: self.get_app().screen.hide_active_view(), self.TEXT_ACTIVE)
         segments = [self._leading,
                     self.title_segment,
                     FillerSegment()]
@@ -1031,7 +1033,7 @@ class WindowTopBarItem(SegmentedListItem):
         if super().handle_mouse_input(mouse):
             return True
         if 'double-click' == mouse.event_type:
-            Gitkcli.screen.get_active_view().toggle_window_mode()
+            self.get_app().screen.get_active_view().toggle_window_mode()
             return True
         return False
 
@@ -1056,14 +1058,15 @@ class UncommittedChangesListItem(SegmentedListItem):
         return segments
 
     def load_to_view(self):
-        if Gitkcli.git_diff.commit_id == self.id:
+        diff = self.get_app().git_diff
+        if diff.commit_id == self.id:
             return
-        Gitkcli.git_diff.job.show_diff('HEAD', cached = self._staged, title = self.txt,
-                                       view_id = self.id, add_to_jump_list = True)
+        diff.job.show_diff('HEAD', cached = self._staged, title = self.txt,
+                           view_id = self.id, add_to_jump_list = True)
 
     def activate(self) -> bool:
         self.load_to_view()
-        Gitkcli.git_diff.show()
+        self.get_app().git_diff.show()
         return True
 
 class CommitListItem(SegmentedListItem):
@@ -1072,35 +1075,41 @@ class CommitListItem(SegmentedListItem):
         self.id = id
 
     def get_segments(self):
-        commit = Gitkcli.git_log.commits[self.id]
+        app = self.get_app()
+        commit = app.git_log.commits[self.id]
         segments = []
 
         if commit['prefix']:
             segments.append(TextSegment(commit['prefix']))
-        if Gitkcli.git_log.show_commit_id:
+        if app.git_log.show_commit_id:
             segments.append(TextSegment(self.id[:7], 4))
-        if Gitkcli.git_log.show_commit_date:
+        if app.git_log.show_commit_date:
             segments.append(TextSegment(commit['date'].strftime("%Y-%m-%d %H:%M"), 5))
-        if Gitkcli.git_log.show_commit_author:
+        if app.git_log.show_commit_author:
             segments.append(TextSegment(commit['author'], 6))
         segments.append(TextSegment(commit['title']))
 
         head_position = len(segments) + 1 # +1, because we want to skip 'HEAD ->' segment
-        for ref in Gitkcli.git_refs.refs.get(self.id, []):
-            segments.insert(head_position if ref['name'] == Gitkcli.git_log.head_branch else len(segments), RefSegment(ref))
+        for ref in app.git_refs.refs.get(self.id, []):
+            segments.insert(head_position if ref['name'] == app.git_log.head_branch else len(segments), RefSegment(ref))
 
+        # These segments are rebuilt each call (not the wired self.segments), so
+        # back-wire them so they can reach the app via get_app() too.
+        for segment in segments:
+            segment._item = self
         return segments
 
     def draw_line(self, win, offset, width, selected, matched, marked):
-        super().draw_line(win, offset, width, selected, matched, Gitkcli.git_log.marked_commit_id == self.id)
+        super().draw_line(win, offset, width, selected, matched, self.get_app().git_log.marked_commit_id == self.id)
 
     def load_to_view(self):
-        if Gitkcli.git_diff.commit_id != self.id or Gitkcli.git_diff.is_diff:
-            Gitkcli.git_diff.job.show_commit(self.id)
+        diff = self.get_app().git_diff
+        if diff.commit_id != self.id or diff.is_diff:
+            diff.job.show_commit(self.id)
 
     def activate(self) -> bool:
         self.load_to_view()
-        Gitkcli.git_diff.show()
+        self.get_app().git_diff.show()
         return True
 
 class View:
@@ -2621,7 +2630,7 @@ class ResetModeItem(TextListItem):
 
     def activate(self) -> bool:
         self.dialog.hide()
-        Gitkcli.git_log.reset(self.mode, self.dialog.commit_id)
+        self.get_app().git_log.reset(self.mode, self.dialog.commit_id)
         return True
 
     def draw_line(self, win, offset, width, selected, matched, marked):

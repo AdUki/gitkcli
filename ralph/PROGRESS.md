@@ -25,11 +25,15 @@
   `get_app()`), jobs (no view; need a different access path), one `GitRefsView`
   classmethod, `MouseState`/`KeyboardState` helpers, and the
   App/launch_curses/main-loop entry point (~61). `get_app()` chain is BUILT and
-  validated. Next: migrate the remaining item clusters (CommitListItem,
-  DiffListItem, StatListItem, UncommittedChangesListItem, WindowTopBarItem,
-  ResetModeItem) and segment clusters (RefSegment, SplitButtonSegment) via
-  `get_app()`.
-- **gitkcli.py:** 4115 lines · **Gitkcli. refs:** 143 (code; +2 doc-prose) ·
+  validated. Item clusters DONE: CommitListItem, UncommittedChangesListItem,
+  WindowTopBarItem, DiffListItem, StatListItem, ResetModeItem (+ earlier
+  ContextMenuItem, RefListItem, Item base). Next: segment clusters (RefSegment,
+  SplitButtonSegment — note SplitButtonSegment resolves its callback at
+  construction, needs a lambda-defer); the GitRefsView classmethod; jobs
+  (GitDiffJob, GitRefsJob, GitLogJob, GitRefreshHeadJob, GitSearchJob, Job);
+  MouseState/KeyboardState; the copy_to_clipboard module fn; and the
+  App/launch_curses/main-loop entry point.
+- **gitkcli.py:** 4117 lines · **Gitkcli. refs:** 119 (code; +2 doc-prose) ·
   **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
@@ -121,6 +125,18 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 10 (Phase 1: migrate item clusters to `get_app()`).**
+  Migrated all six remaining item classes off the global, introducing an `app =
+  self.get_app()` local where a method had several refs (readability):
+  `CommitListItem` (get_segments/draw_line/load_to_view/activate),
+  `UncommittedChangesListItem`, `WindowTopBarItem` (the `[X]` close lambda now
+  `lambda: self.get_app()...`, closing over self — runs after set_header_item
+  wires `_view`; + double-click handler), `DiffListItem.jump_to_origin` (incl.
+  the nested `on_finished` closure), `StatListItem.jump_to_file`,
+  `ResetModeItem.activate`. Also back-wired `_item` on the segments
+  `CommitListItem.get_segments` rebuilds each call (they aren't the wired
+  `self.segments`), so a future `RefSegment` migration can use `get_app()`.
+  Full suite: **60 passed, 0 failed**; goldens clean. `Gitkcli.` refs 143→119.
 - **2026-06-28 — Iteration 9 (Phase 1: build `get_app()` chain for items/segments).**
   Added the parent back-reference chain so items/segments reach `app` without
   the global: `Item._view` (+ `Item.get_app()` → `self._view.app`),
