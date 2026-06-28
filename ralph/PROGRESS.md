@@ -28,13 +28,14 @@
   validated. Item clusters DONE: CommitListItem, UncommittedChangesListItem,
   WindowTopBarItem, DiffListItem, StatListItem, ResetModeItem (+ earlier
   ContextMenuItem, RefListItem, Item base). Segment clusters DONE: RefSegment,
-  SplitButtonSegment (callback deferred via lambda). Next: the GitRefsView
-  classmethod; jobs (GitDiffJob, GitRefsJob, GitLogJob, GitRefreshHeadJob,
-  GitSearchJob, Job); MouseState/KeyboardState; the copy_to_clipboard module fn;
-  and the App/launch_curses/main-loop entry point. After items/segments/jobs,
-  ALL remaining refs should be in the entry point (become `app.`) + a few
-  helpers that need an app handle passed in.
-- **gitkcli.py:** 4119 lines · **Gitkcli. refs:** 115 (code; +2 doc-prose) ·
+  SplitButtonSegment (callback deferred via lambda). Jobs DONE (instance
+  methods): Job base + GitLogJob/GitRefreshHeadJob/GitDiffJob/GitSearchJob/
+  GitRefsJob now hold `self.app` (injected via constructor by the owning view).
+  Remaining 73 refs: the `Job.run_job` classmethod (1, logging — needs an app
+  handle without `self`), the `GitRefsView.get_ref_color_and_title` classmethod
+  (1), `MouseState`/`KeyboardState` (~7), `copy_to_clipboard` module fn (2), and
+  the App/launch_curses/main-loop entry point (~61, become `app.` in Phase 2/3).
+- **gitkcli.py:** 4121 lines · **Gitkcli. refs:** 73 (code; +2 doc-prose) ·
   **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
@@ -126,6 +127,16 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 12 (Phase 1: migrate Git*Job classes to self.app).**
+  Jobs have no parent chain (not items), so they hold `app` directly: added an
+  `app` first param to `Job.__init__` and threaded it through every subclass
+  constructor (`GitLogJob`, `GitRefreshHeadJob`, `GitDiffJob`, `GitSearchJob`,
+  `GitRefsJob`); the owning views pass `self.app` at the 5 construction sites.
+  Migrated all instance-method refs (start_job/process_item/process_message/
+  stop_job/_get_args/_prepare/show_*/_restore_on_finished, incl. a lambda and a
+  comment) to `self.app`. DEFERRED the single `Job.run_job` classmethod ref
+  (`Gitkcli.log.info`) — a classmethod has no `self`; needs a dedicated step.
+  Full suite: **60 passed, 0 failed**; goldens clean. `Gitkcli.` refs 115→73.
 - **2026-06-28 — Iteration 11 (Phase 1: migrate segment clusters to `get_app()`).**
   `RefSegment.handle_mouse_input` → `self.get_app()` (right-click context menu +
   tag-annotation double-click). `SplitButtonSegment`: `get_text` →

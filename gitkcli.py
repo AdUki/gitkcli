@@ -128,7 +128,10 @@ class Job:
                 update = True
         return update
 
-    def __init__(self, id:str):
+    def __init__(self, app, id:str):
+        # The App struct, injected by the owning view at construction. Jobs have
+        # no parent chain (they are not items), so they hold app directly.
+        self.app = app
         self.id = id
         self.cmd = ''
         self.args = []
@@ -149,12 +152,12 @@ class Job:
 
     def process_message(self, message):
         if message['type'] == 'error':
-            Gitkcli.log.error(message['message'])
+            self.app.log.error(message['message'])
         elif message['type'] == 'started':
             self.running = True
         elif message['type'] == 'finished':
             self.running = False
-            Gitkcli.log.debug(f'Job finished {self.id}')
+            self.app.log.debug(f'Job finished {self.id}')
             if self.on_finished:
                 # process remaining items
                 self.process_items()
@@ -193,14 +196,14 @@ class Job:
             except subprocess.TimeoutExpired:
                 self.job.kill()
                 self.running = False
-            Gitkcli.log.debug(f'Job stopped {self.id}')
+            self.app.log.debug(f'Job stopped {self.id}')
 
     def start_job(self, args = [], on_finished = None):
         self.stop_job()
         self.stop = False
         self.on_finished = on_finished
 
-        Gitkcli.log.info(' '.join(['Job started', self.id + ':', self.cmd] + args + self.args))
+        self.app.log.info(' '.join(['Job started', self.id + ':', self.cmd] + args + self.args))
 
         self.job = subprocess.Popen(
                 self.cmd.split(' ') + args + self.args,
@@ -239,13 +242,13 @@ class Job:
             self.messages.put({'type': 'finished'})
 
 class GitLogJob(Job):
-    def __init__(self, id:str, args = []):
-        super().__init__(id) 
+    def __init__(self, app, id:str, args = []):
+        super().__init__(app, id)
         self.cmd = 'git log --format=#%H#%P#%aI#%an#%s'
         self.args = args
 
     def start_job(self, args = [], on_finished = None):
-        Gitkcli.git_log.commits.clear()
+        self.app.git_log.commits.clear()
         super().start_job(args, on_finished) 
 
     def process_line(self, line) -> typing.Any:
@@ -263,44 +266,44 @@ class GitLogJob(Job):
 
     def process_item(self, item):
         if isinstance(item, str):
-            Gitkcli.git_log.append(TextListItem(item, selectable = False))
+            self.app.git_log.append(TextListItem(item, selectable = False))
         else:
             id, commit = item
-            if Gitkcli.git_log.add_commit(id, commit):
-                Gitkcli.git_log.append(CommitListItem(id))
-                Gitkcli.git_log.select_if_pending(id)
-                if id == Gitkcli.git_log.head_id:
-                    Gitkcli.git_log.focus_head_if_pending()
-                    Gitkcli.git_log._place_uncommitted_rows()
+            if self.app.git_log.add_commit(id, commit):
+                self.app.git_log.append(CommitListItem(id))
+                self.app.git_log.select_if_pending(id)
+                if id == self.app.git_log.head_id:
+                    self.app.git_log.focus_head_if_pending()
+                    self.app.git_log._place_uncommitted_rows()
 
 class GitRefreshHeadJob(GitLogJob):
-    def __init__(self):
-        super().__init__(ID_GIT_REFRESH_HEAD, []) 
+    def __init__(self, app):
+        super().__init__(app, ID_GIT_REFRESH_HEAD, [])
 
     def start_job(self, args = [], on_finished = None):
         # check if HEAD commit is actually in view
         head_found = False
-        for item in Gitkcli.git_log.items:
-            if hasattr(item, 'id') and item.id == Gitkcli.git_log.head_id:
+        for item in self.app.git_log.items:
+            if hasattr(item, 'id') and item.id == self.app.git_log.head_id:
                 head_found = True
                 break
         if not head_found:
             # no HEAD commit found, don't do anything
             return
 
-        # skip calling Gitkcli.git_log.commits.clear()
+        # skip calling self.app.git_log.commits.clear()
         Job.start_job(self, args, on_finished) 
 
     def process_item(self, item):
         (id, commit) = item
-        if Gitkcli.git_log.add_commit(id, commit):
-            Gitkcli.git_log.prepend_commit(CommitListItem(id))
-            if id == Gitkcli.git_log.head_id:
-                Gitkcli.git_log._place_uncommitted_rows()
+        if self.app.git_log.add_commit(id, commit):
+            self.app.git_log.prepend_commit(CommitListItem(id))
+            if id == self.app.git_log.head_id:
+                self.app.git_log._place_uncommitted_rows()
 
 class GitDiffJob(Job):
-    def __init__(self):
-        super().__init__(ID_GIT_DIFF) 
+    def __init__(self, app):
+        super().__init__(app, ID_GIT_DIFF)
         self.cmd = 'git'
 
         self.line_pattern = re.compile(r'^(?:( )|(?:\+\+\+ b/(.*))|(?:--- a/(.*))|(\+\+\+|---|diff|index)|(\+)|(-)|(@@ -(\d+),\d+ \+(\d+),\d+ @@))')
@@ -338,9 +341,9 @@ class GitDiffJob(Job):
         if self.cached:
             args.insert(1, '--cached')
 
-        args.extend([f'-U{Gitkcli.git_diff.context_size}', f'--stat={Gitkcli.git_diff.width}', '--no-color', f'-l{Gitkcli.git_diff.rename_limit}'])
+        args.extend([f'-U{self.app.git_diff.context_size}', f'--stat={self.app.git_diff.width}', '--no-color', f'-l{self.app.git_diff.rename_limit}'])
 
-        if Gitkcli.git_diff.ignore_whitespace:
+        if self.app.git_diff.ignore_whitespace:
             args.append('-w')
 
         return args
@@ -357,7 +360,7 @@ class GitDiffJob(Job):
     def _restore_on_finished(self, key):
         """Callback that restores the saved cursor/scroll for `key`, or None."""
         entry = self.selected_line_map.get(key)
-        return (lambda: Gitkcli.git_diff.restore_view_position(*entry)) if entry else None
+        return (lambda: self.app.git_diff.restore_view_position(*entry)) if entry else None
 
     def _prepare(self, title, *, is_diff, view_commit_id, commit_id=None, tag_id=None,
                  old_commit_id=None, new_commit_id=None, cached=False):
@@ -367,10 +370,10 @@ class GitDiffJob(Job):
         self.cached = cached
         self.old_commit_id = old_commit_id
         self.new_commit_id = new_commit_id
-        Gitkcli.git_diff.clear()
-        Gitkcli.git_diff.commit_id = view_commit_id
-        Gitkcli.git_diff.is_diff = is_diff
-        Gitkcli.git_diff.header_item.set_title(title)
+        self.app.git_diff.clear()
+        self.app.git_diff.commit_id = view_commit_id
+        self.app.git_diff.is_diff = is_diff
+        self.app.git_diff.header_item.set_title(title)
 
     def show_diff(self, old_commit_id, new_commit_id = None, cached = False, title = None,
                   view_id = None, add_to_jump_list = False):
@@ -380,7 +383,7 @@ class GitDiffJob(Job):
                       old_commit_id=old_commit_id, new_commit_id=new_commit_id, cached=cached)
         self.start_job(self._get_args(), on_finished=self._restore_on_finished(view_id))
         if add_to_jump_list and view_id:
-            Gitkcli.git_log.add_to_jump_list(view_id)
+            self.app.git_log.add_to_jump_list(view_id)
 
     def show_commit(self, commit_id, on_finished = None, add_to_jump_list = True):
         self._prepare(f'Commit {commit_id[:7]}', is_diff=False, view_commit_id=commit_id,
@@ -389,12 +392,12 @@ class GitDiffJob(Job):
             on_finished = self._restore_on_finished(commit_id)
         self.start_job(self._get_args(), on_finished=on_finished)
         if add_to_jump_list:
-            Gitkcli.git_log.add_to_jump_list(commit_id)
+            self.app.git_log.add_to_jump_list(commit_id)
 
     def show_tag_annotation(self, tag_id):
         self._prepare(f'Tag {tag_id}', is_diff=True, view_commit_id=tag_id, tag_id=tag_id)
         self.start_job(self._get_args())
-        Gitkcli.git_diff.show()
+        self.app.git_diff.show()
 
     def process_line(self, line) -> typing.Any:
         color = 1
@@ -442,11 +445,11 @@ class GitDiffJob(Job):
         return TextListItem(line, color)
 
     def process_item(self, item):
-        Gitkcli.git_diff.append(item)
+        self.app.git_diff.append(item)
 
 class GitSearchJob(Job):
-    def __init__(self, args = []):
-        super().__init__(ID_GIT_SEARCH)
+    def __init__(self, app, args = []):
+        super().__init__(app, ID_GIT_SEARCH)
         self.cmd = 'git log --format=%H'
         # CLI revision args (e.g. a branch name). These must precede any
         # '--' pathspec separator added by the search, so keep them out of
@@ -457,23 +460,23 @@ class GitSearchJob(Job):
 
     def start_job(self, args = [], on_finished = None):
         self.found_ids.clear()
-        Gitkcli.git_log.dirty = True
+        self.app.git_log.dirty = True
         super().start_job(self.revisions + args, on_finished)
 
     def process_item(self, item):
         self.found_ids.add(item)
-        Gitkcli.git_log.dirty = True
+        self.app.git_log.dirty = True
 
 class GitRefsJob(Job):
-    def __init__(self):
-        super().__init__(ID_GIT_REFS) 
+    def __init__(self, app):
+        super().__init__(app, ID_GIT_REFS) 
         self.cmd = 'git show-ref --head --dereference'
 
     def start_job(self, args = [], on_finished = None):
-        Gitkcli.git_refs.refs.clear()
+        self.app.git_refs.refs.clear()
 
-        Gitkcli.git_log.head_branch = Job.run_job(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).stdout.rstrip()
-        if Gitkcli.git_log.head_branch == 'HEAD': Gitkcli.git_log.head_branch = ''
+        self.app.git_log.head_branch = Job.run_job(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).stdout.rstrip()
+        if self.app.git_log.head_branch == 'HEAD': self.app.git_log.head_branch = ''
 
         super().start_job(args, on_finished) 
 
@@ -489,19 +492,19 @@ class GitRefsJob(Job):
 
         if item['type'] == 'tags' and item['name'].endswith('^{}'): 
             # process link to annotated tag
-            last_item_data = Gitkcli.git_refs.items[-1].data
+            last_item_data = self.app.git_refs.items[-1].data
             last_item_data['tag_id'] = last_item_data['id']
             last_item_data['id'] = id
             item = last_item_data
         else:
-            Gitkcli.git_refs.append(RefListItem(item))
+            self.app.git_refs.append(RefListItem(item))
 
-        Gitkcli.git_refs.refs.setdefault(id,[]).append(item)
-        Gitkcli.git_log.dirty = True
+        self.app.git_refs.refs.setdefault(id,[]).append(item)
+        self.app.git_log.dirty = True
         if item['type'] == 'head':
-            Gitkcli.git_log.head_id = id
-            Gitkcli.git_log.focus_head_if_pending()
-            Gitkcli.git_log._place_uncommitted_rows()
+            self.app.git_log.head_id = id
+            self.app.git_log.focus_head_if_pending()
+            self.app.git_log._place_uncommitted_rows()
 
 class Item:
     def __init__(self):
@@ -1867,9 +1870,9 @@ class GitLogView(ListView):
 
         self._cli_args = git_args + cmd_args
         self.pref_flags = ''
-        self.job = GitLogJob(ID_GIT_LOG, list(self._cli_args))
-        self.job_git_refresh_head = GitRefreshHeadJob()
-        self.job_git_search = GitSearchJob(cmd_args)
+        self.job = GitLogJob(self.app, ID_GIT_LOG, list(self._cli_args))
+        self.job_git_refresh_head = GitRefreshHeadJob(self.app)
+        self.job_git_search = GitSearchJob(self.app, cmd_args)
         self.view_reset = ResetDialogPopup()
 
     def set_pref_flags(self, flags: str):
@@ -2202,7 +2205,7 @@ class GitDiffView(ListView):
         self.context_size = 3
         self.rename_limit = 1570
         self.ignore_whitespace = False
-        self.job = GitDiffJob()
+        self.job = GitDiffJob(self.app)
 
         self.commit_id = ''
         self.is_diff = False
@@ -2299,7 +2302,7 @@ class GitRefsView(ListView):
         self.view_new_ref = NewRefDialogPopup()
         self.view_ref_push = RefPushDialogPopup()
 
-        self.job = GitRefsJob()
+        self.job = GitRefsJob(self.app)
 
     def reload_refs(self):
         self.clear()
