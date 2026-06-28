@@ -138,7 +138,7 @@ Right-click on items for context-sensitive operations:
 
 ## Requirements
 
-- Python 3.6+
+- Python 3.7+
 - A terminal with curses support
 - `pyperclip` (optional, for clipboard operations)
 

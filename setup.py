@@ -20,11 +20,14 @@ setup(
     packages=find_packages(include=["gitk", "gitk.*"]),  # the application package
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.7",
         "Operating System :: OS Independent",
         "Environment :: Console :: Curses",
         "Topic :: Software Development :: Version Control :: Git",
     ],
-    python_requires=">=3.6",
+    # 3.7+: uses `from __future__ import annotations` and datetime.fromisoformat,
+    # both introduced in 3.7.
+    python_requires=">=3.7",
     install_requires=[
         'windows-curses; sys_platform == "win32"',
     ],

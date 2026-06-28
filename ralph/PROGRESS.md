@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 95 (FIX: declared Python floor was wrong, 3.6 -> 3.7).**
+  Continued auditing parse/defensive code (GitRefsJob.process_line unpack and
+  GitLogJob.process_line are robust — caught by _reader_thread or graceful str
+  fallback). Found a real packaging/doc inaccuracy: README and setup.py declared
+  "Python 3.6+" / `python_requires=">=3.6"`, but the code uses
+  `from __future__ import annotations` AND `datetime.fromisoformat` (jobs.py:234)
+  — both introduced in 3.7 — so it cannot even import on 3.6, and there are no
+  3.8+ features (no walrus / positional-only), so 3.7 is the exact floor. FIX:
+  bumped `python_requires` to ">=3.7", added the 3.7 classifier, and updated the
+  README. No behaviour change. Suite **77/77** (goldens untouched); units
+  **94/94**. (35th genuine bug — install metadata that would let pip install
+  onto an unsupported interpreter.)
 - **2026-06-28 — Iteration 94 (BUG: valid-JSON-non-object config crashed at startup).**
   Audited config persistence. `load_config` catches FileNotFoundError/
   JSONDecodeError/OSError, but a config file containing valid JSON that ISN'T an
