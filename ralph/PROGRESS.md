@@ -15,17 +15,16 @@
 
 ## Current status
 
-- **Phase:** 1 — `grep -c 'Gitkcli\.'` is now **0** (exit criterion 2 met).
-  All code (components + entry point) reaches the app via injected access; the
-  entry point uses a local `app`. What REMAINS for full Phase-1 close: the
-  module-level `Gitkcli` bridge still exists (bare `Gitkcli = app`), read by the
-  `Screen`/`View`/`Item` constructors (`self.app = Gitkcli`). Removing it (exit
-  criterion 5: no module-level app global) needs constructor injection into
-  `Screen`/`View`/`Log`.
-- **NEXT:** inject `app` into `Screen.__init__`, `View.__init__`, `Log.__init__`
-  (+ the ~14 view construction sites) and delete the `Gitkcli` bridge global.
-- **gitkcli.py:** 4135 lines · **Gitkcli. (dotted) refs:** 0 · **bare `Gitkcli`
-  bridge:** still present · **`class Gitkcli`:** 0 · **package:** not created.
+- **Phase:** 1 — **COMPLETE.** The `Gitkcli` service locator is fully gone:
+  no `class Gitkcli`, no module global, no bridge. `grep -n 'Gitkcli' gitkcli.py`
+  → nothing. `App` is a plain struct created in `launch_curses` and injected:
+  Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
+  the `get_app()` parent chain.
+- **NEXT (Phase 2):** start extracting cohesive clusters into a `gitk/` package
+  (config first), with `from gitk.<mod> import *` re-export crutches in
+  gitkcli.py to keep not-yet-moved code resolving. Suite green after each move.
+- **gitkcli.py:** 4129 lines · **Gitkcli refs (any):** 0 · **`class Gitkcli`:**
+  0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
 
@@ -65,8 +64,11 @@
 - [ ] Migrate the 10 classmethods to `App` methods (consider `SplitLayout`).
 - [ ] Replace all `Gitkcli.<x>` references with injected access, cluster by
       cluster (e.g. one iteration: all `Gitkcli.git_diff` in the diff view).
-- [ ] Remove the `Gitkcli` class. Confirm `grep -c 'Gitkcli\.' gitkcli.py` = 0.
-      Suite green throughout.
+- [x] Migrate the 10 classmethods to `App` methods (DONE in iteration 1).
+- [x] Replace all `Gitkcli.<x>` references with injected access (DONE,
+      iterations 3–15, cluster by cluster).
+- [x] Remove the `Gitkcli` class AND the bridge global. `grep -n 'Gitkcli'
+      gitkcli.py` → nothing. Suite green throughout. **Phase 1 COMPLETE.**
 
 ## Phase 2 — Extract clusters into `gitk/` (one per iteration, re-export crutch)
 
@@ -116,6 +118,19 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 17 (Phase 1 DONE: constructor injection, bridge removed).**
+  Injected `app` as the first constructor param across the whole View hierarchy
+  (`View`/`ListView` + all 14 subclasses), `Screen`, and `Log`, threading it
+  through each `super().__init__(app, ...)` and updating every construction site
+  to pass `app`/`self.app`. Then DELETED the `Gitkcli` bridge global and the
+  `self.app = Gitkcli` reads (now `= app`); `Log.success/error` use
+  `getattr(self.app, ...)`. Reworded all stale comments/docstring. Applied via a
+  reviewable transform script (ralph scratchpad). Two misses caught by the suite
+  and fixed: `Log()` and a `GitSearchDialogPopup(app)` inside `set_pref_flags`
+  (not `__init__`, so no `app` local → `self.app`). Result:
+  `grep -n 'Gitkcli' gitkcli.py` → **nothing**. **Phase 1 complete** — the
+  service locator is fully dissolved into an injected `App` struct. Full suite:
+  **60 passed, 0 failed**; goldens clean. gitkcli.py 4135→4129 lines.
 - **2026-06-28 — Iteration 16 (Phase 1: entry point → local `app`).**
   Converted every `Gitkcli.<x>` in `launch_curses` + the main loop to a local
   `app` (created `app = App()`; the bridge `Gitkcli = app` is retained for now

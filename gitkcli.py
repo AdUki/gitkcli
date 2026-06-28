@@ -512,7 +512,7 @@ class Item:
         self.is_separator = False
         # Back-reference to the owning ListView, set when the item is added
         # (ListView.append / .items.insert / set_header_item). Lets the item
-        # reach the App struct via get_app() without the Gitkcli global.
+        # reach the App struct via get_app().
         self._view = None
 
     def get_app(self):
@@ -685,8 +685,7 @@ class DiffListItem(TextListItem):
 
 class Segment:
     # Back-reference to the owning SegmentedListItem, set in its __init__.
-    # Lets a segment reach the App struct (segment -> item -> view -> app)
-    # without the Gitkcli global.
+    # Lets a segment reach the App struct (segment -> item -> view -> app).
     _item = None
 
     def get_app(self):
@@ -1120,15 +1119,14 @@ class CommitListItem(SegmentedListItem):
 
 class View:
 
-    def __init__(self, id:str,
+    def __init__(self, app, id:str,
                  view_mode:str = 'fullscreen',
                  x:typing.Optional[int] = None, y:typing.Optional[int] = None,
                  height:typing.Optional[int] = None, width:typing.Optional[int] = None):
 
-        # The App struct, reached at construction through the screen the view
-        # registers with. Views use `self.app.<x>` instead of the `Gitkcli`
-        # global; this is the injected access path the modularization moves to.
-        self.app = Gitkcli
+        # The App struct, injected at construction. Views use `self.app.<x>`
+        # to reach screen / sibling views / services.
+        self.app = app
 
         self.id:str = id
         self.view_mode:str = view_mode
@@ -1522,11 +1520,11 @@ class View:
                     new_active.dirty = True
 
 class ListView(View):
-    def __init__(self, id:str, view_mode:str = 'fullscreen',
+    def __init__(self, app, id:str, view_mode:str = 'fullscreen',
                  x:typing.Optional[int] = None, y:typing.Optional[int] = None,
                  height:typing.Optional[int] = None, width:typing.Optional[int] = None):
 
-        super().__init__(id, view_mode, x, y, height, width)
+        super().__init__(app, id, view_mode, x, y, height, width)
         self.items = []
         self._selected:int = 0
         self._offset_y:int = 0
@@ -1839,8 +1837,8 @@ def _raise_split_sibling(view, sibling):
         view.app._raising_split_sibling = False
 
 class GitLogView(ListView):
-    def __init__(self, git_args:typing.List, cmd_args:typing.List):
-        super().__init__(ID_GIT_LOG, 'fullscreen');
+    def __init__(self, app, git_args:typing.List, cmd_args:typing.List):
+        super().__init__(app, ID_GIT_LOG, 'fullscreen');
 
         self.commits = {} # map: git_id --> { parents, date, author, title }
 
@@ -1874,7 +1872,7 @@ class GitLogView(ListView):
         self.job = GitLogJob(self.app, ID_GIT_LOG, list(self._cli_args))
         self.job_git_refresh_head = GitRefreshHeadJob(self.app)
         self.job_git_search = GitSearchJob(self.app, cmd_args)
-        self.view_reset = ResetDialogPopup()
+        self.view_reset = ResetDialogPopup(app)
 
     def set_pref_flags(self, flags: str):
         self.pref_flags = flags
@@ -1889,7 +1887,7 @@ class GitLogView(ListView):
                 ButtonSegment("[->]", lambda: self.move_in_jump_list(-1), 30)
             ], title_color = 5))
 
-        self.set_search_dialog(GitSearchDialogPopup());
+        self.set_search_dialog(GitSearchDialogPopup(self.app));
 
     def add_commit(self, id, commit):
         if id in self.commits:
@@ -2200,8 +2198,8 @@ class HighlightToggleSegment(ButtonSegment):
         return super().draw(win, offset, width, selected, matched, self._is_active())
 
 class GitDiffView(ListView):
-    def __init__(self):
-        super().__init__(ID_GIT_DIFF, 'fullscreen')
+    def __init__(self, app):
+        super().__init__(app, ID_GIT_DIFF, 'fullscreen')
 
         self.context_size = 3
         self.rename_limit = 1570
@@ -2223,7 +2221,7 @@ class GitDiffView(ListView):
             ButtonSegment("[->]", lambda: self.app.git_log.move_in_jump_list(-1), 30)
         ], title_color = 5))
 
-        self.set_search_dialog(SearchDialogPopup(ID_GIT_DIFF_SEARCH))
+        self.set_search_dialog(SearchDialogPopup(app, ID_GIT_DIFF_SEARCH))
 
     def clear(self):
         self.commit_id = ''
@@ -2292,16 +2290,16 @@ class GitDiffView(ListView):
         return True
 
 class GitRefsView(ListView):
-    def __init__(self):
-        super().__init__(ID_GIT_REFS) 
+    def __init__(self, app):
+        super().__init__(app, ID_GIT_REFS) 
 
         self.refs = {} # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
 
         self.set_header_item(WindowTopBarItem('Git references', title_color = 5))
-        self.set_search_dialog(SearchDialogPopup(ID_GIT_REFS_SEARCH))
+        self.set_search_dialog(SearchDialogPopup(app, ID_GIT_REFS_SEARCH))
 
-        self.view_new_ref = NewRefDialogPopup()
-        self.view_ref_push = RefPushDialogPopup()
+        self.view_new_ref = NewRefDialogPopup(app)
+        self.view_ref_push = RefPushDialogPopup(app)
 
         self.job = GitRefsJob(self.app)
 
@@ -2330,8 +2328,8 @@ class GitRefsView(ListView):
         return color, title
 
 class LogView(ListView):
-    def __init__(self):
-        super().__init__(ID_LOG, 'fullscreen') 
+    def __init__(self, app):
+        super().__init__(app, ID_LOG, 'fullscreen') 
 
         self.set_header_item(WindowTopBarItem('Logs', [
             ButtonSegment("[Clear]", lambda: self.clear(), 30),
@@ -2341,7 +2339,7 @@ class LogView(ListView):
             ButtonSegment("[+]", lambda: self.change_log_level(+1), 30),
             ButtonSegment("[-]", lambda: self.change_log_level(-1), 30)], title_color = 5))
 
-        self.set_search_dialog(SearchDialogPopup(ID_LOG_SEARCH))
+        self.set_search_dialog(SearchDialogPopup(app, ID_LOG_SEARCH))
 
     def change_log_level(self, value):
         self.app.log.level = max(0, min(5, self.app.log.level + value))
@@ -2371,8 +2369,8 @@ class ContextMenuItem(TextListItem):
         return super().handle_mouse_input(mouse)
 
 class ContextMenu(ListView):
-    def __init__(self):
-        super().__init__(ID_CONTEXT_MENU, 'window')
+    def __init__(self, app):
+        super().__init__(app, ID_CONTEXT_MENU, 'window')
         self.is_popup = True
 
     def on_activated(self):
@@ -2648,8 +2646,8 @@ class ResetModeItem(TextListItem):
 
 
 class ResetDialogPopup(ListView):
-    def __init__(self):
-        super().__init__(ID_GIT_RESET, 'window', height = 9, width = 68)
+    def __init__(self, app):
+        super().__init__(app, ID_GIT_RESET, 'window', height = 9, width = 68)
         self.is_popup = True
         self.commit_id = ''
         self.selected_mode = '--mixed'
@@ -2702,10 +2700,10 @@ class ResetDialogPopup(ListView):
 
 
 class RefPushDialogPopup(ListView):
-    def __init__(self):
+    def __init__(self, app):
         # Fixed width (like the other input dialogs) instead of half the
         # terminal, so the box stays tight on wide screens.
-        super().__init__(ID_GIT_REF_PUSH, 'window', height = 5, width = 60)
+        super().__init__(app, ID_GIT_REF_PUSH, 'window', height = 5, width = 60)
         self.set_header_item(TextListItem('', 30, expand = True))
         self.is_popup = True
 
@@ -2778,8 +2776,8 @@ class RefPushDialogPopup(ListView):
 class _RedMessageBoxPopup(ListView):
     """Modal red message box: a red banner header and matching red border,
     sized to its content. Base for the confirm and error dialogs."""
-    def __init__(self, id, banner):
-        super().__init__(id, 'window', height = 7)
+    def __init__(self, app, id, banner):
+        super().__init__(app, id, 'window', height = 7)
         self.set_header_item(TextListItem(banner, 31, expand = True))  # red banner
         self.is_popup = True
 
@@ -2789,8 +2787,8 @@ class _RedMessageBoxPopup(ListView):
 class ConfirmDialogPopup(_RedMessageBoxPopup):
     """Generic yes/no popup. Used to offer a forced retry after a git
     operation is rejected (ref already exists, non-fast-forward push, ...)."""
-    def __init__(self):
-        super().__init__(ID_CONFIRM_DIALOG, '')
+    def __init__(self, app):
+        super().__init__(app, ID_CONFIRM_DIALOG, '')
         self._on_confirm = lambda: None
 
     def confirm(self, title, lines, on_confirm, confirm_label = '[Yes]', cancel_label = '[Cancel]'):
@@ -2835,8 +2833,8 @@ class ErrorDialogPopup(_RedMessageBoxPopup):
 
     MAX_LINES = 12
 
-    def __init__(self):
-        super().__init__(ID_ERROR_DIALOG, ' Error')
+    def __init__(self, app):
+        super().__init__(app, ID_ERROR_DIALOG, ' Error')
         self._lines = []
 
     def show_error(self, message):
@@ -2861,11 +2859,11 @@ class ErrorDialogPopup(_RedMessageBoxPopup):
         return True  # modal: swallow every other key
 
 class UserInputDialogPopup(ListView):
-    def __init__(self, id:str, title:str, header_item:Item, bottom_item:typing.Optional[Item] = None, width = 60):
+    def __init__(self, app, id:str, title:str, header_item:Item, bottom_item:typing.Optional[Item] = None, width = 60):
         # Compact 3-row layout (no blank spacers): the label/flags header, the
         # input field right below it, and the buttons. A fixed width keeps the
         # box from ballooning to half the terminal on wide screens.
-        super().__init__(id, 'window', height = 5, width = width)
+        super().__init__(app, id, 'window', height = 5, width = width)
         self.set_header_item(TextListItem(title, 30, expand = True))
         self.input = UserInputListItem()
         self.is_popup = True
@@ -2990,8 +2988,8 @@ class PreferenceRow(SegmentedListItem):
         return True
 
 class PreferencesDialogPopup(ListView):
-    def __init__(self):
-        super().__init__(ID_PREFERENCES, 'window', height=15, width=50)
+    def __init__(self, app):
+        super().__init__(app, ID_PREFERENCES, 'window', height=15, width=50)
         self.is_popup = True
         self.set_header_item(TextListItem(' Preferences', 30, expand=True))
 
@@ -3084,12 +3082,12 @@ class PreferencesDialogPopup(ListView):
         return super().handle_input(keyboard)
 
 class NewRefDialogPopup(UserInputDialogPopup):
-    def __init__(self):
+    def __init__(self, app):
         self.force = ToggleSegment("<Force>")
         self.commit_id = ''
         self.ref_type = '' # branch or tag
         self.prompt = TextSegment("Specify the new branch name:")
-        super().__init__(ID_NEW_GIT_REF, ' New Branch',
+        super().__init__(app, ID_NEW_GIT_REF, ' New Branch',
             SegmentedListItem([self.prompt, FillerSegment(), TextSegment("Flags:"), self.force]))
 
     def create_ref(self, commit_id, ref_type='branch'):
@@ -3128,7 +3126,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
                         label='[Overwrite]')
 
 class SearchDialogPopup(UserInputDialogPopup):
-    def __init__(self, id:str, width = 60):
+    def __init__(self, app, id:str, width = 60):
         self.parent_list_view:ListView
         self.case_sensitive = ToggleSegment("<Case>", True)
         self.use_regexp = ToggleSegment("<Regexp>")
@@ -3141,7 +3139,7 @@ class SearchDialogPopup(UserInputDialogPopup):
                                      ButtonSegment("[Clear]", self.clear_input),
                                      FillerSegment()])
         buttons.is_selectable = False
-        super().__init__(id, ' Search', self.header, buttons, width = width)
+        super().__init__(app, id, ' Search', self.header, buttons, width = width)
 
     def clear_input(self):
         self.clear()
@@ -3184,10 +3182,10 @@ class GitSearchDialogPopup(SearchDialogPopup):
     _TYPES = [('txt', '[Txt]'), ('id', '[ID]'), ('message', '[Message]'),
               ('path', '[Filepaths]'), ('diff', '[Diff]')]
 
-    def __init__(self):
+    def __init__(self, app):
         # Wider than the plain search popup: the "Type:" group plus the right-
         # aligned "Flags:" group don't fit in the default width.
-        super().__init__(ID_GIT_LOG_SEARCH, width = 76)
+        super().__init__(app, ID_GIT_LOG_SEARCH, width = 76)
         self._type_segments = [(t, ToggleSegment(label, callback=lambda val, t=t: self.change_search_type(t)))
                                for t, label in self._TYPES]
         self.header.segments[0:0] = [TextSegment("Type:")] + [s for _, s in self._type_segments]
@@ -3358,14 +3356,12 @@ class Screen:
             color = color | curses.A_DIM
         return color
 
-    def __init__(self, stdscr:curses.window):
+    def __init__(self, app, stdscr:curses.window):
 
-        # The App struct this screen belongs to. Screen is the root holder of
-        # `app`; views read it as `self.app`, and items/segments reach it by
-        # walking up to their view. (Bound from the transitional `Gitkcli`
-        # bridge here; becomes explicit constructor injection when the bridge
-        # is removed in Phase 3.)
-        self.app = Gitkcli
+        # The App struct this screen belongs to, injected at construction.
+        # Views read it as `self.app`; items/segments reach it by walking up
+        # to their view.
+        self.app = app
 
         # Pick a colour-rendering tier from the terminal's capability. vt200/vt220
         # report no colour; NO_COLOR / --no-color force the same monochrome tier;
@@ -3581,8 +3577,9 @@ class Screen:
         curses.doupdate()
 
 class Log:
-    def __init__(self):
-        self.view = LogView()
+    def __init__(self, app):
+        self.app = app
+        self.view = LogView(app)
         self.level = 4
 
     def debug(self, txt):
@@ -3596,7 +3593,7 @@ class Log:
             self.log(1, txt)
             # Flash the message green over the bottom bar (guarded: success can
             # fire during start-up before the screen exists).
-            screen = getattr(Gitkcli, 'screen', None)
+            screen = getattr(self.app, 'screen', None)
             if screen is not None:
                 screen.show_flash(txt)
 
@@ -3608,7 +3605,7 @@ class Log:
             self.log(2, txt)
             # Surface errors as a modal red dialog (the status bar is gone).
             # Guarded: errors can fire during start-up before the dialog exists.
-            dialog = getattr(Gitkcli, 'error_dialog', None)
+            dialog = getattr(self.app, 'error_dialog', None)
             if dialog is not None:
                 dialog.show_error(txt)
 
@@ -3842,14 +3839,10 @@ class App:
     """The application struct: holds the app's components and the service
     methods that coordinate them.
 
-    Created once in `launch_curses` and handed to the components. Views receive
-    it at construction (`self.app`); items/segments reach it through the parent
-    chain (`get_app()`). It is a plain instance, not a service-locator global.
-
-    Transitional note (modularization in progress): a module-level name
-    `Gitkcli` still points at the single `App` instance as a bridge, read by the
-    Screen/View/Item constructors to set self.app. That bridge is removed once
-    those constructors take `app` explicitly.
+    Created once in `launch_curses` and handed to the components. Screen, views,
+    and jobs receive it at construction (`self.app`); items/segments reach it
+    through the parent chain (`get_app()`). It is a plain instance that is
+    passed/injected, not a service-locator global.
     """
 
     def __init__(self):
@@ -3984,33 +3977,23 @@ class App:
                 v.set_fullscreen()
                 v.dirty = True
 
-# Transitional bridge: a module-level name pointing at the single App instance,
-# bound in launch_curses. Read by the Screen/View/Item constructors to set
-# self.app; removed once those constructors take `app` explicitly.
-Gitkcli = None
-
 def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
     app = App()
-    # Transitional bridge: View/Screen/Item constructors still read the module
-    # global `Gitkcli` to set self.app. Bind it before any of them run. Removed
-    # once those constructors take `app` explicitly (next iteration).
-    global Gitkcli
-    Gitkcli = app
 
-    app.screen = Screen(stdscr)
+    app.screen = Screen(app, stdscr)
     app.mouse = MouseState()
     app.mouse.app = app
     app.keyboard = KeyboardState()
     app.keyboard.app = app
-    app.log = Log()
-    app.git_log = GitLogView(git_args, cmd_args)
-    app.git_diff = GitDiffView()
-    app.git_refs = GitRefsView()
-    app.context_menu = ContextMenu()
-    app.preferences = PreferencesDialogPopup()
-    app.confirm_dialog = ConfirmDialogPopup()
-    app.error_dialog = ErrorDialogPopup()
+    app.log = Log(app)
+    app.git_log = GitLogView(app, git_args, cmd_args)
+    app.git_diff = GitDiffView(app)
+    app.git_refs = GitRefsView(app)
+    app.context_menu = ContextMenu(app)
+    app.preferences = PreferencesDialogPopup(app)
+    app.confirm_dialog = ConfirmDialogPopup(app)
+    app.error_dialog = ErrorDialogPopup(app)
 
     _cfg = load_config()
     app.git_log.show_commit_id     = _cfg['git_log']['show_commit_id']
