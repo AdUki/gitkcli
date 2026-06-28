@@ -89,6 +89,14 @@ def test_load_config_tolerates_corrupt_json(monkeypatch, tmp_path):
     monkeypatch.setattr('gitk.config.get_config_path', lambda: str(p))
     assert load_config() == {k: dict(v) for k, v in DEFAULT_CONFIG.items()}
 
+def test_load_config_tolerates_valid_json_that_is_not_an_object(monkeypatch, tmp_path):
+    # null / list / bare string have no .items(); must fall back, not crash.
+    p = tmp_path / 'config.json'
+    monkeypatch.setattr('gitk.config.get_config_path', lambda: str(p))
+    for content in ('null', '[1, 2, 3]', '"hello"', '42'):
+        p.write_text(content)
+        assert load_config() == {k: dict(v) for k, v in DEFAULT_CONFIG.items()}
+
 
 def test_save_config_roundtrip(monkeypatch, tmp_path):
     # save into a not-yet-existing subdir to also cover makedirs.

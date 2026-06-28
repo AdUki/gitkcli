@@ -37,9 +37,12 @@ def load_config() -> dict:
     try:
         with open(get_config_path(), 'r') as f:
             data = json.load(f)
-        for section, values in data.items():
-            if section in cfg and isinstance(values, dict):
-                cfg[section].update({k: v for k, v in values.items() if k in cfg[section]})
+        # Valid JSON that is not an object (null, a list, a bare string/number)
+        # has no .items(); ignore it and fall back to defaults rather than crash.
+        if isinstance(data, dict):
+            for section, values in data.items():
+                if section in cfg and isinstance(values, dict):
+                    cfg[section].update({k: v for k, v in values.items() if k in cfg[section]})
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return cfg

@@ -222,6 +222,16 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 94 (BUG: valid-JSON-non-object config crashed at startup).**
+  Audited config persistence. `load_config` catches FileNotFoundError/
+  JSONDecodeError/OSError, but a config file containing valid JSON that ISN'T an
+  object (`null`, a list, a bare string/number) reached `data.items()` ->
+  AttributeError, uncaught -> crash at launch (verified for null/[]/str/int). A
+  corrupted or hand-edited config.json hitting this is plausible. FIX: guard
+  `isinstance(data, dict)` before iterating, falling back to defaults (the inner
+  per-section `isinstance(values, dict)` guard was already there; only the
+  top-level was missing). Added a unit test covering null/list/string/number.
+  Suite **77/77** (goldens untouched); units **94/94**. (34th genuine bug.)
 - **2026-06-28 — Iteration 93 (coverage: the force-confirm dialog; no bug).**
   Applied the confirm-pattern lens to the remaining destructive ops: `remove_tag`
   (deletes local + pushes --delete to ALL remotes) and `remove_remote_ref` are
