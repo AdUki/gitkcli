@@ -222,6 +222,24 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Post-loop cleanup (user-requested: 3 cleanups + fill all test gaps).**
+  After REFACTOR_COMPLETE, the user asked to do the three recommended cleanups and
+  implement the missing tests. Done in 4 commits:
+  (1) **command-builder unit tests** — pin the exact argv for cherry-pick (abort+
+  pick+empty guard), revert, reset, confirm_reset local guard, checkout (-d/-f),
+  remove_remote_ref (remote/branch split), remove_tag (local + every remote, and
+  local-only); plus GitDiffView.change_context clamp-at-0, the blame parse regex,
+  and App.run_git force-confirm arming / already-forcing / success-refreshes.
+  (2) **ID_* constants** — context_menu dispatched on string literals
+  'git-log'/'git-diff'/'git-refs'/'log'; switched to ID_GIT_LOG/etc. and fixed
+  the one external caller (segments.py RefSegment) passing 'git-refs'.
+  (3) **extract SplitLayout** — moved the split state + tiling logic out of App
+  into `gitk/split_layout.py` (`app.split`), slimming app.py 154->96; ~30 call
+  sites updated to `app.split.<x>`; behaviour-preserving (all 6 split goldens
+  pass, no goldens modified); added SplitLayout unit tests. (move_in_jump_list
+  back/forward/bounds is already covered by 7 goldens; its skip-missing recursion
+  is impractical to unit-test in isolation, so left to the goldens.) All modules
+  still ≤ 600 lines. Suite **78/78** (goldens untouched); units **94 -> 112**.
 - **2026-06-28 — Iteration 100 (REFACTOR_COMPLETE — all exit criteria verifiably TRUE).**
   Final confirmation run: `import gitkcli` OK, `python3 gitkcli.py --help` OK,
   `grep 'Gitkcli\.' gitkcli.py gitk/` = 0, no `class Gitkcli` in project code,
