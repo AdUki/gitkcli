@@ -20,22 +20,22 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 2 — nearly done. Extracted: config, ids, input, screen, segments,
-  items, view, jobs, dialogs, `gitk/views.py` (GitLogView/GitDiffView/
-  GitRefsView/LogView/ContextMenu). gitkcli.py re-exports each. Remaining in
-  gitkcli.py (392 lines): `Log`, `App`, `launch_curses`, `main`.
+- **Phase:** 2 — essentially done. Extracted everything except the entry point:
+  config, ids, input, screen, segments, items, view, jobs, dialogs, views,
+  `gitk/log.py` (Log), `gitk/app.py` (App). gitkcli.py (215 lines) now holds
+  only `launch_curses` + `main` + the re-export block.
   NOTE: items 654, view 743, views 658 are > ~600 cap — split in Phase 4.
-- **NEXT (Phase 2):** `gitk/log.py` (Log — needs LogView from gitk.views) and
-  `gitk/app.py` (App — needs views/dialogs/Log/jobs/Screen). Then Phase 3:
-  `gitk/main.py` (launch_curses + main) and reduce gitkcli.py to a thin shim
-  `from gitk.main import main`, drop the re-export crutches, update setup.py.
+- **NEXT (Phase 3):** `gitk/main.py` (move `launch_curses` + `main`, importing
+  the needed names directly from their gitk modules) → reduce gitkcli.py to a
+  thin shim `from gitk.main import main; if __name__=='__main__': main()`, drop
+  the re-export crutch block, update setup.py/pyproject.toml console script.
   STANDING LESSON: run the AST undefined-name check (scratchpad) after each
   extraction — re-exported names aren't `class` defs so a class-only scan misses
   them, and thread/runtime NameErrors only surface as wrong goldens.
-- **gitkcli.py:** 392 lines · **package:** `gitk/{__init__,config,ids,input,
-  screen,segments,items,view,jobs,dialogs,views}.py` (items 654, view 743,
-  views 658, dialogs 559, jobs 427, screen 347, segments 245) ·
-  **Gitkcli refs:** 0.
+- **gitkcli.py:** 215 lines · **package:** `gitk/{__init__,config,ids,input,
+  screen,segments,items,view,jobs,dialogs,views,log,app}.py` (items 654,
+  view 743, views 658, dialogs 559, jobs 427, screen 347, segments 245,
+  app 154, log 51) · **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
 
@@ -122,7 +122,10 @@
       Phase 4). Depends only on ListView + items/segments/jobs/helpers; reaches
       concrete views via app at runtime. ContextMenu stays with the views for
       now (extract with them).
-- [ ] `gitk/app.py` (App + SplitLayout)
+- [x] `gitk/log.py` (Log — imports LogView + TextListItem).
+- [x] `gitk/app.py` (App struct; only runtime dep is Job + KeyboardState, rest
+      are __init__ attribute annotations. SplitLayout not split out — kept on
+      App; revisit in Phase 4 if it reads cleaner).
 - [ ] `gitk/main.py` (launch_curses, main)
 
 ## Phase 3 — Thin entry point & packaging
@@ -156,6 +159,16 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 28 (Phase 2: extract `gitk/log.py` + `gitk/app.py`).**
+  `Log` → gitk/log.py (imports LogView + TextListItem + datetime). `App` →
+  gitk/app.py. App's only runtime deps are `Job` (run_git) and `KeyboardState`
+  (open_search synthesizes `KeyboardState(ord('/'))`); the AST check flagged
+  KeyboardState and I added the import — all the other capitalised names
+  (Screen/MouseState/Log/GitLogView/…/dialogs) are `self.x:Type=None` attribute
+  annotations that are never evaluated. Used App-class-only range (crng
+  over-ran to EOF because launch_curses/main are `def`s, not classes). gitkcli.py
+  re-exports Log+App; launch_curses/main still resolve everything. Full suite:
+  **60 passed, 0 failed**; goldens clean. gitkcli.py 392→215.
 - **2026-06-28 — Iteration 27 (Phase 2: extract `gitk/views.py`).**
   Moved the 5 concrete views (GitLogView, GitDiffView, GitRefsView, LogView,
   ContextMenu) into `gitk/views.py`. They import the lower layers
