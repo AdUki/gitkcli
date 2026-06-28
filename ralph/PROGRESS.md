@@ -20,22 +20,20 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 2 — in progress. Extracted: `gitk/config.py`, `gitk/input.py`,
-  `gitk/screen.py`, `gitk/segments.py`, `gitk/items.py` (16 item classes +
-  `button_row`; imports segments/Screen/config; `DiffListItem` uses a
-  function-local `from gitkcli import Job`). `RefSegment`'s late import now
-  points at `gitk.items`. gitkcli.py re-exports each.
-  NOTE: items.py is 654 lines (> ~600 cap) — split into items.py +
-  segmented_items.py in Phase 4 (per STRUCTURE.md).
-- **NEXT (Phase 2):** `gitk/view.py` — `View` + `ListView` (+ the module fn
-  `_raise_split_sibling`). These import Screen + curses; they reference items
-  (WindowTopBarItem isinstance, TextListItem, ButtonRowItem, SpacerListItem,
-  search dialogs) in method bodies (late-bound → local imports / re-export).
-  Then `gitk/views/` (git_log, git_diff, git_refs, log), `gitk/dialogs/`,
-  `gitk/jobs.py`, `gitk/log.py`, `gitk/app.py`, `gitk/main.py`.
-- **gitkcli.py:** 2684 lines · **package:**
-  `gitk/{__init__,config,input,screen,segments,items}.py` (screen 347,
-  segments 245, items 654) · **Gitkcli refs:** 0.
+- **Phase:** 2 — in progress. Extracted: config, input, screen, segments, items,
+  `gitk/view.py` (View + ListView + `_raise_split_sibling` + the
+  HORIZONTAL_OFFSET_JUMP / SPLIT_DIVIDER_COLOR constants; imports items, so
+  late-bound item refs are now real imports). gitkcli.py re-exports each.
+  NOTE: items.py 654 and view.py 743 are > ~600 cap — split in Phase 4
+  (items→items+segmented_items; view→view+list_view per STRUCTURE.md).
+- **NEXT (Phase 2):** `gitk/jobs.py` (Job + Git*Job — leaf-ish: needs only the
+  item types it instantiates, e.g. TextListItem/CommitListItem/RefListItem, via
+  gitk.items; removes the `DiffListItem`/RefSegment late `from gitkcli import
+  Job`). Then the views (`GitLogView`/`GitDiffView`/`GitRefsView`/`LogView`),
+  `gitk/log.py`, dialogs, `gitk/app.py`, `gitk/main.py`.
+- **gitkcli.py:** 1961 lines · **package:**
+  `gitk/{__init__,config,input,screen,segments,items,view}.py` (screen 347,
+  segments 245, items 654, view 743) · **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
 
@@ -102,7 +100,9 @@
       `from gitkcli import Job`.
 - [ ] `gitk/segmented_items.py` — DEFERRED: folded into items.py; split out in
       Phase 4 to respect the ~600-line cap.
-- [ ] `gitk/view.py`
+- [x] `gitk/view.py` — View + ListView + `_raise_split_sibling` +
+      HORIZONTAL_OFFSET_JUMP/SPLIT_DIVIDER_COLOR. Imports items (no cycle).
+      743 lines → split into view.py + list_view.py in Phase 4.
 - [ ] `gitk/views/` (git_log, git_diff, git_refs, log)
 - [ ] `gitk/dialogs/` (base, context_menu, confirm, error, preferences, reset,
       ref_push, new_ref, search)
@@ -140,6 +140,17 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 24 (Phase 2: extract `gitk/view.py`).**
+  Moved `View`, `ListView`, the module fn `_raise_split_sibling`, and the
+  view-only constants `HORIZONTAL_OFFSET_JUMP` / `SPLIT_DIVIDER_COLOR` into
+  `gitk/view.py`. Imports Screen, KEY_CTRL/copy_to_clipboard, and the item types
+  the base classes instantiate (WindowTopBarItem/SpacerListItem/TextListItem)
+  from gitk.items — no cycle (items doesn't import view). `SearchDialogPopup`
+  refs are non-evaluated annotations (attribute annotation + quoted param), so
+  no import needed. Capped ListView's range at the `_raise_split_sibling` def
+  (same overlap lesson as button_row). gitkcli.py re-exports the names +
+  constants. Full suite: **60 passed, 0 failed**; goldens clean. gitkcli.py
+  2684→1961; view.py 743 (> cap → split in Phase 4).
 - **2026-06-28 — Iteration 23 (Phase 2: extract `gitk/items.py`).**
   Moved the 16 item classes (Item + plain items + the SegmentedListItem family)
   and the `button_row` helper into `gitk/items.py`, in dependency order. Imports
