@@ -222,6 +222,20 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 83 (coverage: UserInputListItem editing; no bug found).**
+  Audited window geometry on tiny terminals (degenerate sizes are caught by the
+  `try/except curses.error` around draw_visible_views — no crash, matches the
+  earlier probe), `Screen.color` (freshly tested via log_nocolor + _to_pal units;
+  uninitialised pairs return default, no crash), and the destructive
+  `clean_uncommitted_changes` staged path (a stash/reset --hard/pop dance that
+  appears equivalent to a plain `git reset` but is riskier — LEFT UNTOUCHED:
+  destructive, no golden coverage, can't verify a change safely; iter-49 lesson).
+  No clean bug found. Did find an under-covered surface: text-field editing
+  (insert/backspace/delete/ctrl-backspace/ctrl-del/home/end/left-right) had NO
+  unit tests (only the word-position helpers did). Added 10 unit tests pinning
+  those, incl. one documenting the current ASCII-only limitation (`32<=key<=126`;
+  non-ASCII needs `get_wch`, too large/risky to change blind). No code change.
+  Suite **72/72** (goldens untouched); units **79/79**.
 - **2026-06-28 — Iteration 82 (BUG: 'b' on an uncommitted row -> `git branch <name> ''` fatal).**
   Traced the commit-op key handlers. cherry-pick/revert/reset all guard an
   empty/pseudo target (`get_selected_commit_id()` returns '' on the uncommitted

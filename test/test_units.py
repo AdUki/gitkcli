@@ -30,6 +30,7 @@ from gitk.jobs import GitLogJob, GitDiffJob, Job, _CONTROL_CHARS
 from gitk.items import UserInputListItem, StatListItem, TextListItem
 from gitk.screen import Screen
 from gitk.dialogs import SearchDialogPopup, RefPushDialogPopup, NewRefDialogPopup
+from gitk.input import KeyboardState, KEY_CTRL_BACKSPACE, KEY_CTRL_DEL
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -621,3 +622,71 @@ def test_create_ref_empty_commit_warns_and_does_not_open():
     NewRefDialogPopup.create_ref(me, '')
     assert any(e[0] == 'warn' for e in events)
     assert not any(e[0] == 'show' for e in events)   # dialog never opened
+
+
+# --- UserInputListItem text editing (insert / delete / cursor) ----------------
+# Core interactive editing had no unit coverage (only the word-pos helpers did).
+# Drives handle_input directly; the item needs no app/curses screen.
+
+def _field(txt='', cursor=None):
+    it = UserInputListItem()
+    it.txt = txt
+    it.cursor_pos = len(txt) if cursor is None else cursor
+    return it
+
+def test_input_insert_printable_at_cursor():
+    it = _field('ac', cursor=1)
+    it.handle_input(KeyboardState(ord('b')))
+    assert it.txt == 'abc' and it.cursor_pos == 2
+
+def test_input_backspace_deletes_before_cursor():
+    it = _field('abc', cursor=2)
+    it.handle_input(KeyboardState(curses.KEY_BACKSPACE))
+    assert it.txt == 'ac' and it.cursor_pos == 1
+
+def test_input_backspace_at_start_is_noop():
+    it = _field('abc', cursor=0)
+    it.handle_input(KeyboardState(curses.KEY_BACKSPACE))
+    assert it.txt == 'abc' and it.cursor_pos == 0
+
+def test_input_delete_removes_char_at_cursor_keeping_position():
+    it = _field('abc', cursor=1)
+    it.handle_input(KeyboardState(curses.KEY_DC))
+    assert it.txt == 'ac' and it.cursor_pos == 1
+
+def test_input_delete_at_end_is_noop():
+    it = _field('abc', cursor=3)
+    it.handle_input(KeyboardState(curses.KEY_DC))
+    assert it.txt == 'abc' and it.cursor_pos == 3
+
+def test_input_ctrl_backspace_deletes_previous_word():
+    it = _field('foo bar', cursor=7)
+    it.handle_input(KeyboardState(KEY_CTRL_BACKSPACE))
+    assert it.txt == 'foo ' and it.cursor_pos == 4
+
+def test_input_ctrl_del_clears_all():
+    it = _field('foo bar', cursor=3)
+    it.handle_input(KeyboardState(KEY_CTRL_DEL))
+    assert it.txt == '' and it.cursor_pos == 0
+
+def test_input_home_and_end_move_cursor():
+    it = _field('abc', cursor=1)
+    it.handle_input(KeyboardState(curses.KEY_HOME))
+    assert it.cursor_pos == 0
+    it.handle_input(KeyboardState(curses.KEY_END))
+    assert it.cursor_pos == 3
+
+def test_input_left_right_clamp_at_bounds():
+    it = _field('ab', cursor=0)
+    it.handle_input(KeyboardState(curses.KEY_LEFT))   # already at start
+    assert it.cursor_pos == 0
+    it.handle_input(KeyboardState(curses.KEY_RIGHT))
+    it.handle_input(KeyboardState(curses.KEY_RIGHT))
+    it.handle_input(KeyboardState(curses.KEY_RIGHT))  # past end
+    assert it.cursor_pos == 2
+
+def test_input_non_ascii_key_is_not_inserted():
+    # Documents the current ASCII-only limitation (key > 126 falls through).
+    it = _field('ab', cursor=2)
+    handled = it.handle_input(KeyboardState(233))      # 'é' as a single code
+    assert it.txt == 'ab'                              # not inserted
