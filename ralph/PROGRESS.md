@@ -25,9 +25,9 @@
   segmented_items(330); views.py(658) → `gitk/views/` package
   (git_log 358, context_menu 163, git_diff 109, log 33, git_refs 27, __init__ 11).
   setup.py find_packages → ['gitk','gitk.views'].
-- **NEXT (Phase 4):** loose-coupling/import audit (base classes + App only) and
-  add unit tests for pure pieces (config parsing, KEY_CTRL, ref_color_and_title,
-  segment geometry, job line-parsers) — the last items before completion.
+- **NEXT (Phase 4):** the cross-module loose-coupling/import audit (verify each
+  module imports base classes + App-injected data, not sibling internals). Unit
+  tests DONE. After the audit, verify all exit criteria and finish.
 - **NEXT (Phase 3):** `gitk/main.py` (move `launch_curses` + `main`, importing
   the needed names directly from their gitk modules) → reduce gitkcli.py to a
   thin shim `from gitk.main import main; if __name__=='__main__': main()`, drop
@@ -147,8 +147,11 @@
       context_menu 163, git_diff 109, log 33, git_refs 27). No exceptions needed.
 - [ ] Introduce passed structs/dataclasses where it improves clarity (no
       behavior change).
-- [ ] Add unit tests for pure pieces (config parsing, KEY_CTRL, job line
-      parsers, segment geometry).
+- [x] Add unit tests for pure pieces → `test/test_units.py` (9 tests):
+      KEY_CTRL, DEFAULT_CONFIG shape, get_config_path, load_config
+      (defaults/merge-known-keys/corrupt-json), save_config roundtrip,
+      ref_color_and_title per type + head arrow. `pytest test/` collects 69
+      (60 golden + 9 unit); all pass. `python3 test/run.py` still 60/60.
 
 ## Exit-criteria check (fill in when claiming completion)
 
@@ -165,6 +168,15 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 33 (Phase 4: add unit tests for pure pieces).**
+  Added `test/test_units.py` (9 pytest tests, no terminal): KEY_CTRL control
+  codes, DEFAULT_CONFIG shape, get_config_path suffix, load_config
+  (defaults-are-a-copy / merge-known-keys-only / tolerates-corrupt-json),
+  save_config roundtrip (incl. makedirs; success path never touches `app`), and
+  ref_color_and_title per ref type + the HEAD `->` arrow. The file puts the repo
+  root on sys.path so `import gitk.*` works under any invocation. `pytest test/`
+  collects 69 (60 golden cases + 9 units) — all pass; `python3 test/run.py`
+  still **60 passed, 0 failed**, goldens clean. Satisfies exit criterion 9.
 - **2026-06-28 — Iteration 32 (Phase 4: split `views.py` → `gitk/views/` package).**
   Converted the 658-line `gitk/views.py` module into a `gitk/views/` package:
   one module per view (git_log 358, context_menu 163, git_diff 109, log 33,
