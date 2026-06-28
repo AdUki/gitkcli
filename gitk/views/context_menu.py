@@ -88,24 +88,24 @@ class ContextMenu(ListView):
             if item.data['type'] == 'heads':
                 self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
                 self.append(ContextMenuItem("Rename this branch", self.app.git_refs.view_new_ref.rename_branch, [item.data['name']]))
-                self.append(ContextMenuItem("Copy branch name", copy_to_clipboard, [item.data['name']]))
+                self.append(ContextMenuItem("Copy branch name", copy_to_clipboard, [item.data['name'], self.app]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Push branch to remote", self.push_ref_to_remote, [item.data['name']]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Remove this branch", self.remove_branch, [item.data['name']]))
             elif item.data['type'] == 'tags':
-                self.append(ContextMenuItem("Copy tag name", copy_to_clipboard, [item.data['name']]))
+                self.append(ContextMenuItem("Copy tag name", copy_to_clipboard, [item.data['name'], self.app]))
                 self.append(ContextMenuItem("Show tag annotation", self.app.git_diff.job.show_tag_annotation, [item.data.get('tag_id')], 'tag_id' in item.data))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Push tag to remote", self.push_ref_to_remote, [item.data['name']]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Remove this tag", self.remove_tag, [item.data['name']]))
             elif item.data['type'] == 'remotes':
-                self.append(ContextMenuItem("Copy remote branch name", copy_to_clipboard, [item.data['name']]))
+                self.append(ContextMenuItem("Copy remote branch name", copy_to_clipboard, [item.data['name'], self.app]))
                 self.append(SeparatorItem())
                 self.append(ContextMenuItem("Remove this remote branch", self.remove_remote_ref, [item.data['name']]))
             else:
-                self.append(ContextMenuItem("Copy ref name", copy_to_clipboard, [item.data['name']]))
+                self.append(ContextMenuItem("Copy ref name", copy_to_clipboard, [item.data['name'], self.app]))
         elif view_id == 'log':
             self._append_copy_items(view, item)
         else:

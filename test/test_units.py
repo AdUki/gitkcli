@@ -21,13 +21,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from types import SimpleNamespace
 
 from gitk.config import (KEY_CTRL, DEFAULT_CONFIG, load_config, save_config,
-                         get_config_path)
+                         get_config_path, copy_to_clipboard)
 from gitk.segments import ref_color_and_title, TextSegment, ButtonSegment, FillerSegment
 from gitk.segmented_items import SegmentedListItem, ButtonRowItem
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
 from gitk.jobs import GitLogJob, GitDiffJob, Job, _CONTROL_CHARS
-from gitk.items import UserInputListItem, StatListItem, TextListItem
+from gitk.items import UserInputListItem, StatListItem, TextListItem, ContextMenuItem
 from gitk.screen import Screen
 from gitk.dialogs import SearchDialogPopup, RefPushDialogPopup, NewRefDialogPopup
 from gitk.input import KeyboardState, KEY_CTRL_BACKSPACE, KEY_CTRL_DEL
@@ -780,3 +780,27 @@ def test_rename_branch_builds_git_branch_move():
     args_seen.clear()
     NewRefDialogPopup._rename_branch(me, 'old', 'new', True)   # forced overwrite
     assert args_seen[0][:3] == ['git', 'branch', '-M']
+
+
+# --- ContextMenu "Copy <ref> name" must pass app to copy_to_clipboard ---------
+# copy_to_clipboard(txt, app) needs two args; the refs-view copy items used to
+# pass only the name -> TypeError -> crash on click. Build the item the way the
+# menu does ([name, app]) and activate it.
+
+def test_context_menu_copy_item_activates_without_crash(monkeypatch):
+    import pyperclip
+    copied = []
+    monkeypatch.setattr(pyperclip, 'copy', lambda s: copied.append(s))
+    fake_app = SimpleNamespace(
+        screen=SimpleNamespace(hide_active_view=lambda: None),
+        log=SimpleNamespace(warning=lambda m: None, error=lambda m: None))
+    item = ContextMenuItem("Copy branch name", copy_to_clipboard, ['main', fake_app])
+    item.get_app = lambda: fake_app
+    assert item.activate() is True          # the missing-app TypeError would raise here
+    assert copied == ['main']
+
+def test_copy_to_clipboard_requires_app_arg():
+    # Documents the signature the menu wiring must satisfy.
+    import inspect
+    params = list(inspect.signature(copy_to_clipboard).parameters)
+    assert params == ['txt', 'app']

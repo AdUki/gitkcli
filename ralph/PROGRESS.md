@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 87 (BUG: "Copy <ref> name" context items crashed).**
+  Continued the context-menu action/args audit. Found that the four refs-view
+  "Copy branch/tag/remote/ref name" items called the module function
+  `copy_to_clipboard(txt, app)` with only ONE arg (the name) -> `TypeError:
+  missing 'app'` raised in `ContextMenuItem.activate` (`self.action(*self.args)`),
+  uncaught -> app crash on click. (The git-log/diff/log "Copy ..." items go
+  through item/view METHODS that supply app internally, so only these 4 direct
+  calls were broken.) FIX: pass `self.app` as the second arg in all four. Added
+  2 unit tests (build the copy item as the menu does and activate it without
+  crashing, with pyperclip patched; assert copy_to_clipboard's 2-arg signature).
+  Audited the rest of the menu args — all others match their handler signatures.
+  Suite **73/73** (goldens untouched); units **89/89**. (30th genuine bug.)
 - **2026-06-28 — Iteration 86 (BUG: "Rename this branch" copied instead of renaming).**
   README/context-menu cross-check: F-keys, jump-history (Ctrl+Left/Right), 'q'
   semantics, nav keys all verified correct. But the refs-view "Rename this
