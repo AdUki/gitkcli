@@ -1,0 +1,11 @@
+# Horizontally scroll the Git Log right with <Right> on a NARROW pty (so the
+# commit rows overflow and scrolling actually engages). Exercises the segmented
+# commit-row scroll path (CommitListItem, _offset_x > 0): each segment AND its
+# trailing separator must scroll off the left in lockstep with _offset_x.
+# Regression guard for the separator-offset accounting in
+# SegmentedListItem.draw_line (offset 0 is covered by every other case).
+size      40x40
+config    default
+launch
+key       <Right>*12
+capture   hscroll

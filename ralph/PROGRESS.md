@@ -209,10 +209,33 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 - [x] **RefPush empty-named remote when no remotes** — `''.split('\n')` → `['']`
       made a blank toggle + `self.remote=''`. FIXED: parse with `.split()` (drops
       empties → `[]`), init `self.remote=''`, guard the initial selection.
-      ALL reviewed bugs fixed. (No further candidates from the review.)
+- [x] **#3 separator/offset under horizontal scroll** — FIXED (iteration 53).
+      `draw_line` now makes the inter-segment separator participate in the
+      `offset` walk (consumed when scrolled off), keeping the drawn columns
+      aligned with `_offset_x`/`get_segment_on_offset`. offset=0 byte-identical
+      (the 61 existing goldens stay green); new additive `log_hscroll` golden +
+      an independent check (narrow scrolled rows == full 120-wide rows shifted
+      left by 12) verify offset>0. The earlier "deferred" call was over-cautious:
+      the fix touches NO existing golden (no existing case scrolls horizontally),
+      so it was in-rules all along.
+      ALL reviewed bugs now fixed.
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 53 (FIX #3: separator-aware offset in draw_line + h-scroll golden).**
+  Realized the earlier deferral was over-cautious: #3's fix only changes
+  rendering at `offset>0`, and NO existing golden scrolls horizontally, so it
+  touches no existing golden — in-rules. Reworked `SegmentedListItem.draw_line`
+  so the inter-segment separator participates in the horizontal-scroll walk:
+  consumed from `offset` when scrolled off the left, else drawn (gated on the
+  prior segment having shown text). At `offset=0` it reduces exactly to the old
+  `draw_separator` logic → the 61 existing goldens stay byte-identical (verified;
+  the critical regression gate). Added an additive `log_hscroll` golden (narrow
+  40-col pty, `<Right>*12`) and INDEPENDENTLY verified correctness: every scrolled
+  commit row equals the full 120-wide row shifted left by 12 (38/38 aligned, 0
+  mismatched) — so segments+separators now scroll in lockstep with `_offset_x`,
+  and the draw/`get_segment_on_offset` hit-test agree. Full suite **62/62**;
+  units **30/30**; existing goldens untouched.
 - **2026-06-28 — Iteration 52 (coverage: Job queue helpers _empty_queue/_drain).**
   Confirmed the other degraded-tier/feature paths are already covered (`--graph`
   has graph_mode/graph_nav; mono now has log_nocolor; the 8-colour tier can't be

@@ -84,14 +84,27 @@ class SegmentedListItem(Item):
         return selected
 
     def draw_line(self, win, offset, width, selected, matched, marked):
-        draw_separator = False
         remaining_width = width
         bg_selected = self._bg_selected(selected)
+        sep = self.segment_separator
+        prev_visible = False   # did the previous segment render any columns?
         for index, segment in enumerate(self.get_segments()):
-            if draw_separator and self.segment_separator:
-                draw_separator = False
-                remaining_width -= len(self.segment_separator)
-                win.addstr(self.segment_separator, Screen.color(self.bg_color, bg_selected, marked, matched))
+            if index > 0 and sep:
+                # The inter-segment separator occupies a column in get_text()
+                # space (which `offset`/_offset_x are measured against), so it
+                # must participate in the horizontal-scroll walk: consume it from
+                # `offset` when it's scrolled off the left, otherwise draw it (but
+                # only after a segment that showed text — no separator after an
+                # empty/zero-width one). At offset 0 this reduces to the original
+                # "draw a separator before each segment that follows a visible one".
+                if offset >= len(sep):
+                    offset -= len(sep)
+                else:
+                    visible_sep = sep[offset:]
+                    offset = 0
+                    if prev_visible:
+                        remaining_width -= len(visible_sep)
+                        win.addstr(visible_sep, Screen.color(self.bg_color, bg_selected, marked, matched))
             if isinstance(segment, FillerSegment):
                 txt = self.get_fill_txt(width)
                 win.addstr(txt, Screen.color(self.bg_color, bg_selected, marked, matched))
@@ -99,7 +112,7 @@ class SegmentedListItem(Item):
             else:
                 length = segment.draw(win, offset, remaining_width, self._segment_selected(index, selected), matched, marked)
                 txt = segment.get_text()
-            draw_separator = length > 0
+            prev_visible = length > 0
             remaining_width -= length
             if remaining_width <= 0:
                 break
