@@ -148,6 +148,21 @@ Adjust these settings in the code:
 - `log_level`: Debug logging verbosity 0-5 (default: 4)
 - `ignore_whitespace`: Ignore whitespace in diffs (default: False)
 
+## Project structure
+
+The application lives in the `gitk/` package; `gitkcli.py` at the repo root is a
+thin launch shim (`from gitk.main import main`). Modules are layered bottom-up
+(config/ids/input/screen → segments → items → views → app → main); the whole map
+and the design (an injected `App` struct reached via `self.app` / `get_app()`,
+no globals) is documented in `gitk/__init__.py`.
+
+Tests are in `test/`:
+
+- `python3 test/run.py` runs the pty golden-screen suite (renders the real app
+  on a fixed-size terminal and diffs each frame against `test/cases/*/golden/`).
+- `python3 -m pytest test/` runs that suite plus the fast pure-logic unit tests
+  in `test/test_units.py`.
+
 ## License
 
 MIT

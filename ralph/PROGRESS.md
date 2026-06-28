@@ -222,6 +222,13 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 58 (docs: README "Project structure" for contributors).**
+  Verified the README had no stale structure references (it's user-facing). Added
+  a concise "Project structure" section: the code lives in `gitk/` (gitkcli.py is
+  a launch shim), the layering + injected-`App` design is in `gitk/__init__.py`,
+  and how to run the two test suites (`test/run.py` goldens; `pytest test/` for
+  goldens+units). Gives contributors a navigation entry point that didn't exist.
+  Doc-only. Full suite **62/62** (existing goldens untouched); units **39/39**.
 - **2026-06-28 — Iteration 57 (coverage: Screen._to_pal colour-tier degradation).**
   Added 3 pure unit tests for the palette-index → tier mapping that backs the
   `--no-color`/8-colour degradation (the non-obvious arithmetic behind the
