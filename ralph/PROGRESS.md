@@ -222,6 +222,22 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 100 (REFACTOR_COMPLETE — all exit criteria verifiably TRUE).**
+  Final confirmation run: `import gitkcli` OK, `python3 gitkcli.py --help` OK,
+  `grep 'Gitkcli\.' gitkcli.py gitk/` = 0, no `class Gitkcli` in project code,
+  every module ≤ 600 lines, golden suite **78/78** with NO modified goldens,
+  units **94/94**, working tree clean. All 9 PLAN.md exit criteria are TRUE
+  (see iteration 99 for the per-criterion breakdown), so the completion promise
+  REFACTOR_COMPLETE is emitted. The `Gitkcli` service-locator is gone; the app
+  is a layered `gitk/` package reached through an injected `App` struct;
+  `gitkcli.py` is a 9-line shim. Beyond the refactor, the post-refactor
+  improvement phase fixed **35 genuine bugs** plus several verified-safe safety/
+  structure fixes, and grew coverage to 78 goldens + 94 unit tests. Remaining
+  open items are deliberate product/architecture judgement calls left for the
+  user: "Clear staged" unstage-vs-discard semantics, `remove_tag`'s delete-from-
+  all-remotes, non-ASCII text input (needs a `get_wch` rewrite), synchronous
+  `run_git` UI-blocking on network ops, and the stale `.claude/worktrees/
+  clipboard-fix` leftover to prune.
 - **2026-06-28 — Iteration 99 (VERIFY: full PLAN.md exit-criteria re-check; all 9 TRUE).**
   Re-ran every exit-criterion check end-to-end after the iter-98 split:
   C1 no `class Gitkcli` in project code; C2 `grep 'Gitkcli\.' gitkcli.py gitk/` = 0;
