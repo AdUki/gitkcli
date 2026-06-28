@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 79 (BUG: jump-to-file used the wrong path for renamed files).**
+  Probed the diffstat rename formats. The stat regex's group(1) — used as the
+  jump-to-file target in `StatListItem` — mangles directory renames:
+  `{src => lib}/app.py` -> `lib}/app.py` (stray brace, never matches the diff
+  header so the jump silently fails) and `src/{old.py => new.py}` -> `new.py`
+  (drops the `src/` prefix). git's rename display (`pre/{old => new}/post`) needs
+  reconstruction the regex can't do (group(1) already ate the `{old =>` prefix).
+  FIX: keep `stat_pattern` for DETECTION only (so stat-row selectability and all
+  goldens are unchanged) and add `GitDiffJob._stat_file_path`, which strips the
+  ` | <count>` tail then collapses `{a => b}` -> `b` and a bare `a => b` -> `b`,
+  yielding `src/new.py` / `lib/app.py` / `a/c/d.py` correctly. Added 5 unit tests.
+  Suite **71/71** (goldens untouched); units **66/66**. (23rd genuine bug.)
 - **2026-06-28 — Iteration 78 (BUG: commit-message line misread as a clickable diffstat row).**
   Probed binary-file diffs first (rendered gracefully — binary stat ` f | Bin..`
   doesn't match the `\d+` stat pattern so it's shown as plain text; the "Binary

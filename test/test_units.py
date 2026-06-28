@@ -543,7 +543,8 @@ def _diffjob():
     return SimpleNamespace(
         old_file_line=-1, new_file_line=-1, line_count=0,
         line_pattern=re.compile(r'^(?:( )|(?:\+\+\+ b/(.*))|(?:--- a/(.*))|(\+\+\+|---|diff|index)|(\+)|(-)|(@@ -(\d+),\d+ \+(\d+),\d+ @@))'),
-        stat_pattern=re.compile(r' (?:\.\.\.)?(?:.* => )?(.*?)}? +\| +\d+ \+*-*'))
+        stat_pattern=re.compile(r' (?:\.\.\.)?(?:.* => )?(.*?)}? +\| +\d+ \+*-*'),
+        _stat_file_path=GitDiffJob._stat_file_path)
 
 def test_process_line_diffstat_line_becomes_stat_item():
     item = GitDiffJob.process_line(_diffjob(), ' src/app.py | 5 +++--')
@@ -560,3 +561,24 @@ def test_process_line_message_plain_line_is_text():
     item = GitDiffJob.process_line(_diffjob(), '    just a normal message line')
     assert isinstance(item, TextListItem)
     assert not isinstance(item, StatListItem)
+
+
+# --- GitDiffJob._stat_file_path: reconstruct the new path for renames ---------
+# Used by jump-to-file; must match the diff header's b/<path>. The stat regex's
+# group(1) gets this wrong for directory renames (stray '}' / dropped prefix).
+
+def test_stat_file_path_plain():
+    assert GitDiffJob._stat_file_path(' src/app.py | 5 +++--') == 'src/app.py'
+
+def test_stat_file_path_brace_rename_same_dir():
+    assert GitDiffJob._stat_file_path(' src/{old.py => new.py} | 2 +-') == 'src/new.py'
+
+def test_stat_file_path_brace_rename_dir_change():
+    # The regex group(1) yielded the broken 'lib}/app.py' here.
+    assert GitDiffJob._stat_file_path(' {src => lib}/app.py | 4 ++--') == 'lib/app.py'
+
+def test_stat_file_path_bare_rename():
+    assert GitDiffJob._stat_file_path(' old_name.py => new_name.py | 6 ++++++') == 'new_name.py'
+
+def test_stat_file_path_brace_prefix_and_suffix():
+    assert GitDiffJob._stat_file_path(' a/{b => c}/d.py | 3 +++') == 'a/c/d.py'

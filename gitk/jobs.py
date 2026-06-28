@@ -281,6 +281,8 @@ class GitDiffJob(Job):
         self.cmd = 'git'
 
         self.line_pattern = re.compile(r'^(?:( )|(?:\+\+\+ b/(.*))|(?:--- a/(.*))|(\+\+\+|---|diff|index)|(\+)|(-)|(@@ -(\d+),\d+ \+(\d+),\d+ @@))')
+        # Detects a diffstat line (" path | 5 +-"); the post-rename path used for
+        # jump-to-file is reconstructed separately by _stat_file_path.
         self.stat_pattern = re.compile(r' (?:\.\.\.)?(?:.* => )?(.*?)}? +\| +\d+ \+*-*')
 
         self.commit_id: typing.Optional[str] = None
@@ -373,6 +375,23 @@ class GitDiffJob(Job):
         self.start_job(self._get_args())
         self.app.git_diff.show()
 
+    @staticmethod
+    def _stat_file_path(stat_line):
+        """The post-rename file path from a diffstat line, for jump-to-file.
+
+        git renders a rename with a brace group that shares the common
+        prefix/suffix ("dir/{old => new}/f") or, with no shared part, as a bare
+        "old => new"; reconstruct the *new* path in both cases so the jump target
+        matches the diff header (group(1) of stat_pattern cannot — it has already
+        swallowed the "{old =>" prefix)."""
+        # Drop the " | <count> <+-/Bin>" stat tail (variable spacing around '|').
+        m = re.match(r' (.*?) +\| +', stat_line)
+        path = m.group(1) if m else stat_line.strip()
+        path = re.sub(r'\{.*? => (.*?)\}', r'\1', path)   # dir/{a => b}/f -> dir/b/f
+        if ' => ' in path:
+            path = path.rsplit(' => ', 1)[-1]             # a => b -> b
+        return path
+
     def process_line(self, line) -> typing.Any:
         color = 1
         self.line_count += 1
@@ -389,9 +408,8 @@ class GitDiffJob(Job):
                     # clickable stat row pointing at a bogus file.
                     if line.startswith(' ') and not line.startswith('    '): # stats line
                         color = 10
-                        stat_match = self.stat_pattern.match(line)
-                        if stat_match:
-                            return StatListItem(line, color, stat_match.group(1))
+                        if self.stat_pattern.match(line):
+                            return StatListItem(line, color, self._stat_file_path(line))
                     return TextListItem(line, color)
                 self.old_file_line += 1
                 self.new_file_line += 1
