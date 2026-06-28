@@ -2983,40 +2983,40 @@ class PreferencesDialogPopup(ListView):
         self._selected = 0
 
     def on_activated(self):
-        self.t_show_id.set_toggled(Gitkcli.git_log.show_commit_id)
-        self.t_show_date.set_toggled(Gitkcli.git_log.show_commit_date)
-        self.t_show_author.set_toggled(Gitkcli.git_log.show_commit_author)
-        self.t_ign_ws.set_toggled(Gitkcli.git_diff.ignore_whitespace)
-        self.t_autoscroll.set_toggled(Gitkcli.log.view.autoscroll)
-        self.c_view_mode.set_value(Gitkcli.default_view_mode)
-        self.input_flags.set_text(Gitkcli.git_log.pref_flags)
+        self.t_show_id.set_toggled(self.app.git_log.show_commit_id)
+        self.t_show_date.set_toggled(self.app.git_log.show_commit_date)
+        self.t_show_author.set_toggled(self.app.git_log.show_commit_author)
+        self.t_ign_ws.set_toggled(self.app.git_diff.ignore_whitespace)
+        self.t_autoscroll.set_toggled(self.app.log.view.autoscroll)
+        self.c_view_mode.set_value(self.app.default_view_mode)
+        self.input_flags.set_text(self.app.git_log.pref_flags)
         self._button_row.reset_focus()
         self.dirty = True
         super().on_activated()
 
     def on_save(self):
-        Gitkcli.git_log.show_commit_id     = self.t_show_id.toggled
-        Gitkcli.git_log.show_commit_date   = self.t_show_date.toggled
-        Gitkcli.git_log.show_commit_author = self.t_show_author.toggled
-        Gitkcli.log.view.autoscroll        = self.t_autoscroll.toggled
-        Gitkcli.git_log.dirty  = True
-        Gitkcli.log.view.dirty = True
-        if Gitkcli.git_diff.ignore_whitespace != self.t_ign_ws.toggled:
-            job = Gitkcli.git_diff.job
+        self.app.git_log.show_commit_id     = self.t_show_id.toggled
+        self.app.git_log.show_commit_date   = self.t_show_date.toggled
+        self.app.git_log.show_commit_author = self.t_show_author.toggled
+        self.app.log.view.autoscroll        = self.t_autoscroll.toggled
+        self.app.git_log.dirty  = True
+        self.app.log.view.dirty = True
+        if self.app.git_diff.ignore_whitespace != self.t_ign_ws.toggled:
+            job = self.app.git_diff.job
             if job.commit_id or job.tag_id or job.old_commit_id:
-                Gitkcli.git_diff.change_ignore_whitespace(self.t_ign_ws.toggled)
+                self.app.git_diff.change_ignore_whitespace(self.t_ign_ws.toggled)
             else:
-                Gitkcli.git_diff.ignore_whitespace = self.t_ign_ws.toggled
+                self.app.git_diff.ignore_whitespace = self.t_ign_ws.toggled
 
         new_flags = self.input_flags.txt.strip()
-        if new_flags != Gitkcli.git_log.pref_flags:
-            Gitkcli.git_log.set_pref_flags(new_flags)
-            Gitkcli.git_log.reload_commits()
+        if new_flags != self.app.git_log.pref_flags:
+            self.app.git_log.set_pref_flags(new_flags)
+            self.app.git_log.reload_commits()
 
-        Gitkcli.default_view_mode = self.c_view_mode.value
+        self.app.default_view_mode = self.c_view_mode.value
         # Apply the chosen layout right away; entering a split raises the
         # log/diff panes, so re-show this dialog to keep it on top.
-        Gitkcli.set_split_mode(self.c_view_mode.value if self.c_view_mode.value in ('side', 'stacked') else 'off')
+        self.app.set_split_mode(self.c_view_mode.value if self.c_view_mode.value in ('side', 'stacked') else 'off')
         self.show()
 
         cfg = {
@@ -3029,7 +3029,7 @@ class PreferencesDialogPopup(ListView):
             'view':     {'default_mode':       self.c_view_mode.value},
         }
         if save_config(cfg):
-            Gitkcli.log.success('Preferences saved')
+            self.app.log.success('Preferences saved')
 
     def on_cancel(self):
         self.hide()

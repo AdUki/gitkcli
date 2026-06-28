@@ -17,11 +17,12 @@
 
 - **Phase:** 1 — in progress. Migrating view-method `Gitkcli.<x>` → `self.app.<x>`
   cluster by cluster. Done: `GitDiffView`, `GitLogView`, `View` base,
-  `ContextMenu`. Next clusters: `PreferencesDialogPopup` (23), `Screen` (12),
-  `ListView` (8), `LogView` (2). Still pending: `get_app()` for
+  `ContextMenu`, `PreferencesDialogPopup`. Next clusters: `Screen` (12),
+  `ListView` (8), `LogView` (2), and the remaining small dialog classes
+  (Reset/RefPush/GitSearch/NewRef). Still pending: `get_app()` for
   items/segments/jobs (no parent chain yet); launch_curses/main-loop refs
   (~61, become `app.` in Phase 2/3).
-- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 199 (code; +2 doc-prose are
+- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 176 (code; +2 doc-prose are
   inside this count) · **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
@@ -108,6 +109,12 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 7 (Phase 1: migrate `PreferencesDialogPopup`).**
+  Replaced all 23 `Gitkcli.<x>` → `self.app.<x>` inside `PreferencesDialogPopup`
+  (2950–3043) — the apply/reset paths that read & write `git_log`/`git_diff`/
+  `log`/`default_view_mode` and call `set_split_mode`. All instance methods
+  (segment-setup `__init__` had no `Gitkcli.` refs). Full suite: **60 passed, 0
+  failed**; goldens clean. `Gitkcli.` refs 199→176.
 - **2026-06-28 — Iteration 6 (Phase 1: migrate `ContextMenu` refs to `self.app`).**
   Replaced all 22 `Gitkcli.<x>` → `self.app.<x>` inside `ContextMenu`
   (2331–2482). Also converted the main-menu sentinel `item == Gitkcli` →
