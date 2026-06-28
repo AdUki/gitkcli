@@ -224,7 +224,9 @@ def test_process_line_nonmatching_returns_raw_string():
     assert GitLogJob.process_line(None, "just some text") == "just some text"
 
 
-# --- _CONTROL_CHARS: terminal-escape-injection guard applied to streamed text -
+# --- _CONTROL_CHARS: control-char display hygiene applied to streamed text -----
+# (curses renders control bytes as caret notation, e.g. "^[", not raw escapes;
+# stripping them just avoids that clutter.)
 
 def test_control_chars_strips_escape_sequences_leaving_inert_text():
     # the ESC byte (and bell) are removed; the bracket text is left inert

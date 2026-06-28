@@ -22,8 +22,11 @@ from gitk.items import TextListItem, RefListItem, DiffListItem, StatListItem
 from gitk.segmented_items import CommitListItem
 
 # C0/C1 control characters minus tab (0x09, expanded to spaces) and newline
-# (0x0a, line-split): stripped from all streamed git text so a crafted commit
-# subject / ref name / diff line can't inject terminal escape sequences.
+# (0x0a, line-split): stripped from streamed git text for clean display. A
+# commit subject / ref name / diff line can contain ESC or other control bytes;
+# curses addstr does NOT pass these to the terminal raw — it renders them as
+# caret notation (e.g. ESC -> "^[") — so this is display hygiene (drop the
+# caret-notation clutter), not a terminal-injection guard.
 _CONTROL_CHARS = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]')
 
 class Job:
@@ -184,11 +187,12 @@ class Job:
                 # curses automatically converts tab to spaces, so we will replace it here and cut off newline
                 tabsize = curses.get_tabsize() if hasattr(curses, 'get_tabsize') else 8
                 line = bytearr.decode('utf-8', errors='replace').replace('\t', ' ' * tabsize).rstrip('\r\n')
-                # Strip C0/C1 control chars (terminal-escape injection guard): a
-                # commit subject, ref name, or diff line could embed ANSI escapes
-                # / cursor moves that would otherwise be written straight to the
-                # terminal. Tab is expanded and CR/LF stripped above; printable
-                # Unicode (CJK, emoji, box-drawing — all > U+009F) is preserved.
+                # Strip C0/C1 control chars from streamed git text for a clean
+                # display: a commit subject, ref name, or diff line may contain
+                # ESC/other control bytes, which curses would render as caret
+                # notation ("^[…") rather than pass through raw. Tab is expanded
+                # and CR/LF stripped above; printable Unicode (CJK, emoji,
+                # box-drawing — all > U+009F) is preserved.
                 line = _CONTROL_CHARS.sub('', line)
                 if is_stderr:
                     self.messages.put({'type': 'error', 'message': line})

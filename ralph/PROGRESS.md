@@ -222,6 +222,26 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 69 (CORRECTION: the iter-67 "terminal-injection
+  security bug" framing was WRONG — it's display hygiene, not a vulnerability).**
+  Re-examined the iter-67 claim and disproved it with a definitive minimal curses
+  test: `addstr("X\x1b[31mZ\x1b[0mY")` renders to the terminal as
+  `X^[[31mZ^[[0mY` — ncurses caret-notates control bytes (ESC → `^[`); it does
+  NOT pass raw escapes through. So a hostile commit subject / ref / diff line
+  could never have injected SGR/cursor/clear-screen sequences via `addstr`. The
+  iter-67 pty "probe" false-positived because it grepped the pty buffer for
+  `\x1b[31m`, which matched the **app's own** colour codes, not injected ones.
+  CONCLUSION: there was no terminal-injection vulnerability; the `_CONTROL_CHARS`
+  strip is valid **display hygiene** (it removes the `^[…` caret-notation clutter
+  a control byte would otherwise show as), not a security fix. KEPT the code (the
+  behaviour is good); reworded the overstated framing everywhere — the
+  `_reader_thread`/`_CONTROL_CHARS` comments in `gitk/jobs.py`, the
+  `test/test_units.py` section comment, and the `log_escape_injection` /
+  `diff_escape_injection` spec comments — to describe cosmetic control-char
+  hygiene rather than an injection guard. No code behaviour changed; only the two
+  spec.txt **comments** were touched (golden snapshots untouched). Full suite
+  **67/67**; units **43/43**. (Iter-67/68 should be read as a cosmetic fix, not
+  the "13th genuine bug" / "SECURITY" they were originally labelled.)
 - **2026-06-28 — Iteration 68 (confirm escape-strip on the diff path; add golden).**
   Confirmed the iteration-67 terminal-escape fix also covers the diff view (the
   most dangerous vector: a malicious file's CONTENT containing ANSI escapes,

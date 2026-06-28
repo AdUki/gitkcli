@@ -1,7 +1,8 @@
-# A commit subject containing raw ANSI escape sequences must NOT be passed
-# through to the terminal (terminal-injection guard). The escapes are stripped
-# in Job._reader_thread, leaving inert text. Build the subject with printf so the
-# spec file holds no raw ESC bytes; pinned dates keep the hash deterministic.
+# A commit subject with embedded control/escape bytes is stripped of those bytes
+# in Job._reader_thread, so the log shows inert text. (curses would otherwise
+# render them as caret notation like "^[" — not a raw passthrough — so this is
+# display hygiene, not an injection guard.) Build the subject with printf so the
+# spec file holds no raw ESC; pinned date keeps the hash deterministic.
 size      120x40
 config    default
 run       rm -rf .git && git init -q && GIT_AUTHOR_DATE='2024-01-01T00:00:00+0000' GIT_COMMITTER_DATE='2024-01-01T00:00:00+0000' git commit -q --allow-empty -m "$(printf 'pre\033[31mRED\033[0m\033[2Apost')"
