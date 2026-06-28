@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from gitk.config import (KEY_CTRL, DEFAULT_CONFIG, load_config, save_config,
                          get_config_path)
 from gitk.segments import ref_color_and_title, TextSegment
+from gitk.segmented_items import SegmentedListItem
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
 from gitk.jobs import GitLogJob, Job
@@ -276,3 +277,25 @@ def test_drain_consumes_but_does_not_dispatch_while_stopped():
     assert processed is False            # nothing dispatched while stopped
     assert got == []
     assert q.empty()                     # but the queue was still drained
+
+
+# --- SegmentedListItem.get_segment_on_offset (click hit-test maps an absolute
+# get_text() offset -> segment; separators occupy a column between segments).
+# This is the coordinate space draw_line must agree with under horizontal scroll.
+
+def test_get_segment_on_offset_maps_columns_to_segments():
+    a, b, c = TextSegment('ab'), TextSegment('cd'), TextSegment('ef')
+    it = SegmentedListItem([a, b, c])          # get_text() == 'ab cd ef'
+    assert it.get_segment_on_offset(0) is a
+    assert it.get_segment_on_offset(1) is a
+    assert it.get_segment_on_offset(3) is b     # after 'ab' + separator
+    assert it.get_segment_on_offset(4) is b
+    assert it.get_segment_on_offset(6) is c
+    assert it.get_segment_on_offset(7) is c
+
+def test_get_segment_on_offset_separator_column_hits_no_segment():
+    a, b = TextSegment('ab'), TextSegment('cd')
+    it = SegmentedListItem([a, b])             # 'ab cd'; column 2 is the separator
+    hit = it.get_segment_on_offset(2)
+    assert hit is not a and hit is not b        # the gap maps to a fresh empty Segment
+    assert hit.get_text() == ''

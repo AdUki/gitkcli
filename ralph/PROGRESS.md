@@ -222,6 +222,15 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 54 (coverage: get_segment_on_offset hit-test math).**
+  Completed the #3 story by locking the *other* half — the click hit-test.
+  `get_segment_on_offset` maps an absolute get_text() offset (separators
+  included) to a segment; it was already correct in that coordinate space (the
+  iteration-53 draw fix made `draw_line` agree with it). Added 2 pure unit tests
+  on a headless-constructed `SegmentedListItem`: columns map to the right
+  segments across separators, and a separator-gap column maps to no segment
+  (a fresh empty Segment). Full suite **62/62** (existing goldens untouched);
+  units **32/32**.
 - **2026-06-28 — Iteration 53 (FIX #3: separator-aware offset in draw_line + h-scroll golden).**
   Realized the earlier deferral was over-cautious: #3's fix only changes
   rendering at `offset>0`, and NO existing golden scrolls horizontally, so it
