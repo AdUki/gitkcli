@@ -863,3 +863,87 @@ def test_remove_branch_force_uses_capital_D():
     args, kw = seen[0]
     assert args == ['git', 'branch', '-D', 'feature']   # forced after confirm
     assert kw['force'] is True
+
+
+# --- git-command builders: assert the exact argv each op runs ----------------
+# These were verified by hand during bug-hunting but lacked regression tests.
+# Job.run_job / app.run_git are stubbed so nothing touches a real repo.
+
+def _result(returncode=0, stdout='', stderr=''):
+    return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+
+def test_cherry_pick_aborts_then_picks(monkeypatch):
+    jobs, gits = [], []
+    monkeypatch.setattr(Job, 'run_job', lambda app, args: jobs.append(args) or _result())
+    me = SimpleNamespace(app=SimpleNamespace(run_git=lambda args, **kw: gits.append(args)))
+    GitLogView.cherry_pick(me, 'abc1234')
+    assert jobs == [['git', 'cherry-pick', '--abort']]
+    assert gits == [['git', 'cherry-pick', '-m', '1', 'abc1234']]
+
+def test_cherry_pick_without_commit_warns_and_runs_nothing():
+    warned, gits = [], []
+    me = SimpleNamespace(get_selected_commit_id=lambda: '',
+        app=SimpleNamespace(run_git=lambda *a, **k: gits.append(a),
+                            log=SimpleNamespace(warning=warned.append)))
+    GitLogView.cherry_pick(me)
+    assert warned and gits == []
+
+def test_revert_builds_no_edit_command():
+    gits = []
+    me = SimpleNamespace(app=SimpleNamespace(run_git=lambda args, **kw: gits.append(args)))
+    GitLogView.revert(me, 'def5678')
+    assert gits == [['git', 'revert', '--no-edit', '-m', '1', 'def5678']]
+
+def test_reset_builds_mode_and_commit():
+    gits = []
+    me = SimpleNamespace(app=SimpleNamespace(run_git=lambda args, **kw: gits.append(args)))
+    GitLogView.reset(me, '--hard', 'cafe123')
+    assert gits == [['git', 'reset', '--hard', 'cafe123']]
+
+def test_confirm_reset_refuses_local_pseudo_row():
+    warned, opened = [], []
+    me = SimpleNamespace(get_selected_commit_id=lambda: 'local-working',
+        view_reset=SimpleNamespace(open=lambda cid: opened.append(cid)),
+        app=SimpleNamespace(log=SimpleNamespace(warning=warned.append)))
+    GitLogView.confirm_reset(me)
+    assert warned and opened == []
+
+def test_checkout_branch_safe_then_force():
+    gits = []
+    me = SimpleNamespace(app=SimpleNamespace(run_git=lambda args, **kw: gits.append((args, kw.get('force')))))
+    ContextMenu.checkout_branch(me, 'feature')
+    assert gits[-1] == (['git', 'checkout', 'feature'], False)
+    ContextMenu.checkout_branch(me, 'feature', force=True)
+    assert gits[-1] == (['git', 'checkout', '-f', 'feature'], True)
+
+def test_remove_remote_ref_splits_remote_and_branch():
+    gits = []
+    me = SimpleNamespace(app=SimpleNamespace(run_git=lambda args, **kw: gits.append(args)))
+    ContextMenu.remove_remote_ref(me, 'origin/feature/login')
+    assert gits == [['git', 'push', '--delete', 'origin', 'feature/login']]
+
+def test_remove_tag_deletes_local_and_every_remote(monkeypatch):
+    seen = []
+    def fake(app, args):
+        seen.append(args)
+        if args == ['git', 'remote']:
+            return _result(stdout='origin\nupstream\n')
+        return _result()
+    monkeypatch.setattr(Job, 'run_job', fake)
+    me = SimpleNamespace(app=SimpleNamespace(
+        git_refs=SimpleNamespace(reload_refs=lambda: None),
+        log=SimpleNamespace(success=lambda m: None, error=lambda m: None)))
+    ContextMenu.remove_tag(me, 'v1.0')
+    assert ['git', 'tag', '-d', 'v1.0'] in seen
+    assert ['git', 'push', '--delete', 'origin', 'v1.0'] in seen
+    assert ['git', 'push', '--delete', 'upstream', 'v1.0'] in seen
+
+def test_remove_tag_local_only_when_no_remotes(monkeypatch):
+    seen = []
+    monkeypatch.setattr(Job, 'run_job',
+        lambda app, args: seen.append(args) or _result(stdout=''))
+    me = SimpleNamespace(app=SimpleNamespace(
+        git_refs=SimpleNamespace(reload_refs=lambda: None),
+        log=SimpleNamespace(success=lambda m: None, error=lambda m: None)))
+    ContextMenu.remove_tag(me, 'v1.0')
+    assert seen == [['git', 'remote'], ['git', 'tag', '-d', 'v1.0']]   # no push
