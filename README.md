@@ -87,13 +87,17 @@ gitkcli origin/main..HEAD
 - `n`: Search next
 - `N`: Search previous
 
-### View Selection
+### Function-key bar
 - `F1`: Show git log
 - `F2`: Show git references
 - `F3`: Show git diff
 - `F4`: Show logs (debug)
 - `F5`: Refresh head
 - `Shift+F5`: Reload all commits
+- `F6`: Open search (same as `/`)
+- `F7`: Open the context menu at the selected row
+- `F9`: Open Preferences (see [Configuration](#configuration))
+- `F10`: Quit
 
 ### Diff View
 - `ENTER`: Show blame/origin of selected line

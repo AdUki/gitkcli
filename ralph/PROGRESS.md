@@ -222,6 +222,13 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 60 (docs: complete the README function-key list).**
+  The README listed only F1–F5 + Shift+F5, but the app's bottom bar also binds
+  F6 (Search), F7 (Context menu at selection), F9 (Config/Preferences), F10
+  (Quit) — verified against `screen.py`'s `bottom_bar_entries`. Added the four
+  missing entries and renamed the subsection "Function-key bar" to match the UI.
+  User-facing accuracy fix, doc-only. Full suite **62/62** (existing goldens
+  untouched); units **39/39**.
 - **2026-06-28 — Iteration 59 (docs: fix stale README Configuration section).**
   The README's Configuration said "Adjust these settings in the code" with a
   code-variable list — genuinely misleading for users, since those options are
