@@ -216,12 +216,15 @@ class GitLogView(ListView):
             self._pending_select_id = ''
 
     def add_to_jump_list(self, commit_id:str, line:typing.Optional[int] = None, offset_y:typing.Optional[int] = None):
+        # Drop any forward history; the current position is now at index 0, so
+        # jump_index must be 0 regardless of which path we take below (resetting
+        # it only after the insert left it stale on the dedup early-return).
         self.jump_list = self.jump_list[self.jump_index:]
+        self.jump_index = 0
         entry = (commit_id, line, offset_y)
         if self.jump_list and self.jump_list[0] == entry:
             return
         self.jump_list.insert(0, entry)
-        self.jump_index = 0
 
     def move_in_jump_list(self, jump:int):
         if not self.jump_list:

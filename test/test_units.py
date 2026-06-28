@@ -13,9 +13,12 @@ import sys
 # Make the repo root importable regardless of how pytest is invoked.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from types import SimpleNamespace
+
 from gitk.config import (KEY_CTRL, DEFAULT_CONFIG, load_config, save_config,
                          get_config_path)
 from gitk.segments import ref_color_and_title
+from gitk.views.git_log import GitLogView
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -101,3 +104,25 @@ def test_ref_color_and_title_head_arrow_depends_on_branch():
     assert ref_color_and_title({'name': 'HEAD', 'type': 'head'}) == (13, '(HEAD)')
     assert ref_color_and_title({'name': 'HEAD', 'type': 'head'},
                                head_branch='main') == (13, '(HEAD) ->')
+
+
+# --- GitLogView.add_to_jump_list (pure: only touches jump_list/jump_index) --
+# Regression for the dedup early-return that used to leave jump_index stale.
+
+def _jl(entries, index):
+    # Drive the method against a stand-in: it reads/writes only these two attrs.
+    return SimpleNamespace(jump_list=list(entries), jump_index=index)
+
+def test_add_to_jump_list_dedup_resets_index_to_zero():
+    # Navigated back to index 2 ('c'); re-adding the current entry must dedup
+    # AND leave jump_index pointing at the (now sole) entry, not stay stale.
+    ns = _jl([('a', None, None), ('b', None, None), ('c', None, None)], 2)
+    GitLogView.add_to_jump_list(ns, 'c')
+    assert ns.jump_list == [('c', None, None)]
+    assert ns.jump_index == 0
+
+def test_add_to_jump_list_truncates_forward_history_and_prepends():
+    ns = _jl([('a', None, None), ('b', None, None)], 1)   # at 'b', 'a' is forward
+    GitLogView.add_to_jump_list(ns, 'z', 5, 3)
+    assert ns.jump_list == [('z', 5, 3), ('b', None, None)]
+    assert ns.jump_index == 0

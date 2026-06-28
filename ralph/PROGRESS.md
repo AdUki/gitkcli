@@ -183,8 +183,35 @@
 
 ---
 
+## Post-refactor: code improvement & bug-fixing (branch `improve/post-refactor`)
+
+A read-only bug-review of the gitk package surfaced several candidates. Verified
+& fixing them one per iteration, golden + unit suites green each time. Queue:
+- [x] **jump_index staleness** (git_log.add_to_jump_list) — dedup early-return
+      left jump_index out of range → broken back/forward nav. FIXED + unit tests.
+- [ ] **Job queue not cleared on restart** (jobs.start_job) — stale items from a
+      terminated run can contaminate the next run on the same Job singleton
+      (e.g. fast diff scrolling). Need: clear self.items/self.messages in
+      start_job (verify carefully — drain timing vs reader threads).
+- [ ] **stop_job leaves running=True** on the non-timeout path → potential busy
+      redraw loop for a stopped-not-restarted job. Need: set running=False after
+      successful terminate+wait.
+- [ ] (low) set_selected non-selectable skip direction; str/regex set_selected
+      hardcodes git_diff.items; RefPush empty-remote — latent, revisit.
+
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 36 (post-refactor bugfix: jump-list index staleness).**
+  On branch `improve/post-refactor`. A read-only Explore review flagged that
+  `GitLogView.add_to_jump_list` truncates forward history
+  (`self.jump_list[self.jump_index:]`, making the current entry index 0) but the
+  dedup early-return left `jump_index` at its old value — now out of range —
+  silently breaking `[<-]`/`[->]` until the next non-dedup add. Fixed by setting
+  `jump_index = 0` immediately after truncation (identical on the happy path,
+  correct on dedup). Added 2 pure regression unit tests driving the method on a
+  SimpleNamespace stand-in (it only touches jump_list/jump_index). Full golden
+  suite **60/60** (goldens unchanged — buggy path wasn't golden-covered); units
+  **11/11**.
 - **2026-06-28 — Iteration 35 (final exit-criteria verification).**
   Walked every PLAN.md exit criterion and verified each TRUE (filled the
   Exit-criteria check section with evidence). Reconciled stale/duplicate
