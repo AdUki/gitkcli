@@ -77,8 +77,7 @@ gitkcli origin/main..HEAD
 - `b`: Create new branch from commit
 - `c`: Cherry-pick commit
 - `v`: Revert commit
-- `r`: Soft reset to commit
-- `R`: Hard reset to commit
+- `r` / `R`: Reset current branch to commit (pick Soft / Mixed / Hard in the dialog)
 - `m`: Mark commit
 - `M`: Jump to marked commit
 
@@ -102,7 +101,7 @@ gitkcli origin/main..HEAD
 ### Diff View
 - `ENTER`: Show blame/origin of selected line
 - `+` / `-`: Increase/decrease context lines
-- `[Ignore space change]`: Toggle whitespace ignoring
+- `[Ignore whitespace]`: title-bar button to toggle whitespace-insensitive diffing
 
 ### Navigation History
 - `CTRL+LEFT` / `<---`: Navigate back in jump history

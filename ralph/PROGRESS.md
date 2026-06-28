@@ -222,6 +222,15 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 61 (docs: fix two wrong README key bindings).**
+  Cross-checked the remaining Key Bindings against the handlers. Navigation
+  (j/k/h/l/g/G/Ctrl-b/f), b/c/v/m/M, n/N, ENTER, and `+`/`-` all verified
+  correct. Fixed two inaccuracies: (1) `r`/`R` don't do separate soft/hard
+  resets — both call `confirm_reset()` which opens the reset-mode dialog
+  (Soft/Mixed/Hard, default Mixed); reworded to one accurate entry. (2) the diff
+  whitespace toggle's button label is `[Ignore whitespace]`, not
+  `[Ignore space change]`. User-facing accuracy fixes, doc-only. Full suite
+  **62/62** (existing goldens untouched); units **39/39**.
 - **2026-06-28 — Iteration 60 (docs: complete the README function-key list).**
   The README listed only F1–F5 + Shift+F5, but the app's bottom bar also binds
   F6 (Search), F7 (Context menu at selection), F9 (Config/Preferences), F10
