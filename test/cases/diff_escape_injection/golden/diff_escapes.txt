@@ -1,0 +1,40 @@
+[0;34;49m─ Commit a18a2ba [1/18] ────────────────────────────────────────── [0;37;49mContext:[0;34;49m [0;37;49m3[0;34;49m [0;37;49m[+][0;34;49m [0;37;49m[-][0;34;49m [0;37;49m[Ignore whitespace][0;34;49m [0;37;49m[<-][0;34;49m [0;37;49m[->][0;34;49m [0;31;49m[X][0;34;49m─[0m
+[0;1;37;48;2;38;38;38mcommit a18a2bae479117ddc8f3540de83abde62b07f992                                                                         [0m
+[0;37;49mAuthor: Test Runner <test@example.com>[0m
+[0;37;49mDate:   Mon Jan 1 00:00:00 2024 +0000[0m
+
+[0;37;49m    add file with escapes in content[0m
+[0;34;49m---[0m
+[0;36;49m file.txt | 3 +++[0m
+[0;36;49m 1 file changed, 3 insertions(+)[0m
+
+[0;34;49mdiff --git a/file.txt b/file.txt[0m
+[0;37;49mnew file mode 100644[0m
+[0;34;49mindex 0000000..d546089[0m
+[0;34;49m--- /dev/null[0m
+[0;34;49m+++ b/file.txt[0m
+[0;36;49m@@ -0,0 +1,3 @@[0m
+[0;32;49m+line one[0m
+[0;32;49m+pre[31mEVILDIFF[0m[2Jpost[0m
+[0;32;49m+line three[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m

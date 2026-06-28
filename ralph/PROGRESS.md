@@ -222,6 +222,16 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 68 (confirm escape-strip on the diff path; add golden).**
+  Confirmed the iteration-67 terminal-escape fix also covers the diff view (the
+  most dangerous vector: a malicious file's CONTENT containing ANSI escapes,
+  including `\x1b[2J` screen-clear). Pty probe: opening the diff of a commit
+  adding such a file renders the line inert (`+pre[31mEVILDIFF[0m[2Jpost`, no raw
+  ESC, no clear-screen, no crash) — `GitDiffJob` shares the sanitized
+  `_reader_thread`. Added an additive `diff_escape_injection` golden (1-commit
+  repo with the escape-laden file, pinned date, Enter to open the diff) to lock
+  the diff-rendering path specifically. Full suite **67/67** (existing goldens
+  untouched); units **43/43**.
 - **2026-06-28 — Iteration 67 (SECURITY: strip terminal-escape injection from git text).**
   Probing commit subjects with embedded ANSI escapes found a real terminal-
   injection bug: `Job._reader_thread` only stripped tab/CRLF, so a crafted

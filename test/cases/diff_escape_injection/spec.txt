@@ -1,0 +1,10 @@
+# A file whose CONTENT contains raw ANSI escapes must render inert in the diff
+# view too (same _reader_thread guard, but the diff/DiffListItem rendering path).
+# Build a 1-commit repo adding such a file (printf keeps raw ESC out of the spec),
+# open the diff with Enter, and capture. Pinned date -> deterministic hash.
+size      120x40
+config    default
+run       rm -rf .git && git init -q && printf 'line one\npre\033[31mEVILDIFF\033[0m\033[2Jpost\nline three\n' > file.txt && git add file.txt && GIT_AUTHOR_DATE='2024-01-01T00:00:00+0000' GIT_COMMITTER_DATE='2024-01-01T00:00:00+0000' git commit -q -m "add file with escapes in content"
+launch
+key       <Enter>
+capture   diff_escapes
