@@ -61,6 +61,7 @@ class Job:
         self.items = queue.Queue()
         self.messages = queue.Queue()
         self.on_finished = None
+        self._reader_threads = []
         Job.add_job(id, self)
 
     def process_line(self, line) -> typing.Any:
@@ -106,6 +107,15 @@ class Job:
         drained_msgs = self._drain(self.messages, self.process_message)
         return drained_items or drained_msgs
 
+    @staticmethod
+    def _empty_queue(q):
+        try:
+            while True:
+                q.get_nowait()
+                q.task_done()
+        except queue.Empty:
+            pass
+
     def stop_job(self):
         self.stop = True
         self.on_finished = None
@@ -120,6 +130,18 @@ class Job:
 
     def start_job(self, args = [], on_finished = None):
         self.stop_job()
+
+        # `self.stop` is still True here (set by stop_job). The previous run's
+        # reader threads exit once its terminated streams hit EOF; join them
+        # while stop is still set so they neither emit a stale 'finished' nor
+        # race the queue clear below. Then discard anything the old run queued
+        # so it can't bleed into the freshly-(re)loaded view.
+        for thread in self._reader_threads:
+            thread.join(timeout=1)
+        self._reader_threads = []
+        self._empty_queue(self.items)
+        self._empty_queue(self.messages)
+
         self.stop = False
         self.on_finished = on_finished
 
@@ -129,9 +151,10 @@ class Job:
                 self.cmd.split(' ') + args + self.args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE)
-        
+
         stdout_thread = threading.Thread(target=self._reader_thread, args=(self.job.stdout, False))
         stderr_thread = threading.Thread(target=self._reader_thread, args=(self.job.stderr, True))
+        self._reader_threads = [stdout_thread, stderr_thread]
         stdout_thread.start()
         stderr_thread.start()
 

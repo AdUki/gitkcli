@@ -189,10 +189,11 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 & fixing them one per iteration, golden + unit suites green each time. Queue:
 - [x] **jump_index staleness** (git_log.add_to_jump_list) — dedup early-return
       left jump_index out of range → broken back/forward nav. FIXED + unit tests.
-- [ ] **Job queue not cleared on restart** (jobs.start_job) — stale items from a
-      terminated run can contaminate the next run on the same Job singleton
-      (e.g. fast diff scrolling). Need: clear self.items/self.messages in
-      start_job (verify carefully — drain timing vs reader threads).
+- [x] **Job queue not cleared on restart** (jobs.start_job) — stale items from a
+      terminated run could contaminate the next run on the same Job singleton.
+      FIXED: track reader threads; on restart, join them while `stop` is still
+      True (so they can't emit a stale 'finished' or race), then empty
+      items/messages before resetting stop + spawning new readers.
 - [ ] **stop_job leaves running=True** on the non-timeout path → potential busy
       redraw loop for a stopped-not-restarted job. Need: set running=False after
       successful terminate+wait.
@@ -201,6 +202,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 37 (post-refactor bugfix: Job queue contamination on restart).**
+  `Job.start_job` reused the singleton Job's `items`/`messages` queues without
+  clearing them, so rows enqueued by a terminated run (e.g. a large `git show`
+  abandoned by quickly selecting another commit) could be drained into the
+  freshly-cleared diff view, prepending stale lines. Fixed: `Job` now tracks its
+  reader threads; `start_job` joins the previous run's threads **while
+  `self.stop` is still True** (set by the preceding `stop_job`) — so they exit
+  via the `not self.stop` guard without emitting a stale 'finished' and without
+  racing — then empties both queues before resetting `stop` and spawning the new
+  readers. Added a `_empty_queue` helper. Subclass `start_job`s all funnel
+  through `Job.start_job`, so the fix covers them. Full golden suite **60/60**
+  (goldens unchanged; diff-nav cases still green); units **11/11**.
 - **2026-06-28 — Iteration 36 (post-refactor bugfix: jump-list index staleness).**
   On branch `improve/post-refactor`. A read-only Explore review flagged that
   `GitLogView.add_to_jump_list` truncates forward history
