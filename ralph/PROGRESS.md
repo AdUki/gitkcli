@@ -222,6 +222,22 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 90 (RISK FIX: simplify the staged-clean stash-dance to `git reset`).**
+  Resolved the long-deferred concern about the destructive "Clear staged changes"
+  path. Ran its exact command sequence on a controlled dirty repo: `git stash
+  --keep-index` / `reset --hard` / `stash pop` UNSTAGES the staged changes while
+  preserving all content — verified byte-for-byte identical to a single `git
+  reset` (mixed). The dance carried a real `reset --hard` data-loss window (and
+  stash-pop conflict risk) between its steps for zero behavioural benefit. To
+  change destructive code safely, first added a golden `clean_staged` (dirty tree
+  with staged+unstaged -> clear staged -> only the working-dir pseudo-row
+  remains) generated on the OLD code, confirmed deterministic 6/6, THEN replaced
+  the dance with `git reset` and confirmed the golden still passes byte-identical
+  10/10 — proving the refactor is behaviour-preserving. Left the unstage-vs-
+  discard SEMANTICS unchanged (not my call to change on destructive code; the
+  asymmetry with the discarding "Clear unstaged changes" is noted but
+  preserved). Suite **75/75** (existing goldens untouched; one new case); units
+  **91/91**. (32nd fix — a safety/clarity fix, behaviour verified unchanged.)
 - **2026-06-28 — Iteration 89 (coverage: tag-annotation display; audit found no bug).**
   Completed the interactive-callback audit: reset dialog (ResetModeItem.activate
   and [Ok] both reset the same highlighted mode), ButtonRowItem (Enter activates

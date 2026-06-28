@@ -1,0 +1,20 @@
+# "Clear staged changes" (context menu on the staged pseudo-row) unstages the
+# staged changes while preserving content: afterwards both files are unstaged,
+# so only the "working directory" pseudo-row remains. Regression oracle for
+# simplifying the implementation (stash-dance -> git reset) without changing
+# behaviour. Detached HEAD so the pseudo-rows sit at the top (working=0,
+# staged=1); stage src/main.py and leave README.md unstaged.
+size      120x40
+config    default
+run       git checkout --detach master && printf 'x\n' >> src/main.py && git add src/main.py && printf 'y\n' >> README.md
+launch
+wait      stable
+key       g
+key       <Down>
+wait      stable
+key       <F7>
+wait      stable
+key       <Down>
+key       <Enter>
+wait      2
+capture   after_clear_staged

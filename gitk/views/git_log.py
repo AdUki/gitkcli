@@ -322,11 +322,11 @@ class GitLogView(ListView):
 
     def clean_uncommitted_changes(self, staged:bool = False):
         if staged:
-            result = Job.run_job(self.app, ['git', 'stash', 'save', '--keep-index'])
-            if result.returncode == 0:
-                result = Job.run_job(self.app, ['git', 'reset', '--hard'])
-            if result.returncode == 0:
-                result = Job.run_job(self.app, ['git', 'stash', 'pop'])
+            # Unstage everything (index -> HEAD), keeping the working tree. This
+            # replaces a stash --keep-index / reset --hard / stash pop dance that
+            # was exactly equivalent but carried a reset --hard data-loss window
+            # (and a stash-pop conflict risk) between its steps.
+            result = Job.run_job(self.app, ['git', 'reset'])
         else:
             result = Job.run_job(self.app, ['git', 'restore', '.'])
         if result.returncode == 0:
