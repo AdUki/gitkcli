@@ -1,0 +1,9 @@
+# A corrupt / non-object config.json (here: the JSON value `null`) must NOT crash
+# startup -- load_config falls back to defaults. Regression for the AttributeError
+# crash when data.items() was called on a non-dict. If load_config regressed, the
+# app would die on launch and this normal log render would not appear.
+size      120x40
+config    malformed
+launch
+wait      stable
+capture   startup

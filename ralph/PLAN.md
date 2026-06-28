@@ -122,10 +122,14 @@ and `python3 gitkcli.py` both still work.
     cleaner — but do not change behavior).
   - Ensure every module file ≤ ~600 lines (split further if not; document any
     justified exception in PROGRESS.md).
-  - Add **unit tests** for the now-isolated, pure pieces (e.g. `config` parsing,
-    `KEY_CTRL`, job line-parsers, segment geometry) under `test/` so logic has
-    fast coverage independent of the pty goldens. These are additive; the golden
-    suite remains the behavioral oracle.
+  - Testing policy (superseded the original "add unit tests for everything"
+    guidance): **golden-screen integration tests are the oracle and the default.**
+    A unit test is a last resort, added ONLY when a golden screen genuinely
+    cannot reveal the logic (e.g. text-field cursor math, colour-tier mapping the
+    pty can't render, a coordinate→segment hit-test) AND the logic is pure/stable
+    AND it catches a regression the goldens would miss. Never unit-test exact
+    argv / call shapes / internals — write a golden. See the header note in
+    `test/test_units.py`.
 
 ---
 
@@ -183,7 +187,9 @@ and `python3 gitkcli.py` both still work.
    intact.
 8. Every task in `ralph/PROGRESS.md` is checked; `ralph/STRUCTURE.md` matches
    the real tree.
-9. (Phase 4) Added unit tests pass alongside the golden suite.
+9. (Phase 4) The golden-screen suite passes. (The minimal unit tests that remain
+   — only for logic a golden screen genuinely cannot reach — pass too; see the
+   testing policy above and the header note in `test/test_units.py`.)
 
 If after many iterations you are blocked on something requiring a human design
 decision, do NOT output the promise. Instead write the blocker, what you tried,
