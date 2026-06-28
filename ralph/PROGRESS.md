@@ -222,6 +222,26 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 74 (BUG: off-by-one left the bottom row blank as items stream).**
+  Chased the `log_flags_quoted_author` flake from iter-73 (failed ~1-in-6, bottom
+  commit row intermittently blank) and it led to a real user-facing rendering
+  bug in `ListView.append` (gitk/list_view.py). The appended row is at index
+  len-1 → screen row (len-1)-offset_y, so it is on-screen when
+  `len-offset_y <= height`; the code used `< height`. So a row landing exactly
+  on the LAST visible line was marked off-screen → only a header redraw fired and
+  the bottom row stayed blank until some later full redraw (scroll/keypress).
+  Intermittent because it only bit when the streamed count passed through exactly
+  filling the screen between redraws. FIX: `<=`. After it, `log_flags_quoted_author`
+  is 12/12 and `head_centered` 10/10 deterministic (this off-by-one was also
+  feeding those launch+capture flakes). Reverted the iter-73 spec's `wait 2`
+  workaround back to `wait stable` (real fix, not a timing band-aid) — golden
+  byte-unchanged. Added 3 unit tests pinning the append boundary. Also fixed a
+  small adjacent bug while here: `ListView.copy_text_range_to_clipboard` built
+  text by prepending "\n" to each line, leaving a spurious leading blank line in
+  the clipboard — switched to `"\n".join(...)` like copy_text_to_clipboard, +3
+  unit tests. Suite **69/69** (twice; goldens untouched); units **56/56** (was
+  50). (18th & 19th genuine bugs — the append one is the highest-impact since it
+  hit normal streaming, not just an edge input.)
 - **2026-06-28 — Iteration 73 (BUG: quoted git-log pref flags broken by naive split).**
   Audited cherry-pick/revert/reset/ref-removal flows (all use list-form git args
   — no injection; `-m 1` on a non-merge is tolerated by git 2.43, verified). Real

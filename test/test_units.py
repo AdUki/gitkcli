@@ -450,3 +450,63 @@ def test_jump_to_file_treats_dot_as_literal_not_wildcard():
     pat = _jump_env('a.txt')
     assert pat.match('diff --git a/a.txt b/a.txt')   # the real path still matches
     assert not pat.match('diff --git a/aXtxt b/aXtxt')  # '.' is literal, no wildcard
+
+
+# --- ListView.copy_text_range_to_clipboard: no leading blank line -------------
+# The range copy must join lines (like copy_text_to_clipboard), not prepend
+# "\n" to each, which left a spurious blank first line in the clipboard.
+
+def _clip_row(text):
+    return SimpleNamespace(get_text=lambda text=text: text)
+
+def _copy_range(monkeypatch, texts, selected, to_index):
+    import gitk.list_view as lv_mod
+    captured = {}
+    monkeypatch.setattr(lv_mod, 'copy_to_clipboard', lambda txt, app: captured.__setitem__('txt', txt))
+    rows = [_clip_row(t) for t in texts]
+    lv = SimpleNamespace(items=rows, _selected=selected, app=None)
+    ListView.copy_text_range_to_clipboard(lv, rows[to_index])
+    return captured['txt']
+
+def test_copy_range_has_no_leading_newline_downward(monkeypatch):
+    # selection at 1, range down to index 3 -> lines 1..3 joined, no leading "\n"
+    txt = _copy_range(monkeypatch, ['a', 'b', 'c', 'd', 'e'], selected=1, to_index=3)
+    assert txt == "b\nc\nd"
+
+def test_copy_range_covers_upward_selection(monkeypatch):
+    # to_item above the selection: range is to_item..selected inclusive
+    txt = _copy_range(monkeypatch, ['a', 'b', 'c', 'd', 'e'], selected=3, to_index=1)
+    assert txt == "b\nc\nd"
+
+def test_copy_range_single_row(monkeypatch):
+    txt = _copy_range(monkeypatch, ['a', 'b', 'c'], selected=2, to_index=2)
+    assert txt == "c"
+
+
+# --- ListView.append on-screen dirty check (off-by-one regression) ------------
+# The appended row is at index len-1, i.e. screen row (len-1)-offset_y, so it is
+# visible when len-offset_y <= height. A '<' there left the row that exactly
+# fills the last visible line marked off-screen -> bottom row blank until a
+# later full redraw. Boundary: with height H and offset 0, the H-th append must
+# set dirty; the (H+1)-th must not (it scrolls off, header-only redraw).
+
+def _appendable(height, offset=0, n_existing=0):
+    return SimpleNamespace(items=[object() for _ in range(n_existing)],
+                           _offset_y=offset, height=height,
+                           dirty=False, header_dirty=False, autoscroll=False)
+
+def test_append_marks_dirty_for_row_on_the_last_visible_line():
+    lv = _appendable(height=5, n_existing=4)   # appending makes len == height
+    ListView.append(lv, SimpleNamespace())
+    assert lv.dirty is True                    # the H-th row is on-screen
+
+def test_append_below_screen_is_header_only_not_body_dirty():
+    lv = _appendable(height=5, n_existing=5)   # appending makes len == height+1
+    ListView.append(lv, SimpleNamespace())
+    assert lv.dirty is False                   # scrolled off the bottom
+    assert lv.header_dirty is True             # but the counter still updates
+
+def test_append_marks_dirty_for_a_clearly_visible_row():
+    lv = _appendable(height=5, n_existing=1)   # len becomes 2, well on-screen
+    ListView.append(lv, SimpleNamespace())
+    assert lv.dirty is True

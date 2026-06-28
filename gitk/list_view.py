@@ -74,22 +74,29 @@ class ListView(View):
             copy_to_clipboard(text, self.app)
 
     def copy_text_range_to_clipboard(self, to_item):
-        text = ""
+        lines = []
         found = False
         for i, item in enumerate(self.items):
             if not found and item == to_item:
                 found = True
             if found or i >= self._selected:
-                text += "\n" + item.get_text()
+                lines.append(item.get_text())
             if found and i >= self._selected:
                 break
-        copy_to_clipboard(text, self.app)
+        # join (not repeated "\n" + ...) so the clipboard has no leading blank
+        # line, matching copy_text_to_clipboard.
+        copy_to_clipboard("\n".join(lines), self.app)
 
     def append(self, item):
         """Add item to end of list"""
         item._view = self
         self.items.append(item)
-        if len(self.items) - self._offset_y < self.height:
+        # The new row is at index len-1, i.e. screen row (len-1) - offset_y, so
+        # it is on-screen when (len - offset_y) <= height. Using '<' here left an
+        # item landing exactly on the last visible row marked off-screen, so the
+        # bottom row stayed blank (only a header redraw fired) until some later
+        # full redraw — an intermittent blank bottom line as rows streamed in.
+        if len(self.items) - self._offset_y <= self.height:
             self.dirty = True
         else:
             # The new row is off-screen, so the body need not be redrawn — but
