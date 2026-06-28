@@ -690,3 +690,49 @@ def test_input_non_ascii_key_is_not_inserted():
     it = _field('ab', cursor=2)
     handled = it.handle_input(KeyboardState(233))      # 'é' as a single code
     assert it.txt == 'ab'                              # not inserted
+
+
+# --- ListView.search wrap-around + n/N wiring ---------------------------------
+# 'next'/'previous' must wrap (repeat=True) so they cycle through matches like
+# less/vim/gitk, rather than dead-ending at the last/first match.
+
+def _searchable(item_texts, query, selected):
+    items = [SimpleNamespace(get_text=(lambda t=t: t)) for t in item_texts]
+    me = SimpleNamespace(_search_dialog=SimpleNamespace(matches=lambda it: query in it.get_text()),
+                         items=items, _selected=selected, _offset_y=0, height=10)
+    me.set_selected = lambda i, visible_mode='center': (setattr(me, '_selected', i), True)[1]
+    return me
+
+def test_search_forward_wraps_past_last_match():
+    # 'x' matches indices 1 and 3; from the last match (3), wrap -> 1.
+    me = _searchable(['a', 'x1', 'b', 'x2', 'c'], 'x', selected=3)
+    ListView.search(me, backward=False, repeat=True)
+    assert me._selected == 1
+
+def test_search_forward_without_repeat_stops_at_end():
+    me = _searchable(['a', 'x1', 'b', 'x2', 'c'], 'x', selected=3)
+    ListView.search(me, backward=False, repeat=False)
+    assert me._selected == 3      # no forward match, no wrap -> unchanged
+
+def test_search_backward_wraps_before_first_match():
+    me = _searchable(['a', 'x1', 'b', 'x2', 'c'], 'x', selected=1)
+    ListView.search(me, backward=True, repeat=True)
+    assert me._selected == 3      # wrapped to the last match
+
+def _nav_listview(recorder):
+    # Minimal stand-in to reach the n/N branches of handle_input.
+    me = SimpleNamespace(items=[object()],
+                         get_selected=lambda: SimpleNamespace(handle_input=lambda kb: False),
+                         dirty=False)
+    me.search = lambda **kw: recorder.append(kw)
+    return me
+
+def test_n_key_searches_with_wrap():
+    calls = []
+    ListView.handle_input(_nav_listview(calls), KeyboardState(ord('n')))
+    assert calls == [{'repeat': True}]
+
+def test_shift_n_key_searches_backward_with_wrap():
+    calls = []
+    ListView.handle_input(_nav_listview(calls), KeyboardState(ord('N')))
+    assert calls == [{'backward': True, 'repeat': True}]

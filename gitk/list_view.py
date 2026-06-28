@@ -280,9 +280,11 @@ class ListView(View):
                 self._search_dialog.clear()
                 self._search_dialog.show()
         elif key == ord('n'):
-            self.search()
+            # repeat=True so 'next' wraps past the last match back to the first
+            # (less/vim/gitk behaviour), instead of silently stopping at the end.
+            self.search(repeat = True)
         elif key == ord('N'):
-            self.search(backward = True)
+            self.search(backward = True, repeat = True)
         else:
             return super().handle_input(keyboard)
 

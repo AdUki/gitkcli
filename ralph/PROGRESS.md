@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 84 (BUG: search next/previous didn't wrap around).**
+  Examined the mouse decode + view-stack lifecycle (sound, golden-covered) then
+  found a real UX bug in `ListView.handle_input`: 'n'/'N' called `search()` with
+  the default `repeat=False`, so search-next/previous did NOT wrap — at the last
+  match 'n' silently found nothing, unlike less/vim/gitk (the dialog's initial
+  Enter already passed repeat=True to wrap). `search()` already supports the wrap
+  range; the handlers just weren't using it. FIX: 'n' -> `search(repeat=True)`,
+  'N' -> `search(backward=True, repeat=True)`. The existing `search_next` golden
+  is unaffected (it steps to a forward match, which is found before the wrap
+  range is consulted). Added 5 unit tests (forward/backward wrap; no-repeat
+  stops at the end; n/N pass repeat=True). Suite **72/72** (goldens untouched);
+  units **84/84**. (27th genuine bug.)
 - **2026-06-28 — Iteration 83 (coverage: UserInputListItem editing; no bug found).**
   Audited window geometry on tiny terminals (degenerate sizes are caught by the
   `try/except curses.error` around draw_visible_views — no crash, matches the
