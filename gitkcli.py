@@ -1343,7 +1343,7 @@ class View:
             self.draw_header(self.split_border_sides())
 
     def border_color(self):
-        return curses.color_pair(5 if self.is_active() else 18)
+        return Screen.color(5 if self.is_active() else 18)
 
     def draw(self):
         sides = self.split_border_sides()
@@ -2737,7 +2737,7 @@ class _RedMessageBoxPopup(ListView):
         self.is_popup = True
 
     def border_color(self):
-        return curses.color_pair(2)
+        return Screen.color(2)
 
 class ConfirmDialogPopup(_RedMessageBoxPopup):
     """Generic yes/no popup. Used to offer a forced retry after a git
@@ -3204,12 +3204,46 @@ class Screen:
 
     FLASH_DURATION = 2.0  # seconds a success flash replaces the bottom bar
 
+    # Colour-capability tier, detected in __init__ from the terminal:
+    #   0   = monochrome (vt200/vt220, NO_COLOR, --no-color): video attributes only
+    #   8   = basic      (screen, xterm, linux): the 8 ANSI colours; the cursor row
+    #         and search-highlighted row use A_REVERSE / A_BOLD, not 256-index bgs
+    #   256 = full       (xterm-256color, ...): the original palette, unchanged
+    color_depth = 256
+    # Set True (by --no-color / NO_COLOR) to force the monochrome tier.
+    force_mono = False
+    # Background meaning "terminal default"; COLOR_BLACK if use_default_colors fails.
+    _default_bg = -1
+
+    # Pair numbers for the solid status bars. Kept low (< 64) so they fit the
+    # 8-colour tier's COLOR_PAIRS limit; they sit clear of the base (1-31) and
+    # 256-tier variant (50/100/150 + number) ranges.
+    BAR_FLASH_PAIR = 40   # success flash: black on green
+    BAR_LABEL_PAIR = 41   # bottom-bar F-key label cells: black on cyan
+
+    @classmethod
+    def _to_pal(cls, c: int) -> int:
+        """Map a palette index to one the active tier can render. 256-only indices
+        (greys 245/247, blue 20, ...) collapse to white below the full tier; the
+        -1 'default' sentinel becomes the tier's default background."""
+        if c < 0:
+            return cls._default_bg
+        if cls.color_depth >= 256 or c < 8:
+            return c
+        return curses.COLOR_WHITE
+
     @classmethod
     def _init_color(cls, pair_number: int, nfg:int, nbg:int = -1, hfg:int = -1, hbg:int = -1, sfg:int = -1, sbg:int = -1, shfg:int = -1, shbg:int = -1) -> None:
+        if cls.color_depth == 0:
+            return  # monochrome: no colour pairs exist
         # normal
+        curses.init_pair(pair_number, cls._to_pal(nfg), cls._to_pal(nbg))
+        if cls.color_depth < 256:
+            # Selection / search highlight are rendered with video attributes in
+            # color(); the 256-index background variants below don't exist here.
+            return
         fg = nfg
         bg = nbg
-        curses.init_pair(pair_number, fg, bg)
         # highlighted
         if hfg >= 0: fg = hfg
         if hbg >= 0: bg = hbg
@@ -3227,6 +3261,14 @@ class Screen:
         curses.init_pair(150 + pair_number, fg, bg)
 
     @classmethod
+    def bar_color(cls, pair_number):
+        """Colour for a solid status bar (success flash / F-key label cells).
+        Falls back to reverse video on terminals with no colour pairs."""
+        if cls.color_depth == 0:
+            return curses.A_REVERSE
+        return curses.color_pair(pair_number)
+
+    @classmethod
     def color(cls, number, selected = False, highlighted = False, matched = False, bold = None, dim = False):
         if matched:
             bold = True
@@ -3235,14 +3277,34 @@ class Screen:
             elif number == 18:
                 number = 16
                 dim = True
-        if selected and highlighted:
-            color = curses.color_pair(150 + number)
-        elif selected:
-            color = curses.color_pair(100 + number)
-        elif highlighted:
-            color = curses.color_pair(50 + number)
-        else:
+        if cls.color_depth >= 256:
+            if selected and highlighted:
+                color = curses.color_pair(150 + number)
+            elif selected:
+                color = curses.color_pair(100 + number)
+            elif highlighted:
+                color = curses.color_pair(50 + number)
+            else:
+                color = curses.color_pair(number)
+        elif cls.color_depth >= 8:
+            # No background-variant pairs on this terminal: paint the cursor row in
+            # reverse video and the search-highlighted row in bold, over the base.
             color = curses.color_pair(number)
+            if selected:
+                color = color | curses.A_REVERSE
+            if highlighted:
+                color = color | curses.A_BOLD
+        else:
+            # Monochrome: every semantic colour collapses to a video attribute.
+            color = curses.A_DIM if number == 18 else curses.A_NORMAL
+            if number == 16:
+                color = curses.A_BOLD
+            if selected:
+                color = color | curses.A_REVERSE
+            if highlighted:
+                color = color | curses.A_BOLD
+            if matched:
+                color = color | curses.A_UNDERLINE
         if bold or (selected and bold is None):
             color = color | curses.A_BOLD
         if dim:
@@ -3251,10 +3313,19 @@ class Screen:
 
     def __init__(self, stdscr:curses.window):
 
-        # Run with curses
-        curses.use_default_colors()
-
-        curses.start_color()
+        # Pick a colour-rendering tier from the terminal's capability. vt200/vt220
+        # report no colour; NO_COLOR / --no-color force the same monochrome tier;
+        # screen/xterm/linux give 8 colours; xterm-256color gives the full palette.
+        no_color_env = os.environ.get('NO_COLOR') not in (None, '')
+        if Screen.force_mono or no_color_env or not curses.has_colors():
+            Screen.color_depth = 0
+        else:
+            curses.start_color()
+            try:
+                curses.use_default_colors()
+            except curses.error:
+                Screen._default_bg = curses.COLOR_BLACK
+            Screen.color_depth = 256 if curses.COLORS >= 256 else 8
 
         Screen._init_color(1, curses.COLOR_WHITE)    # Normal text
         Screen._init_color(2, curses.COLOR_RED)      # Error text
@@ -3282,10 +3353,14 @@ class Screen:
                    curses.COLOR_WHITE, curses.COLOR_RED, -1, curses.COLOR_RED,    # Warning title bar
                    curses.COLOR_WHITE, curses.COLOR_RED)                          # (white on red)
 
-        curses.init_pair(204, curses.COLOR_BLACK, curses.COLOR_CYAN)  # Bottom-bar label block (Midnight Commander style)
-        curses.init_pair(201, curses.COLOR_BLACK, curses.COLOR_GREEN) # Success flash over the bottom bar
+        if Screen.color_depth:  # solid bar pairs; monochrome uses reverse video instead
+            curses.init_pair(Screen.BAR_LABEL_PAIR, curses.COLOR_BLACK, curses.COLOR_CYAN)  # Bottom-bar label block (Midnight Commander style)
+            curses.init_pair(Screen.BAR_FLASH_PAIR, curses.COLOR_BLACK, curses.COLOR_GREEN) # Success flash over the bottom bar
 
-        curses.curs_set(0)  # Hide cursor
+        try:
+            curses.curs_set(0)  # Hide cursor (some minimal terminals lack civis)
+        except curses.error:
+            pass
         stdscr.timeout(5)
         if hasattr(curses, 'set_escdelay'):
             curses.set_escdelay(20)
@@ -3400,13 +3475,13 @@ class Screen:
             if time.time() - self.flash_time < self.FLASH_DURATION:
                 # cols - 1: the bottom-right cell raises addwstr() ERR (see below).
                 stdscr.addstr(y, 0, self.flash_message[:cols - 1].ljust(cols - 1),
-                              curses.color_pair(201))
+                              Screen.bar_color(Screen.BAR_FLASH_PAIR))
                 self.bar_hitmap = []  # the F-key cells are hidden, so swallow clicks
                 return
             self.flash_message = ''  # expired: fall through and redraw the F-key bar
 
         num_attr = Screen.color(1)             # key number: light text on default bg
-        label_attr = curses.color_pair(204)    # label: black on cyan
+        label_attr = Screen.bar_color(Screen.BAR_LABEL_PAIR)  # black on cyan (reverse if monochrome)
         # cols - 1: writing the bottom-right cell advances the cursor off-screen
         # and raises addwstr() ERR.
         stdscr.addstr(y, 0, ' ' * (cols - 1), num_attr)
@@ -3974,9 +4049,13 @@ def main():
 
     git_args = []
     cmd_args = []
-    
+
     for arg in args:
-        if arg == '--graph':
+        if arg == '--no-color':
+            # Force the monochrome tier regardless of TERM (same effect as the
+            # NO_COLOR env var). Not a git arg, so it never reaches `git log`.
+            Screen.force_mono = True
+        elif arg == '--graph':
             git_args.append(arg)
         else:
             cmd_args.append(arg)
