@@ -206,11 +206,22 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
       sides the opposite-direction pass clobbered the travel-direction match
       (landing opposite to travel). FIXED: search both passes from the original
       target, prefer travel direction, stop at first hit. Unit tests added.
-- [ ] (low) RefPush builds an empty-named remote when the repo has no remotes
-      (`git remote` → ['']). Latent; revisit.
+- [x] **RefPush empty-named remote when no remotes** — `''.split('\n')` → `['']`
+      made a blank toggle + `self.remote=''`. FIXED: parse with `.split()` (drops
+      empties → `[]`), init `self.remote=''`, guard the initial selection.
+      ALL reviewed bugs fixed. (No further candidates from the review.)
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 41 (post-refactor bugfix: RefPush empty remote).**
+  `RefPushDialogPopup.__init__` parsed `git remote` with `.rstrip().split('\n')`,
+  which returns `['']` for a repo with no remotes — creating a blank-named
+  ToggleSegment and `self.remote=''` (a later push would `git push '' <ref>`).
+  Fixed: parse with `.split()` (whitespace-split drops the empty → `[]`),
+  initialise `self.remote=''`, and only auto-select `remotes[0]` when remotes
+  exist. Identical for the test repo (3 remotes → same list/order). This clears
+  the last item from the bug-review queue. Full golden suite **60/60** (goldens
+  unchanged); units **14/14**.
 - **2026-06-28 — Iteration 40 (post-refactor bugfix: set_selected skip direction).**
   When `set_selected`'s target row is non-selectable, it scans for the nearest
   selectable row. The old `for dir in [direction, -direction]` loop never broke

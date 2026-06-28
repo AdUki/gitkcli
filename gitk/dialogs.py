@@ -88,10 +88,16 @@ class RefPushDialogPopup(ListView):
         self.set_header_item(TextListItem('', 30, expand = True))
         self.is_popup = True
 
+        # `git remote` prints one name per line (none in a repo with no
+        # remotes). split() drops the trailing/empty lines so a remote-less repo
+        # yields [] rather than [''] (which would make a blank toggle and push
+        # to an empty remote name).
         self.remotes = []
-        for remote in Job.run_job(self.app, ['git', 'remote']).stdout.rstrip().split('\n'):
+        self.remote = ''
+        for remote in Job.run_job(self.app, ['git', 'remote']).stdout.split():
             self.remotes.append(ToggleSegment(remote, callback = lambda val: self.change_remote(val.txt)))
-        self.change_remote(self.remotes[0].txt)
+        if self.remotes:
+            self.change_remote(self.remotes[0].txt)
 
         self.force = ToggleSegment("<Force>")
         self.append(SegmentedListItem([TextSegment("Select remote:")] + self.remotes + [FillerSegment(), TextSegment("Flags:"), self.force]))
