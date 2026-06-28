@@ -1,0 +1,15 @@
+# Jump-to-file navigation inside a diff. ef36129 touches two files; open its diff
+# and press Enter on the second per-file stat line ("tests/test_smoke.py"). The
+# cursor jumps to that file's "diff --git .../test_smoke.py" hunk (item 20) and,
+# on this short screen, the viewport scrolls down to reveal the test_smoke.py
+# hunk. A short pty makes the scroll visible (not just a title-counter change).
+size      120x16
+config    default
+run       git checkout --detach ef36129
+launch
+key       <Enter>
+wait      stable
+key       j*7
+key       <Enter>
+wait      stable
+capture   jumped

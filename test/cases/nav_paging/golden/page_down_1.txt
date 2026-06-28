@@ -1,0 +1,40 @@
+[0;34;49m─ repo [39/303] ───────────────────────────────────────────────────────────────────────────────── [0;37;49m[Split][0;34;49m [0;37;49m[<-][0;34;49m [0;37;49m[->][0;34;49m [0;31;49m[X][0;34;49m─[0m
+[0;1;33;48;2;38;38;38m98a23a4[0;1;37;48;2;38;38;38m [0;1;34;48;2;38;38;38m2024-12-02 11:18[0;1;37;48;2;38;38;38m [0;1;32;48;2;38;38;38mCarol Chen[0;1;37;48;2;38;38;38m Guard against null inputs [0;1;33;48;2;38;38;38m<v0.8.0>[0;1;37;48;2;38;38;38m                                                  [0m
+[0;33;49m630c2ef[0;37;49m [0;34;49m2024-12-01 22:13[0;37;49m [0;32;49mBob Brown[0;37;49m Polish CLI output[0m
+[0;33;49m42ffb70[0;37;49m [0;34;49m2024-12-01 01:35[0;37;49m [0;32;49mAlice Anderson[0;37;49m Bump dependency versions[0m
+[0;33;49m62c6605[0;37;49m [0;34;49m2024-11-19 12:42[0;37;49m [0;32;49mBob Brown[0;37;49m Merge branch 'feature/profile-page'[0m
+[0;33;49m6f04f42[0;37;49m [0;34;49m2024-11-18 14:40[0;37;49m [0;32;49mAlice Anderson[0;37;49m Polish profile-page for review [0;32;49m[feature/profile-page][0;37;49m [0;31;49m{origin/feature/profile-pa[0m
+[0;33;49m22982ea[0;37;49m [0;34;49m2024-11-17 15:30[0;37;49m [0;32;49mEve Evans[0;37;49m WIP profile-page: Add type hints[0m
+[0;33;49m481f478[0;37;49m [0;34;49m2024-11-17 09:41[0;37;49m [0;32;49mDavid Davis[0;37;49m WIP profile-page: Reorder imports [0;33;49m<handover-2024>[0m
+[0;33;49m9f7f3a7[0;37;49m [0;34;49m2024-11-16 12:29[0;37;49m [0;32;49mCarol Chen[0;37;49m WIP profile-page: Improve error messages[0m
+[0;33;49md2dcc03[0;37;49m [0;34;49m2024-11-16 02:47[0;37;49m [0;32;49mBob Brown[0;37;49m WIP profile-page: Cache repeated lookup[0m
+[0;33;49m1b7d19f[0;37;49m [0;34;49m2024-11-15 12:47[0;37;49m [0;32;49mAlice Anderson[0;37;49m WIP profile-page: Extract magic number into constant[0m
+[0;33;49ma09a58b[0;37;49m [0;34;49m2024-11-15 08:26[0;37;49m [0;32;49mEve Evans[0;37;49m Scaffold profile-page[0m
+[0;33;49m2d292e9[0;37;49m [0;34;49m2024-11-14 11:34[0;37;49m [0;32;49mDavid Davis[0;37;49m Trim trailing whitespace[0m
+[0;33;49m8e3e55f[0;37;49m [0;34;49m2024-11-13 15:36[0;37;49m [0;32;49mCarol Chen[0;37;49m Merge branch 'feature/webhook-support'[0m
+[0;33;49m3641ef2[0;37;49m [0;34;49m2024-11-13 11:22[0;37;49m [0;32;49mBob Brown[0;37;49m Polish webhook-support for review [0;32;49m[feature/webhook-support][0;37;49m [0;31;49m{origin/feature/webhook-s[0m
+[0;33;49m0a551de[0;37;49m [0;34;49m2024-11-13 06:32[0;37;49m [0;32;49mAlice Anderson[0;37;49m WIP webhook-support: Improve error messages[0m
+[0;33;49m58b0ab5[0;37;49m [0;34;49m2024-11-12 23:04[0;37;49m [0;32;49mEve Evans[0;37;49m WIP webhook-support: Handle empty input case[0m
+[0;33;49ma0d8573[0;37;49m [0;34;49m2024-11-12 01:12[0;37;49m [0;32;49mDavid Davis[0;37;49m WIP webhook-support: Inline a one-shot function[0m
+[0;33;49m0c6e79c[0;37;49m [0;34;49m2024-11-11 07:54[0;37;49m [0;32;49mCarol Chen[0;37;49m WIP webhook-support: Extract magic number into constant[0m
+[0;33;49m2cd840e[0;37;49m [0;34;49m2024-11-10 14:53[0;37;49m [0;32;49mBob Brown[0;37;49m Scaffold webhook-support[0m
+[0;33;49m98d68dc[0;37;49m [0;34;49m2024-11-09 12:09[0;37;49m [0;32;49mAlice Anderson[0;37;49m Handle empty input case[0m
+[0;33;49m2cbaf86[0;37;49m [0;34;49m2024-11-08 09:33[0;37;49m [0;32;49mEve Evans[0;37;49m Merge branch 'feature/admin-dashboard'[0m
+[0;33;49m3e88891[0;37;49m [0;34;49m2024-11-08 01:18[0;37;49m [0;32;49mDavid Davis[0;37;49m Polish admin-dashboard for review [0;32;49m[feature/admin-dashboard][0;37;49m [0;31;49m{origin/feature/admin-d[0m
+[0;33;49m65cd7e7[0;37;49m [0;34;49m2024-11-06 21:59[0;37;49m [0;32;49mCarol Chen[0;37;49m WIP admin-dashboard: Bump dependency versions[0m
+[0;33;49m0b1e06a[0;37;49m [0;34;49m2024-11-06 13:18[0;37;49m [0;32;49mBob Brown[0;37;49m WIP admin-dashboard: Trim trailing whitespace [0;33;49m<green-ci>[0m
+[0;33;49mdd5442c[0;37;49m [0;34;49m2024-11-05 15:41[0;37;49m [0;32;49mAlice Anderson[0;37;49m WIP admin-dashboard: Trim trailing whitespace[0m
+[0;33;49m8860427[0;37;49m [0;34;49m2024-11-05 00:24[0;37;49m [0;32;49mEve Evans[0;37;49m WIP admin-dashboard: Trim trailing whitespace[0m
+[0;33;49m5847488[0;37;49m [0;34;49m2024-11-04 06:25[0;37;49m [0;32;49mDavid Davis[0;37;49m WIP admin-dashboard: Drop unused helper[0m
+[0;33;49mf68c1e1[0;37;49m [0;34;49m2024-11-03 16:58[0;37;49m [0;32;49mCarol Chen[0;37;49m Scaffold admin-dashboard[0m
+[0;33;49m73b13b6[0;37;49m [0;34;49m2024-11-02 13:00[0;37;49m [0;32;49mBob Brown[0;37;49m Inline a one-shot function[0m
+[0;33;49mc5c2792[0;37;49m [0;34;49m2024-11-01 11:44[0;37;49m [0;32;49mAlice Anderson[0;37;49m Merge branch 'feature/csv-export'[0m
+[0;33;49m67ba430[0;37;49m [0;34;49m2024-11-01 01:15[0;37;49m [0;32;49mEve Evans[0;37;49m Polish csv-export for review [0;32;49m[feature/csv-export][0;37;49m [0;31;49m{origin/feature/csv-export}[0;37;49m [0;31;49m{upstre[0m
+[0;33;49m023a761[0;37;49m [0;34;49m2024-10-31 11:42[0;37;49m [0;32;49mDavid Davis[0;37;49m WIP csv-export: Improve error messages[0m
+[0;33;49m07fb21f[0;37;49m [0;34;49m2024-10-31 05:13[0;37;49m [0;32;49mCarol Chen[0;37;49m WIP csv-export: Clarify error path[0m
+[0;33;49m3d4e896[0;37;49m [0;34;49m2024-10-30 17:17[0;37;49m [0;32;49mBob Brown[0;37;49m Scaffold csv-export[0m
+[0;33;49m7f37940[0;37;49m [0;34;49m2024-10-29 20:23[0;37;49m [0;32;49mAlice Anderson[0;37;49m Improve error messages[0m
+[0;33;49m8e82840[0;37;49m [0;34;49m2024-10-29 10:14[0;37;49m [0;32;49mEve Evans[0;37;49m Merge branch 'feature/caching-layer'[0m
+[0;33;49mcbc028c[0;37;49m [0;34;49m2024-10-29 04:07[0;37;49m [0;32;49mDavid Davis[0;37;49m Polish caching-layer for review [0;32;49m[feature/caching-layer][0;37;49m [0;31;49m{origin/feature/caching-lay[0m
+[0;33;49m23ce44a[0;37;49m [0;34;49m2024-10-28 19:29[0;37;49m [0;32;49mCarol Chen[0;37;49m WIP caching-layer: Add type hints[0m
+[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m

@@ -1,0 +1,15 @@
+# F9 Preferences: toggle "Show commit ID" off (it is the first row, selected by
+# default), Save, close, and confirm the SHA column is gone from the log.
+size      120x40
+config    default
+launch
+key       <F9>
+wait      stable
+key       <Enter>
+key       <End>
+key       <Enter>
+wait      2.5
+key       <Right>
+key       <Enter>
+wait      2.5
+capture   log_no_id

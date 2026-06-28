@@ -1,0 +1,9 @@
+# Keyboard navigation in the log: jump to the oldest commit (G) then back to
+# the newest (g). Exercises scrolling and the bottom/top of the history.
+size      120x40
+config    default
+launch
+key       G
+capture   bottom
+key       g
+capture   top

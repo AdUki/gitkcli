@@ -1,0 +1,11 @@
+# Run a search, then repeat it with 'n' to step to the next match.
+size      120x40
+launch
+key       /
+text      "Refactor request handler"
+key       <Enter>
+wait      stable
+capture   first_match
+key       n
+wait      stable
+capture   next_match

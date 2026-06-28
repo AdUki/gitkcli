@@ -1,0 +1,6 @@
+# Starting in split: with view.default_mode = "side" the app launches directly
+# in side-by-side split, no "|" needed.
+size      120x40
+config    split_side
+launch
+capture   startup

@@ -1,0 +1,14 @@
+# Move down to a buried commit, then F7 -> "Create new tag". The tag <buried>
+# lands on that row (4ec1711), not on HEAD - proving F7 targets the selection.
+size      120x40
+launch
+key       <Down>*4
+key       <F7>
+wait      stable
+key       <Down>*2
+key       <Enter>
+wait      stable
+text      "buried"
+key       <Enter>
+wait      2.5
+capture   tag_on_row

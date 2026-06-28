@@ -1,0 +1,7 @@
+# Right-click a commit row to open the context menu over it. The menu lists
+# Create new branch / tag, Cherry-pick, Revert, Reset branch here, ...
+size      120x40
+launch
+mouse     rclick 20 6
+wait      stable
+capture   menu

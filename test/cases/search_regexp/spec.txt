@@ -1,0 +1,18 @@
+# Txt-mode <Regexp> toggle (F2). The query "Add.*HTTP" contains regex
+# metacharacters: as a literal substring it matches nothing (selection holds at
+# [9/303]); with <Regexp> ON (F2) it matches "Add timeout to HTTP client" and
+# jumps to the next one below row 9 ([33/303]).
+size      120x40
+launch
+key       <Down>*8
+key       /
+text      "Add.*HTTP"
+key       <Enter>
+wait      stable
+capture   literal_nomatch
+key       /
+text      "Add.*HTTP"
+key       <F2>
+key       <Enter>
+wait      stable
+capture   regexp_match

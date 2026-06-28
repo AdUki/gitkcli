@@ -1,0 +1,14 @@
+# Cycle to [Diff] (Tab x4: Txt -> ID -> Message -> Filepaths -> Diff). Diff
+# search is a pickaxe: `git log -S <string>`. The token "value_319" is added by
+# exactly one commit's diff (a77abfa "Speed up hot path"), so 'n' lands on it
+# at [2/303].
+size      120x40
+launch
+key       /
+key       <Tab>*4
+text      "value_319"
+key       <Enter>
+wait      stable
+key       n
+wait      stable
+capture   diff_match

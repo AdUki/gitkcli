@@ -1,0 +1,9 @@
+# Esc on the log pane leaves split view and returns to the fullscreen log
+# (set_split_mode('off')).
+size      120x40
+launch
+key       |
+wait      stable
+key       <Esc>
+wait      stable
+capture   closed

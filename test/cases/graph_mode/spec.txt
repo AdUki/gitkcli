@@ -1,0 +1,4 @@
+# Launch in --graph mode; the log should render with lane/graph art.
+size      120x40
+launch    --graph
+capture   graph

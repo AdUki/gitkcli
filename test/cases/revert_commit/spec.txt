@@ -1,0 +1,8 @@
+# Revert an ancestor commit (v); jump to top to show the new revert commit.
+size      120x40
+launch
+key       <Down>*2
+key       v
+wait      2.5
+key       g
+capture   reverted

@@ -1,0 +1,6 @@
+# Launch on the fixture and capture the initial Git Log view once the commit
+# stream has finished and the cursor has auto-scrolled to HEAD.
+size      120x40
+config    default
+launch
+capture   startup

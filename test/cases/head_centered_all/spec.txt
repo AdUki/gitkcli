@@ -1,0 +1,6 @@
+# Matches `gitkcli --all` with HEAD buried (the user's report). HEAD must land
+# CENTERED even though `git log --all` keeps streaming; was stuck at the bottom.
+size      120x40
+run       git checkout --quiet --detach master~120
+launch    --all
+capture   centered

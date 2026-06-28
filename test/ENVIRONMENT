@@ -1,0 +1,9 @@
+# Environment used to generate the golden snapshots in this directory.
+# Diff/stat/refs goldens are sensitive to the git version; regenerate
+# with: python3 test/run.py -u  after changing any of these.
+
+git:    git version 2.43.0
+python: Python 3.12.3
+pyte:   0.8.0
+TERM (pinned by harness): screen-256color
+locale (pinned by harness): C.UTF-8

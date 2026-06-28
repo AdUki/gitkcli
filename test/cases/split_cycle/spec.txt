@@ -1,0 +1,14 @@
+# The "|" key cycles split mode: off -> side -> stacked -> off.
+# side = log left / diff right; stacked = log top / diff bottom; the third press
+# returns to the fullscreen log.
+size      120x40
+launch
+key       |
+wait      stable
+capture   side
+key       |
+wait      stable
+capture   stacked
+key       |
+wait      stable
+capture   off

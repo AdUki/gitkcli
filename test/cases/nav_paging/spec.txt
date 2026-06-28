@@ -1,0 +1,13 @@
+# Paging and top/bottom navigation through the log.
+size      120x40
+launch
+key       <PgDn>
+capture   page_down_1
+key       <PgDn>*3
+capture   page_down_4
+key       <PgUp>
+capture   page_up
+key       G
+capture   bottom
+key       g
+capture   top

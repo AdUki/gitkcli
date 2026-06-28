@@ -1,0 +1,16 @@
+# Show origin (git blame) of a changed line. Open the diff of a3d1fd1, move the
+# cursor onto the removed "version" line (item 16), and press Enter. The app runs
+# `git blame -lsfn` on the old side and re-opens the commit that last touched that
+# line (abc7af0 "Speed up hot path"), so the title flips to that origin commit.
+size      120x40
+config    default
+run       git checkout --detach a3d1fd1
+launch
+key       <Enter>
+wait      stable
+key       j*15
+key       <Enter>
+wait      stable
+key       g
+wait      stable
+capture   origin

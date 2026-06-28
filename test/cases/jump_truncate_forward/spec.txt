@@ -1,0 +1,34 @@
+# Corner case: making a new jump after going back truncates the forward
+# entries. Build three entries ([11/303],[6/303],HEAD on the stack), walk
+# back to HEAD [1/303], then make a NEW jump to [16/303]. That discards the
+# forward history, so Ctrl-Right (forward) is now a no-op (stays [16/303]),
+# while Ctrl-Left (back) still reaches HEAD [1/303].
+size      120x40
+launch
+key       <Enter>
+wait      stable
+key       q
+key       <Down>*5
+key       <Enter>
+wait      stable
+key       q
+key       <Down>*5
+key       <Enter>
+wait      stable
+key       q
+key       C-Left
+wait      stable
+key       C-Left
+wait      stable
+capture   went_back_to_head
+key       <Down>*15
+key       <Enter>
+wait      stable
+key       q
+capture   new_jump
+key       C-Right
+wait      stable
+capture   forward_truncated
+key       C-Left
+wait      stable
+capture   back_to_head

@@ -1,0 +1,7 @@
+# Quit cleanly via F10 and assert the process actually exits.
+size      120x40
+config    default
+launch
+capture   before_quit
+key       <F10>
+expect-exit

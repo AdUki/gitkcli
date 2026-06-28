@@ -1,0 +1,20 @@
+# Txt-mode <Case> sensitivity (F1 toggles it). The lowercase token "speed"
+# appears nowhere in the fixture (no subject, ref, or author); only the subject
+# "Speed up hot path" has it, capitalised. From row 6 a case-SENSITIVE search
+# for "speed" finds nothing, so the selection holds at [6/303]. Re-running the
+# identical query with <Case> OFF (F1) matches "Speed up hot path" and jumps to
+# the next one below row 6 ([111/303]) -> the toggle changed the match set.
+size      120x40
+launch
+key       <Down>*5
+key       /
+text      "speed"
+key       <Enter>
+wait      stable
+capture   case_sensitive
+key       /
+text      "speed"
+key       <F1>
+key       <Enter>
+wait      stable
+capture   case_insensitive

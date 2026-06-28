@@ -1,0 +1,2 @@
+# Test-only dependency (the app itself is stdlib-only).
+pyte>=0.8

@@ -1,0 +1,9 @@
+# Open Git Refs (F2), move to a buried branch, Enter -> log jumps there centered.
+size      120x40
+launch
+key       <F2>
+wait      stable
+key       <Down>*2
+key       <Enter>
+wait      stable
+capture   jumped

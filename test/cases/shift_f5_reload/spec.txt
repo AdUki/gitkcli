@@ -1,0 +1,7 @@
+# Shift+F5 reloads the whole log after an external change rewrites/adds history.
+size      120x40
+launch
+run       git commit --allow-empty -m "External commit before full reload"
+key       <S-F5>
+wait      stable
+capture   reloaded

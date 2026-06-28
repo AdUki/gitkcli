@@ -1,0 +1,7 @@
+# Shrink the terminal mid-session and capture the re-laid-out log view. Proves
+# the rendering is size-driven (column truncation) and resize-handling works.
+size      120x40
+config    default
+launch
+resize    80x24
+capture   small

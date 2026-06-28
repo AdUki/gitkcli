@@ -1,0 +1,20 @@
+# F9 opens Preferences. Toggle "Show commit author" off, Save, close the dialog,
+# and confirm the author column (Alice Anderson, ...) is gone from the log.
+size      120x40
+config    default
+launch
+key       <F9>
+wait      stable
+capture   dialog
+# rows: 0=Show commit ID, 1=Show commit date, 2=Show commit author
+key       <Down>*2
+key       <Enter>
+# jump to the button row (Save focused) and save
+key       <End>
+key       <Enter>
+wait      2.5
+# close the dialog so the log underneath is visible again
+key       <Right>
+key       <Enter>
+wait      2.5
+capture   log_no_author

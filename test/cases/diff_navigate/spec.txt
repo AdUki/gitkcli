@@ -1,0 +1,12 @@
+# Detach HEAD on a commit with a richer patch (context + removed + added lines),
+# open its diff with Enter, then move the cursor down through the patch with j.
+# The title-bar line counter [N/total] advances, proving in-diff navigation.
+size      120x40
+config    default
+run       git checkout --detach a3d1fd1
+launch
+key       <Enter>
+wait      stable
+key       j*9
+wait      stable
+capture   navigated

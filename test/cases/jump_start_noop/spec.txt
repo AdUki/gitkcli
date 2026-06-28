@@ -1,0 +1,23 @@
+# Corner case: Ctrl-Left at the oldest jumplist entry is a no-op (no wrap),
+# and the no-op leaves the index intact so Ctrl-Right still moves forward.
+# Build two entries (HEAD, then [8/303]). Ctrl-Left lands on the oldest
+# entry HEAD [1/303]; a second Ctrl-Left does nothing (still [1/303]);
+# Ctrl-Right then steps forward to [8/303], proving the index was untouched.
+size      120x40
+launch
+key       <Enter>
+wait      stable
+key       q
+key       <Down>*7
+key       <Enter>
+wait      stable
+key       q
+key       C-Left
+wait      stable
+capture   at_oldest
+key       C-Left
+wait      stable
+capture   still_oldest
+key       C-Right
+wait      stable
+capture   forward_works

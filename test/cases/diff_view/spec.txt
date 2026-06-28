@@ -1,0 +1,8 @@
+# Open the diff of the selected commit (HEAD) by activating it with Enter.
+# The patch text is produced by git, so this golden is git-version-pinned.
+size      120x40
+config    default
+launch
+key       <Enter>
+wait      stable
+capture   diff

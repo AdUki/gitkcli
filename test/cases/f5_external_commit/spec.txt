@@ -1,0 +1,10 @@
+# An external commit lands after launch; F5 (refresh head) pulls it into view.
+# Jump to top (g) afterwards so the freshly-loaded commit is on screen.
+size      120x40
+launch
+capture   before
+run       git commit --allow-empty -m "External work while gitkcli is open"
+key       <F5>
+wait      stable
+key       g
+capture   after_f5

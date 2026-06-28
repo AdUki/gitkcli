@@ -1,0 +1,17 @@
+{
+  "git_log": {
+    "show_commit_id": true,
+    "show_commit_date": true,
+    "show_commit_author": true,
+    "flags": ""
+  },
+  "git_diff": {
+    "ignore_whitespace": false
+  },
+  "log": {
+    "autoscroll": false
+  },
+  "view": {
+    "default_mode": "side"
+  }
+}

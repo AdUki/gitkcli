@@ -1,0 +1,13 @@
+# F7 context menu -> "Create new branch" -> type a name -> Enter. The HEAD
+# commit gains a [ctx-branch] branch decoration.
+size      120x40
+launch
+key       <F7>
+wait      stable
+key       <Down>
+key       <Enter>
+wait      stable
+text      "ctx-branch"
+key       <Enter>
+wait      2.5
+capture   branch_created

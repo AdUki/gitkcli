@@ -1,0 +1,9 @@
+# The [X] close button in the title bar (top-right, ~col 117) closes the active
+# view. Open Git Refs, click [X], and we are back on the Git Log.
+size      120x40
+launch
+key       <F2>
+wait      stable
+mouse     click 118 1
+wait      stable
+capture   back_on_log

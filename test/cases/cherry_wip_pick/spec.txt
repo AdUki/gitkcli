@@ -1,0 +1,19 @@
+# Cherry-pick a wip/* commit that is NOT in master history onto HEAD.
+# --all so the unmerged wip commits are loadable; F2 refs, jump to
+# wip/refactor-auth (Enter selects its tip ec0a4d7 in the log), then Down*2 to
+# 5937e55 "Add timeout to HTTP client" (the one wip/refactor-auth commit that
+# applies cleanly on master), then c to cherry-pick. Wait out the 2 s success
+# flash, g to scroll the freshly-loaded HEAD commit into view.
+size      120x40
+launch    --all
+key       <F2>
+wait      stable
+key       <Down>*16
+key       <Enter>
+wait      stable
+key       <Down>*2
+capture   selected_wip
+key       c
+wait      2.5
+key       g
+capture   after_cherry

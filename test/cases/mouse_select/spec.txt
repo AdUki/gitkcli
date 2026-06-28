@@ -1,0 +1,7 @@
+# Left-click a commit row to select it. Row 9 of the screen is the 8th commit,
+# so the selection counter becomes [8/303].
+size      120x40
+launch
+mouse     click 20 9
+wait      stable
+capture   selected

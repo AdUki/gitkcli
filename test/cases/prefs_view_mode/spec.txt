@@ -1,0 +1,19 @@
+# F9 Preferences: change "Default view mode" from Fullscreen to Horizontal split.
+# Saving applies the split layout immediately (log + diff panes side by side).
+size      120x40
+config    default
+launch
+key       <F9>
+wait      stable
+# selectable rows: 0=ID 1=date 2=author 3=ign_ws 4=autoscroll 5=view_mode
+key       <Down>*5
+key       <Enter>
+wait      stable
+capture   dialog_side
+key       <End>
+key       <Enter>
+wait      2.5
+key       <Right>
+key       <Enter>
+wait      2.5
+capture   split_layout

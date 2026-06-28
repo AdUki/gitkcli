@@ -1,0 +1,7 @@
+# Navigate within --graph mode.
+size      120x40
+launch    --graph
+key       <Down>*5
+capture   moved
+key       <PgDn>
+capture   paged

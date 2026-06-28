@@ -1,0 +1,13 @@
+# Mouse-driven context-menu action: right-click a commit (screen row 3 = commit
+# a77abfa), then click "Create new branch" in the menu, type a name, and Enter.
+# The commit gains a [mouse-branch] decoration.
+size      120x40
+launch
+mouse     rclick 20 3
+wait      stable
+mouse     click 28 4
+wait      stable
+text      "mouse-branch"
+key       <Enter>
+wait      2.5
+capture   branched

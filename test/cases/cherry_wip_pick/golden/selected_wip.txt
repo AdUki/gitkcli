@@ -1,0 +1,40 @@
+[0;34;49m─ repo [69/333] ───────────────────────────────────────────────────────────────────────────────── [0;37;49m[Split][0;34;49m [0;37;49m[<-][0;34;49m [0;37;49m[->][0;34;49m [0;31;49m[X][0;34;49m─[0m
+[0;33;49m564c6fd[0;37;49m [0;34;49m2024-12-04 21:00[0;37;49m [0;32;49mAlice Anderson[0;37;49m Tighten input validation[0m
+[0;33;49m11b5b39[0;37;49m [0;34;49m2024-12-03 21:46[0;37;49m [0;32;49mEve Evans[0;37;49m Drop unused helper[0m
+[0;33;49m3b16214[0;37;49m [0;34;49m2024-12-03 07:50[0;37;49m [0;32;49mDavid Davis[0;37;49m Document the config schema[0m
+[0;33;49m98a23a4[0;37;49m [0;34;49m2024-12-02 11:18[0;37;49m [0;32;49mCarol Chen[0;37;49m Guard against null inputs [0;33;49m<v0.8.0>[0m
+[0;33;49m630c2ef[0;37;49m [0;34;49m2024-12-01 22:13[0;37;49m [0;32;49mBob Brown[0;37;49m Polish CLI output[0m
+[0;33;49m42ffb70[0;37;49m [0;34;49m2024-12-01 01:35[0;37;49m [0;32;49mAlice Anderson[0;37;49m Bump dependency versions[0m
+[0;33;49md834269[0;37;49m [0;34;49m2024-11-30 07:05[0;37;49m [0;32;49mEve Evans[0;37;49m [release/0.9] Bump dependency versions [0;32;49m[release/0.9][0;37;49m [0;31;49m{origin/release/0.9}[0m
+[0;33;49maf686d1[0;37;49m [0;34;49m2024-11-29 10:54[0;37;49m [0;32;49mDavid Davis[0;37;49m [release/0.9] Rename variable for clarity[0m
+[0;33;49m67be0cf[0;37;49m [0;34;49m2024-11-28 23:10[0;37;49m [0;32;49mCarol Chen[0;37;49m [release/0.9] Rename variable for clarity[0m
+[0;33;49ma1b440d[0;37;49m [0;34;49m2024-11-28 16:16[0;37;49m [0;32;49mBob Brown[0;37;49m [release/0.9] Trim trailing whitespace[0m
+[0;33;49m8059956[0;37;49m [0;34;49m2024-11-28 11:45[0;37;49m [0;32;49mAlice Anderson[0;37;49m [release/0.9] Add type hints[0m
+[0;33;49m71670e8[0;37;49m [0;34;49m2024-11-28 00:21[0;37;49m [0;32;49mEve Evans[0;37;49m [bugfix/leaking-fd] Polish CLI output [0;32;49m[bugfix/leaking-fd][0;37;49m [0;31;49m{origin/bugfix/leaking-fd}[0m
+[0;33;49m6dfd424[0;37;49m [0;34;49m2024-11-27 19:02[0;37;49m [0;32;49mDavid Davis[0;37;49m [bugfix/leaking-fd] Handle empty input case[0m
+[0;33;49md957de7[0;37;49m [0;34;49m2024-11-27 10:22[0;37;49m [0;32;49mCarol Chen[0;37;49m [bugfix/leaking-fd] Add timeout to HTTP client[0m
+[0;33;49m6f6084a[0;37;49m [0;34;49m2024-11-26 07:46[0;37;49m [0;32;49mBob Brown[0;37;49m [bugfix/leaking-fd] Inline a one-shot function[0m
+[0;33;49me286b95[0;37;49m [0;34;49m2024-11-25 07:33[0;37;49m [0;32;49mAlice Anderson[0;37;49m [wip/experiment-redis] Cache repeated lookup [0;32;49m[wip/experiment-redis][0;37;49m [0;31;49m{fork/wip/ex[0m
+[0;33;49ma3e6b30[0;37;49m [0;34;49m2024-11-24 14:02[0;37;49m [0;32;49mEve Evans[0;37;49m [wip/experiment-redis] Extract magic number into constant[0m
+[0;33;49mbff1406[0;37;49m [0;34;49m2024-11-24 05:15[0;37;49m [0;32;49mDavid Davis[0;37;49m [wip/experiment-redis] Speed up hot path[0m
+[0;33;49m48c8eab[0;37;49m [0;34;49m2024-11-23 08:06[0;37;49m [0;32;49mCarol Chen[0;37;49m [wip/experiment-redis] Extract magic number into constant[0m
+[0;33;49mec0a4d7[0;37;49m [0;34;49m2024-11-22 04:18[0;37;49m [0;32;49mBob Brown[0;37;49m [wip/refactor-auth] Tighten input validation [0;32;49m[wip/refactor-auth][0;37;49m [0;31;49m{fork/wip/refactor-a[0m
+[0;33;49m859cc6c[0;37;49m [0;34;49m2024-11-21 06:44[0;37;49m [0;32;49mAlice Anderson[0;37;49m [wip/refactor-auth] Drop unused helper[0m
+[0;1;33;48;2;38;38;38m5937e55[0;1;37;48;2;38;38;38m [0;1;34;48;2;38;38;38m2024-11-20 14:16[0;1;37;48;2;38;38;38m [0;1;32;48;2;38;38;38mEve Evans[0;1;37;48;2;38;38;38m [wip/refactor-auth] Add timeout to HTTP client                                       [0m
+[0;33;49m1e00bcb[0;37;49m [0;34;49m2024-11-20 05:17[0;37;49m [0;32;49mDavid Davis[0;37;49m [wip/migrate-to-postgres] Trim trailing whitespace [0;32;49m[wip/migrate-to-postgres][0;37;49m [0;31;49m{fork/[0m
+[0;33;49m1deac0e[0;37;49m [0;34;49m2024-11-19 22:16[0;37;49m [0;32;49mCarol Chen[0;37;49m [wip/migrate-to-postgres] Handle empty input case[0m
+[0;33;49m62c6605[0;37;49m [0;34;49m2024-11-19 12:42[0;37;49m [0;32;49mBob Brown[0;37;49m Merge branch 'feature/profile-page'[0m
+[0;33;49m6f04f42[0;37;49m [0;34;49m2024-11-18 14:40[0;37;49m [0;32;49mAlice Anderson[0;37;49m Polish profile-page for review [0;32;49m[feature/profile-page][0;37;49m [0;31;49m{origin/feature/profile-pa[0m
+[0;33;49m22982ea[0;37;49m [0;34;49m2024-11-17 15:30[0;37;49m [0;32;49mEve Evans[0;37;49m WIP profile-page: Add type hints[0m
+[0;33;49m481f478[0;37;49m [0;34;49m2024-11-17 09:41[0;37;49m [0;32;49mDavid Davis[0;37;49m WIP profile-page: Reorder imports [0;33;49m<handover-2024>[0m
+[0;33;49m9f7f3a7[0;37;49m [0;34;49m2024-11-16 12:29[0;37;49m [0;32;49mCarol Chen[0;37;49m WIP profile-page: Improve error messages[0m
+[0;33;49md2dcc03[0;37;49m [0;34;49m2024-11-16 02:47[0;37;49m [0;32;49mBob Brown[0;37;49m WIP profile-page: Cache repeated lookup[0m
+[0;33;49m1b7d19f[0;37;49m [0;34;49m2024-11-15 12:47[0;37;49m [0;32;49mAlice Anderson[0;37;49m WIP profile-page: Extract magic number into constant[0m
+[0;33;49ma09a58b[0;37;49m [0;34;49m2024-11-15 08:26[0;37;49m [0;32;49mEve Evans[0;37;49m Scaffold profile-page[0m
+[0;33;49m2d292e9[0;37;49m [0;34;49m2024-11-14 11:34[0;37;49m [0;32;49mDavid Davis[0;37;49m Trim trailing whitespace[0m
+[0;33;49m8e3e55f[0;37;49m [0;34;49m2024-11-13 15:36[0;37;49m [0;32;49mCarol Chen[0;37;49m Merge branch 'feature/webhook-support'[0m
+[0;33;49m3641ef2[0;37;49m [0;34;49m2024-11-13 11:22[0;37;49m [0;32;49mBob Brown[0;37;49m Polish webhook-support for review [0;32;49m[feature/webhook-support][0;37;49m [0;31;49m{origin/feature/webhook-s[0m
+[0;33;49m0a551de[0;37;49m [0;34;49m2024-11-13 06:32[0;37;49m [0;32;49mAlice Anderson[0;37;49m WIP webhook-support: Improve error messages[0m
+[0;33;49m58b0ab5[0;37;49m [0;34;49m2024-11-12 23:04[0;37;49m [0;32;49mEve Evans[0;37;49m WIP webhook-support: Handle empty input case[0m
+[0;33;49ma0d8573[0;37;49m [0;34;49m2024-11-12 01:12[0;37;49m [0;32;49mDavid Davis[0;37;49m WIP webhook-support: Inline a one-shot function[0m
+[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m

@@ -1,0 +1,28 @@
+# Jumplist back/forward across several commit diffs.
+# Open the diff of three commits (each Enter pushes the commit onto the
+# jumplist), return to the log, then walk the history with Ctrl-Left (back)
+# and Ctrl-Right (forward). Evidence is the log title counter [N/303]:
+# building selects [11/303]; back -> [6/303] -> [1/303]; forward -> [6/303].
+size      120x40
+launch
+key       <Enter>
+wait      stable
+key       q
+key       <Down>*5
+key       <Enter>
+wait      stable
+key       q
+key       <Down>*5
+key       <Enter>
+wait      stable
+key       q
+capture   at_third
+key       C-Left
+wait      stable
+capture   back_one
+key       C-Left
+wait      stable
+capture   back_two
+key       C-Right
+wait      stable
+capture   forward_one

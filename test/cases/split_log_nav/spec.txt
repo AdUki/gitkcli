@@ -1,0 +1,10 @@
+# Navigation in side split: the log pane has focus, so Down moves the log
+# selection AND the diff pane live-updates to the newly selected commit
+# (GitLogView.set_selected -> load_to_view while the diff is visible).
+size      120x40
+launch
+key       |
+wait      stable
+key       <Down>*6
+wait      stable
+capture   moved

@@ -1,0 +1,10 @@
+# Mark a commit (m), go to top (g), then jump back to the mark (M).
+size      120x40
+launch
+key       <Down>*18
+key       m
+key       g
+capture   at_top
+key       M
+wait      stable
+capture   back_to_mark

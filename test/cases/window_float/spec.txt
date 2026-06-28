@@ -1,0 +1,8 @@
+# Double-click the title bar to float the view into a centered window
+# (toggle_window_mode). The log is drawn as a boxed window in the middle of the
+# screen instead of fullscreen.
+size      120x40
+launch
+mouse     dblclick 40 1
+wait      stable
+capture   floated

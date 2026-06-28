@@ -1,0 +1,10 @@
+# Ctrl-w moves focus to the diff pane; Down then scrolls WITHIN the diff while
+# the log stays parked on HEAD [1/303], proving focus switched to the right pane.
+size      120x40
+launch
+key       |
+wait      stable
+key       C-w
+key       <Down>*10
+wait      stable
+capture   scrolled

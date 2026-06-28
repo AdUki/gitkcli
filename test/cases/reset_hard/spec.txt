@@ -1,0 +1,10 @@
+# Reset hard: open dialog, move down to Hard, confirm.
+size      120x40
+launch
+key       <Down>*3
+key       r
+wait      stable
+key       <Down>
+key       <Enter>
+wait      2.5
+capture   after_hard

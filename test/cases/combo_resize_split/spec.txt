@@ -1,0 +1,10 @@
+# Resize while in a non-default (split) view. Enter side split at 120x40, then
+# shrink the pty to 90x24. The two panes re-tile to the new size on the fly
+# (the divider and the diff pane stay intact at the narrower geometry).
+size      120x40
+launch
+key       |
+wait      stable
+resize    90x24
+wait      stable
+capture   resized

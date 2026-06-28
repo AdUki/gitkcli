@@ -1,0 +1,10 @@
+# In-view search: open the search prompt (/), type a query, and run it.
+# The cursor jumps to the first matching commit and matches are highlighted.
+size      120x40
+config    default
+launch
+key       /
+text      "off-by-one"
+key       <Enter>
+wait      stable
+capture   search

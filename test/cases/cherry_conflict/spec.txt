@@ -1,0 +1,15 @@
+# Cherry-picking a wip commit that touches the same lines as master fails; the
+# app aborts the half-applied pick and surfaces git's error in a popup.
+# --all so wip commits load; F2 refs -> wip/refactor-auth, Enter selects its
+# tip ec0a4d7 "Tighten input validation" (conflicts on master), then c.
+# (git's hint wording is pinned to the ENVIRONMENT git version, like diff_view.)
+size      120x40
+launch    --all
+key       <F2>
+wait      stable
+key       <Down>*16
+key       <Enter>
+wait      stable
+key       c
+wait      2.5
+capture   conflict_error

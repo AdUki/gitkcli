@@ -1,0 +1,8 @@
+# Open the Git Refs view (F2): local branches, remote-tracking branches, tags
+# and the stash ref. Order comes from `git show-ref`, so it is deterministic.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+capture   refs

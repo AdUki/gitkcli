@@ -1,0 +1,7 @@
+# Double-click a commit row to open its diff (same as Enter). Screen row 5 is
+# the 4th commit; its diff fills the view.
+size      120x40
+launch
+mouse     dblclick 20 5
+wait      stable
+capture   diff

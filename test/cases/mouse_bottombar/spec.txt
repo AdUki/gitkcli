@@ -1,0 +1,7 @@
+# Click a function-key label in the bottom bar. "2Git Refs" starts at column 16
+# on the last row, so clicking it opens the Git Refs view (same as F2).
+size      120x40
+launch
+mouse     click 18 40
+wait      stable
+capture   refs

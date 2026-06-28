@@ -1,0 +1,13 @@
+# F7 context menu -> "Create new tag" -> type a name -> Enter. The HEAD commit
+# gains a <my-tag> tag decoration.
+size      120x40
+launch
+key       <F7>
+wait      stable
+key       <Down>*2
+key       <Enter>
+wait      stable
+text      "my-tag"
+key       <Enter>
+wait      2.5
+capture   tag_created

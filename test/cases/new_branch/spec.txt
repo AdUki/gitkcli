@@ -1,0 +1,8 @@
+# Create a branch on HEAD (b -> name -> Enter); the row gains a [name] decoration.
+size      120x40
+launch
+key       b
+text      "my-feature"
+key       <Enter>
+wait      2.5
+capture   branch_created

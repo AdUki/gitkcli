@@ -1,0 +1,16 @@
+# Cycle to [Message] (Tab x2: Txt -> ID -> Message). Capture the open dialog
+# first to document the Type:/Flags: header. Message search shells out to
+# `git log -F --grep <query>`; the flagged commits highlight, and 'n' steps to
+# the first below HEAD. "off-by-one" -> "Fix off-by-one in pagination" [29/303].
+size      120x40
+launch
+key       /
+key       <Tab>*2
+text      "off-by-one"
+wait      stable
+capture   dialog_open
+key       <Enter>
+wait      stable
+key       n
+wait      stable
+capture   message_match

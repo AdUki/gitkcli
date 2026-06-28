@@ -1,0 +1,21 @@
+# Multi-step combo: search jumps to a commit, Enter opens its diff, Esc returns
+# to the log, m marks the commit, r opens the reset dialog targeting that very
+# commit. Chains four features through one selection.
+size      120x40
+launch
+# search jumps the cursor onto the off-by-one commit (12add6e)
+key       /
+text      "off-by-one"
+key       <Enter>
+wait      stable
+# Enter opens that commit's diff fullscreen
+key       <Enter>
+wait      stable
+capture   diff_open
+# Esc back to the log, mark it, then open the reset dialog onto it
+key       <Esc>
+wait      stable
+key       m
+key       r
+wait      stable
+capture   reset_dialog

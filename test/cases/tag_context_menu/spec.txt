@@ -1,0 +1,7 @@
+# F7 opens the context menu on the selected commit; it lists the per-commit
+# actions including "Create new branch" and "Create new tag".
+size      120x40
+launch
+key       <F7>
+wait      stable
+capture   menu_open

@@ -1,0 +1,6 @@
+# Regression test for the startup HEAD-centering race: with HEAD buried deep in
+# the log it must end up CENTERED (was intermittently pinned to the bottom).
+size      120x40
+run       git checkout --quiet --detach master~120
+launch    master
+capture   centered

@@ -1,0 +1,8 @@
+# Open Preferences (F9). The toggles reflect the pinned config template, so this
+# also proves preferences are isolated from the developer's real config.
+size      120x40
+config    default
+launch
+key       <F9>
+wait      stable
+capture   prefs

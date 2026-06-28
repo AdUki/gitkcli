@@ -1,0 +1,11 @@
+# Reset (r) opens the mode dialog (Mixed highlighted); capture it, then confirm
+# Mixed with Enter and capture the moved HEAD.
+size      120x40
+launch
+key       <Down>*3
+key       r
+wait      stable
+capture   dialog
+key       <Enter>
+wait      2.5
+capture   after_mixed

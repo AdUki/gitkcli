@@ -1,0 +1,13 @@
+# Cycle the search type to [ID] with one Tab, then search by a commit SHA
+# prefix. ID search runs `git log <sha>^!`, so only that one commit is flagged;
+# 'n' steps onto it. 12add6e is "Fix off-by-one in pagination" at [29/303].
+size      120x40
+launch
+key       /
+key       <Tab>
+text      "12add6e"
+key       <Enter>
+wait      stable
+key       n
+wait      stable
+capture   id_match
