@@ -222,6 +222,15 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 97 (coverage: [X] close-button quits cleanly; no bug).**
+  Verified the search-dialog wiring (set_search_dialog sets parent_list_view per
+  view — correct). Then probed an untested real user action: clicking the [X]
+  close button on the main (only) git-log window. Confirmed it quits CLEANLY
+  (hide_active_view empties the stack -> main loop breaks -> exit_program) — a
+  distinct path from F10/'q', verified via `expect-exit`. No bug. Locked it with
+  golden `close_button_quit` (mouse click on [X] at col 118 row 1 -> exit),
+  deterministic 5/5. No code change. Suite **78/78** (existing goldens
+  untouched; one new case); units **94/94**.
 - **2026-06-28 — Iteration 96 (packaging: declare pyperclip as an optional extra; no bug).**
   Cross-checked the remaining README claims — config-file locations match
   `get_config_path` exactly (Linux XDG / macOS / Windows), pyperclip is genuinely

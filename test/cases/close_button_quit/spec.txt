@@ -1,0 +1,10 @@
+# Clicking the [X] close button on the main (only) git-log window quits the app
+# cleanly: hide_active_view empties the view stack, the main loop sees no active
+# view and breaks, then exit_program runs. Distinct path from F10/'q'. The [X]
+# sits at columns 117-119 of the title bar on a 120-wide screen.
+size      120x40
+config    default
+launch
+mouse     click 118 1
+wait      stable
+expect-exit
