@@ -213,6 +213,16 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 47 (consolidate: health check + correct project memory).**
+  Health verification: `import gitkcli` + `--help` OK; `pytest test/` collects 81
+  nodes (60 golden + 21 unit); goldens byte-identical to `refactor-baseline`;
+  gitk/ is 21 files (incl. views/ package), gitkcli.py 9 lines. Updated the
+  persistent project memory (lives in ~/.claude, outside the repo): added
+  `gitk_package_architecture.md` (current module layout, injected `App`, the
+  `get_app()` back-ref access path, the two function-local import-cycle breakers,
+  and the extraction lessons), and flagged the stale Parent-Chain/`ui/`/
+  single-file sections in MEMORY.md as superseded. No repo source change this
+  iteration. Full suite **60/60**; goldens clean.
 - **2026-06-28 — Iteration 46 (defer #3 separator-offset; add process_line tests).**
   Assessed the last review note (#3): under horizontal scroll of a segmented row,
   `draw_line`'s offset bookkeeping (`offset -= len(txt) - length`) doesn't account
