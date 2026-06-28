@@ -21,8 +21,8 @@ from gitk.jobs import Job
 from gitk.log import Log
 from gitk.screen import Screen
 from gitk.views import GitLogView, GitDiffView, GitRefsView, ContextMenu
-from gitk.dialogs import (PreferencesDialogPopup, ConfirmDialogPopup,
-                          ErrorDialogPopup)
+from gitk.dialogs import PreferencesDialogPopup
+from gitk.message_box import ConfirmDialogPopup, ErrorDialogPopup
 
 def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 

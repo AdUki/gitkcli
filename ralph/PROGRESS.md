@@ -222,6 +222,21 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 98 (REGRESSION FIX: dialogs.py grew past the ≤600 floor; split out message_box.py).**
+  Verifying exit criterion 8 (STRUCTURE.md matches the tree) surfaced a criterion-4
+  regression I had introduced: my bug-fix additions (rename_branch, empty-input
+  guards, history pending_input, push guard, …) had grown `dialogs.py` to **638
+  lines**, over the ≤ ~600 invariant, and STRUCTURE.md still claimed "All modules
+  ≤ ~600". Per criterion 6 (never regress a met criterion), split the cohesive,
+  self-contained red message-box family (`_RedMessageBoxPopup`,
+  `ConfirmDialogPopup`, `ErrorDialogPopup`) into a new `gitk/message_box.py`
+  (104 lines); dialogs.py is now **552**, all modules ≤ 552. Pure code move:
+  updated main.py's import (the only runtime importer; app.py used them only in
+  lazy string type-hints) and removed the now-dead ID_CONFIRM_DIALOG/
+  ID_ERROR_DIALOG/ENTER_KEYS/Screen imports from dialogs.py. Behaviour-preserving
+  — the force_confirm_dialog golden (exercises ConfirmDialogPopup) still passes.
+  Updated STRUCTURE.md to list message_box.py. Suite **78/78** (goldens
+  untouched); units **94/94**. (Restores criterion 4; STRUCTURE.md now matches.)
 - **2026-06-28 — Iteration 97 (coverage: [X] close-button quits cleanly; no bug).**
   Verified the search-dialog wiring (set_search_dialog sets parent_list_view per
   view — correct). Then probed an untested real user action: clicking the [X]

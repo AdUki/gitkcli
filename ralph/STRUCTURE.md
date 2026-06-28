@@ -9,7 +9,8 @@ from the original idealized plan: added `ids.py` (shared identifiers, leaf) and
 `dialogs/` package); `ContextMenu` lives in `views/context_menu.py` (grouped
 with the views, not under dialogs); `OnOffToggleSegment`/`ChoiceSegment` are
 in `segments.py`; `SplitLayout` was not split out (the split logic stays on
-`App`). All modules ≤ ~600 lines.
+`App`); the red confirm/error message boxes were split from `dialogs.py` into
+`message_box.py` to keep both ≤ ~600 lines. All modules ≤ ~600 lines.
 
 ```
 gitkcli.py                 # THIN entry shim: `from gitk.main import main`
@@ -33,8 +34,9 @@ gitk/
   view.py                  # View (base) + HORIZONTAL_OFFSET_JUMP/SPLIT_DIVIDER_COLOR
   list_view.py             # ListView (+ _raise_split_sibling helper)
   jobs.py                  # Job (base + registry) + Git*Job subclasses
-  dialogs.py               # _RedMessageBoxPopup, ConfirmDialogPopup, ErrorDialogPopup,
-                           #   UserInputDialogPopup, PreferencesDialogPopup,
+  message_box.py           # _RedMessageBoxPopup, ConfirmDialogPopup, ErrorDialogPopup
+                           #   (split from dialogs.py to keep both ≤ ~600 lines)
+  dialogs.py               # UserInputDialogPopup, PreferencesDialogPopup,
                            #   NewRefDialogPopup, SearchDialogPopup, GitSearchDialogPopup,
                            #   ResetDialogPopup, RefPushDialogPopup
   views/
