@@ -20,17 +20,19 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 2 — in progress. Extracted: `gitk/config.py`, `gitk/input.py`
-  (KeyboardState, MouseState + KEY_* / ENTER_KEYS constants; uses
-  `from __future__ import annotations` so the `View`/`Item` hints need no UI
-  imports). gitkcli.py re-exports both.
-- **NEXT (Phase 2):** `gitk/log.py` (Log) — NOTE Log is NOT a leaf: it builds a
-  `LogView` and `TextListItem`, which aren't extracted yet. Likely need to
-  extract view/items first, or inject the LogView factory. Re-evaluate order:
-  the plan's leaf-first list is idealized; real dep order is config/input (done)
-  → segments → items → view → views → log/screen/jobs → dialogs → app → main.
-- **gitkcli.py:** ~3860 lines · **package:** `gitk/{__init__,config,input}.py` ·
-  **Gitkcli refs:** 0.
+- **Phase:** 2 — in progress. Extracted: `gitk/config.py`, `gitk/input.py`,
+  `gitk/screen.py` (Screen — a clean near-leaf: only curses/stdlib; its view/item
+  refs are duck-typed at runtime, so `from __future__ import annotations` + no UI
+  imports). gitkcli.py re-exports each.
+- **NEXT (Phase 2):** `gitk/segments.py` is the natural next layer but has two
+  couplings to break first: segments call `Screen.color` (now importable from
+  gitk.screen ✓) and `RefSegment` calls `GitRefsView.get_ref_color_and_title`
+  (a pure formatter that should move out of the view — relocate it so segments
+  don't depend on a view). Segment classes are also scattered (636–756, 910,
+  2132, 2872, 2911) and interleaved with items. Plan: gather them, move
+  `get_ref_color_and_title` to segments (or a refs helper), import Screen.
+- **gitkcli.py:** 3531 lines · **package:**
+  `gitk/{__init__,config,input,screen}.py` (screen.py 347) · **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
 
@@ -85,7 +87,8 @@
       Uses `from __future__ import annotations` so the View/Item type hints stay
       lazy (no UI imports). gitkcli.py re-exports them.
 - [ ] `gitk/log.py`
-- [ ] `gitk/screen.py`
+- [x] `gitk/screen.py` — Screen (curses/panel lifecycle, colour palette, panel
+      deck, bottom bar). Clean near-leaf; view/item refs duck-typed at runtime.
 - [ ] `gitk/jobs.py`
 - [ ] `gitk/segments.py`
 - [ ] `gitk/items.py`
@@ -128,6 +131,15 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 20 (Phase 2: extract `gitk/screen.py`).**
+  Moved the `Screen` class (331 lines) into `gitk/screen.py`. Audited it as a
+  clean near-leaf: the only seeming external refs were a `'Git Log'` string
+  label and an `App` mention in a comment — no real class deps. Uses curses/
+  curses.panel/os/re/time/typing only; view/item objects are duck-typed at
+  runtime, so `from __future__ import annotations` + no UI imports. gitkcli.py
+  re-exports `Screen` (used by `launch_curses`, `Screen.color(...)` in draw
+  methods, and `Screen.force_mono` in main). Full suite: **60 passed, 0
+  failed**; goldens clean. gitkcli.py 3860→3531 lines.
 - **2026-06-28 — Iteration 19 (Phase 2: extract `gitk/input.py`).**
   Moved `KeyboardState`, `MouseState`, and the keyboard constants
   (`KEY_SHIFT_F5`, `KEY_CTRL_LEFT/RIGHT/BACKSPACE/DEL`, `KEY_ENTER`,
