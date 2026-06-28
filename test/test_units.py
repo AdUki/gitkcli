@@ -29,7 +29,7 @@ from gitk.list_view import ListView
 from gitk.jobs import GitLogJob, GitDiffJob, Job, _CONTROL_CHARS
 from gitk.items import UserInputListItem, StatListItem, TextListItem
 from gitk.screen import Screen
-from gitk.dialogs import SearchDialogPopup, RefPushDialogPopup
+from gitk.dialogs import SearchDialogPopup, RefPushDialogPopup, NewRefDialogPopup
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -607,3 +607,17 @@ def test_push_ref_pushes_when_remote_selected():
     RefPushDialogPopup.push_ref(me)
     assert pushed == [('origin', 'feature', False)]
     assert warned == []
+
+
+# --- NewRefDialogPopup.create_ref: refuse an empty target commit --------------
+# 'b' on an uncommitted pseudo-row passes '' (get_selected_commit_id), which
+# would later run `git branch <name> ''` -> fatal. create_ref must refuse.
+
+def test_create_ref_empty_commit_warns_and_does_not_open():
+    events = []
+    me = SimpleNamespace(
+        app=SimpleNamespace(log=SimpleNamespace(warning=lambda m: events.append(('warn', m)))),
+        show=lambda: events.append(('show',)))
+    NewRefDialogPopup.create_ref(me, '')
+    assert any(e[0] == 'warn' for e in events)
+    assert not any(e[0] == 'show' for e in events)   # dialog never opened

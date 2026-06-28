@@ -425,6 +425,13 @@ class NewRefDialogPopup(UserInputDialogPopup):
             SegmentedListItem([self.prompt, FillerSegment(), TextSegment("Flags:"), self.force]))
 
     def create_ref(self, commit_id, ref_type='branch'):
+        # get_selected_commit_id() returns '' on the uncommitted pseudo-rows, so
+        # 'b' there would open the dialog and later run `git <type> <name> ''`
+        # -> "fatal: not a valid object name: ''". Refuse without a real target
+        # (mirrors the cherry-pick / revert / reset guards).
+        if not commit_id:
+            self.app.log.warning(f'Select a commit to create a {ref_type} from')
+            return
         self.commit_id = commit_id
         self.ref_type = ref_type
         self.header_item.set_text(f' New {ref_type.capitalize()}')

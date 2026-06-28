@@ -222,6 +222,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 82 (BUG: 'b' on an uncommitted row -> `git branch <name> ''` fatal).**
+  Traced the commit-op key handlers. cherry-pick/revert/reset all guard an
+  empty/pseudo target (`get_selected_commit_id()` returns '' on the uncommitted
+  pseudo-rows), but `b` (create branch) -> `create_ref('')` did not: it opened
+  the New Branch dialog, and submitting a name ran `git branch <name> ''` ->
+  "fatal: not a valid object name: ''" -> red error dialog (same for the tag
+  path). FIX: guard at the choke point `NewRefDialogPopup.create_ref` — warn and
+  refuse without a real commit, mirroring the other ops. Unit-tested (empty
+  commit -> warns, dialog never shown); the iter-80 `new_branch_empty_name`
+  golden confirms 'b' on a real commit still opens the dialog. A pseudo-row
+  golden would need fragile post-reset cursor positioning, so unit test only.
+  Suite **72/72** (goldens untouched); units **69/69**. (26th genuine bug.)
 - **2026-06-28 — Iteration 81 (BUG: pushing on a remote-less repo popped a fatal dialog).**
   Continued the empty/edge-input → doomed-git-command sweep (cf. iter-72, iter-80).
   Reset is already guarded (confirm_reset rejects empty/local commit_id). Found
