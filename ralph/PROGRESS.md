@@ -222,6 +222,20 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 77 (coverage: merge-commit diff rendering; no bug found).**
+  Audited preferences save (correct), ListView.insert (does not exist post-
+  refactor — stale memory note), segment toggle/choice state (correct), and the
+  mouse movement-capture escape codes (input.py:109/113 — `?1003h`/`?1000h`;
+  `?1000h` arguably doesn't disable `?1003` all-motion, but it's terminal-
+  dependent, untestable with the pyte harness, and contractual mouse code the
+  iter-49 lesson says not to touch blind — left alone). Then probed a genuinely
+  untested rendering path: a MERGE commit's diff (`git show -m` emits one section
+  per parent). It renders correctly (per-parent `commit … (from …)` header,
+  `Merge:` line, stat, hunk — no garbling), so no bug; locked it with an additive
+  golden `diff_merge_commit` (search jumps to the login-flow merge, Enter opens
+  its diff). Verified deterministic 6/6. Suite **71/71** (existing goldens
+  untouched; one new case); units **58/58**. No code change this iteration —
+  coverage only.
 - **2026-06-28 — Iteration 76 (BUG: search history DOWN stranded the user / discarded typed input).**
   Audited resize/drag (sound), input.py escape parsing (terminal-dependent, not
   a bug), then found a real bug in `SearchDialogPopup` history nav (gitk/dialogs.py).

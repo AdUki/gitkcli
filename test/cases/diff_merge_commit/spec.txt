@@ -1,0 +1,13 @@
+# Open a MERGE commit's diff. `git show -m` renders one section per parent, a
+# structure the diff parser only sees for merges. Locks that it renders without
+# garbling (regression/coverage for merge-commit diffs).
+size      120x40
+config    default
+launch
+key       /
+text      "Merge branch 'feature/login-flow'"
+key       <Enter>
+wait      stable
+key       <Enter>
+wait      stable
+capture   merge_diff
