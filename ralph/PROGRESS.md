@@ -222,6 +222,21 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 67 (SECURITY: strip terminal-escape injection from git text).**
+  Probing commit subjects with embedded ANSI escapes found a real terminal-
+  injection bug: `Job._reader_thread` only stripped tab/CRLF, so a crafted
+  commit subject / ref name / diff line passed raw `\x1b[…]` escapes (colour,
+  cursor moves, bell, even screen-clear) straight to the terminal — display
+  corruption / spoofing when viewing a hostile repo. FIX: a module-level
+  `_CONTROL_CHARS` regex strips C0/C1 control chars (minus the already-handled
+  tab/newline) from every streamed line at the single decode chokepoint;
+  printable Unicode (CJK/emoji/box-drawing, all > U+009F) is preserved. Verified
+  end-to-end via pty probe (raw `\x1b[31m` gone, inert `[31m` text remains) and
+  the existing 65 goldens are byte-identical (fixtures have no control chars →
+  no-op — confirms it's wired and harmless). Added 4 unit tests for the regex +
+  an additive `log_escape_injection` golden (subject built via printf so the
+  spec holds no raw ESC; pinned date). Full suite **66/66** (existing goldens
+  untouched); units **43/43**. (13th genuine bug fixed.)
 - **2026-06-28 — Iteration 66 (probe: wide/non-ASCII commit subjects; add golden).**
   Probed CJK + emoji commit subjects (a distinct, untested input class — the
   width math uses `len()`, not display cells). Result: renders without crashing

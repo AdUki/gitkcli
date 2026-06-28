@@ -25,7 +25,7 @@ from gitk.segments import ref_color_and_title, TextSegment, ButtonSegment, Fille
 from gitk.segmented_items import SegmentedListItem, ButtonRowItem
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
-from gitk.jobs import GitLogJob, Job
+from gitk.jobs import GitLogJob, Job, _CONTROL_CHARS
 from gitk.items import UserInputListItem
 from gitk.screen import Screen
 
@@ -222,6 +222,23 @@ def test_process_line_keeps_graph_prefix():
 
 def test_process_line_nonmatching_returns_raw_string():
     assert GitLogJob.process_line(None, "just some text") == "just some text"
+
+
+# --- _CONTROL_CHARS: terminal-escape-injection guard applied to streamed text -
+
+def test_control_chars_strips_escape_sequences_leaving_inert_text():
+    # the ESC byte (and bell) are removed; the bracket text is left inert
+    assert _CONTROL_CHARS.sub('', 'pre\x1b[31mRED\x1b[0m\x07post') == 'pre[31mRED[0mpost'
+
+def test_control_chars_strips_c0_and_c1_ranges():
+    assert _CONTROL_CHARS.sub('', 'a\x00\x08\x0b\x1f\x7f\x9fb') == 'ab'
+
+def test_control_chars_keeps_printable_and_wide_unicode():
+    assert _CONTROL_CHARS.sub('', '日本語 🎉 box─│ abc') == '日本語 🎉 box─│ abc'
+
+def test_control_chars_keeps_tab_and_newline():
+    # tab is expanded and CR/LF handled upstream, so this regex must leave them
+    assert _CONTROL_CHARS.sub('', 'a\tb\nc') == 'a\tb\nc'
 
 
 # --- UserInputListItem word navigation (pure: uses txt + cursor_pos only) ----
