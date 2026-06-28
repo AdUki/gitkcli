@@ -5,6 +5,7 @@ from __future__ import annotations
 import curses
 import os
 import re
+import shlex
 import typing
 
 from gitk.dialogs import GitSearchDialogPopup, ResetDialogPopup
@@ -54,7 +55,15 @@ class GitLogView(ListView):
 
     def set_pref_flags(self, flags: str):
         self.pref_flags = flags
-        self.job.args = list(self._cli_args) + flags.split()
+        # Parse like a shell so quoted values survive, e.g. --author="Bob Brown"
+        # or --since="2 weeks ago". Fall back to a plain split on an unbalanced
+        # quote so a typo in the prefs field can't crash the reload.
+        try:
+            parsed_flags = shlex.split(flags)
+        except ValueError:
+            self.app.log.warning(f'Could not parse git log flags (unbalanced quote?): {flags}')
+            parsed_flags = flags.split()
+        self.job.args = list(self._cli_args) + parsed_flags
         # --graph may also arrive via the preferences "flags" field.
         self._graph_mode = '--graph' in self.job.args
 

@@ -1,0 +1,10 @@
+# The preferences "git log flags" string is parsed with shlex, so a quoted
+# value survives as a single argument: flags = --author="Bob Brown" must filter
+# the log to Bob Brown's commits only (a naive .split() would pass the broken
+# tokens --author="Bob and Brown" to git and match nothing). Regression for
+# shlex parsing of pref flags.
+size      120x40
+config    log_flags_quoted
+launch
+wait      stable
+capture   only_bob_brown

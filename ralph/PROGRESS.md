@@ -222,6 +222,23 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 73 (BUG: quoted git-log pref flags broken by naive split).**
+  Audited cherry-pick/revert/reset/ref-removal flows (all use list-form git args
+  — no injection; `-m 1` on a non-merge is tolerated by git 2.43, verified). Real
+  bug found in `GitLogView.set_pref_flags` (gitk/views/git_log.py): the
+  preferences "git log flags" string was tokenised with naive `flags.split()`, so
+  a quoted value lost its quoting — `--author="Bob Brown"` became
+  `['--author="Bob', 'Brown"']` and `--since="2 weeks ago"` likewise — passing
+  broken args to git (matches nothing / errors). FIX: parse with `shlex.split`
+  (standard shell tokenising, so quotes survive), guarded by `try/except
+  ValueError` → on an unbalanced quote, log a warning and fall back to the plain
+  split rather than crash the reload. Added an additive golden
+  `log_flags_quoted_author` + a `log_flags_quoted` config fixture
+  (flags=`--author="Bob Brown"`): the log shows only Bob Brown's 38 commits,
+  which a naive split could not produce. Suite **69/69** (existing goldens
+  untouched; one new case); units **50/50**. NOTE: `head_centered` flaked once
+  under load during the full run (timing-sensitive startup centring); passed 3/3
+  in isolation and the re-run was 69/69 — not a regression. (17th genuine bug.)
 - **2026-06-28 — Iteration 72 (BUG: empty git-search query popped a fatal-error dialog).**
   First swept all `re.{compile,search,match,sub}` in gitk/ — clean now (every
   remaining use is a fixed literal or already guarded: iter-70 try/except,
