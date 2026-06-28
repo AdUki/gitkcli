@@ -50,6 +50,12 @@ class Segment:
     def set_text(self, txt:str):
         pass
 
+    def get_context_menu(self):
+        """The context menu this segment opens, as a (menu_item, view_id) pair,
+        or None if it has none. Used both by a right-click on the segment and by
+        F7 keyboard cycling (SegmentedListItem.get_context_menu_targets)."""
+        return None
+
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         return 0
 
@@ -89,10 +95,13 @@ class RefSegment(TextSegment):
         color, txt = ref_color_and_title(ref, head_branch)
         super().__init__(txt, color)
 
+    def get_context_menu(self):
+        from gitk.items import RefListItem  # late import: avoids segments<->items cycle
+        return (RefListItem(self.ref), ID_GIT_REFS)
+
     def handle_mouse_input(self, mouse) -> bool:
         if mouse.event_type == 'right-click':
-            from gitk.items import RefListItem  # late import: avoids segments<->items cycle
-            return self.get_app().context_menu.show_context_menu(RefListItem(self.ref), ID_GIT_REFS)
+            return self.get_app().context_menu.show_context_menu(*self.get_context_menu())
         elif mouse.event_type == 'double-click' and 'tag_id' in self.ref:
             self.get_app().git_diff.job.show_tag_annotation(self.ref['tag_id'])
             return True

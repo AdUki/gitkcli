@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import curses
 
+from gitk.ids import ID_GIT_LOG
 from gitk.input import ENTER_KEYS
 from gitk.screen import Screen
 from gitk.items import Item
@@ -36,6 +37,33 @@ class SegmentedListItem(Item):
 
     def get_text(self):
         return self.segment_separator.join(s.get_text() for s in self.get_segments())
+
+    def get_row_context_menu(self):
+        """The whole-row context menu (what a right-click on a plain part of the
+        row opens), as a (menu_item, view_id) pair, or None. Listed first when
+        F7 cycles the row's menus."""
+        return None
+
+    def get_context_menu_targets(self):
+        """Ordered (menu_item, view_id, x) targets F7 cycles through on this row:
+        the row's own menu first (x=0), then every segment that declares one,
+        each at the column where its text begins (mirrors get_segment_on_offset
+        so the menu pops up under that segment)."""
+        targets = []
+        row_menu = self.get_row_context_menu()
+        if row_menu is not None:
+            targets.append((*row_menu, 0))
+        segment_pos = 0
+        for segment in self.get_segments():
+            if isinstance(segment, FillerSegment):
+                length = getattr(self, 'fill_width', 0)
+            else:
+                length = len(segment.get_text())
+            menu = segment.get_context_menu()
+            if menu is not None:
+                targets.append((*menu, segment_pos))
+            segment_pos += length + len(self.segment_separator)
+        return targets
 
     def get_segment_on_offset(self, offset) -> Segment:
         segment_pos = 0
@@ -268,6 +296,9 @@ class UncommittedChangesListItem(SegmentedListItem):
         else:
             self.txt, self.color = 'Uncommitted changes (working directory)', 2
 
+    def get_row_context_menu(self):
+        return (self, ID_GIT_LOG)
+
     def get_segments(self):
         segments = []
         if self.graph_prefix:
@@ -291,6 +322,9 @@ class CommitListItem(SegmentedListItem):
     def __init__(self, id:str):
         super().__init__()
         self.id = id
+
+    def get_row_context_menu(self):
+        return (self, ID_GIT_LOG)
 
     def get_segments(self):
         app = self.get_app()

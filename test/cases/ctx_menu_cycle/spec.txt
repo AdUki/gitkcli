@@ -1,0 +1,19 @@
+# Repeated F7 cycles the selected row's context menus without the mouse. The
+# startup HEAD row carries refs: (HEAD) -> [master]. First F7 opens the commit
+# menu; the next steps onto the HEAD ref ("Copy ref name"); the next onto the
+# [master] branch (Check out / Rename / Push / Remove ...); a fourth wraps back
+# to the commit menu. Each menu pops up under the segment it acts on.
+size      120x40
+launch
+key       <F7>
+wait      stable
+capture   commit_menu
+key       <F7>
+wait      stable
+capture   head_ref_menu
+key       <F7>
+wait      stable
+capture   branch_menu
+key       <F7>
+wait      stable
+capture   wrap_to_commit

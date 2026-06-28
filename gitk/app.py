@@ -73,18 +73,41 @@ class App:
         """Open the context menu for the active view's selected item.
         at_selection=True (the F7 *key*) opens it at the selected row, since the
         keyboard has no cursor; at_selection=False (a mouse click on the F7 bar
-        button) leaves it at the current mouse position."""
+        button) leaves it at the current mouse position.
+
+        From the keyboard, on a segmented git-log row, repeated F7 presses cycle
+        through the row's menus - the commit menu first, then each branch / tag /
+        remote ref on the row, wrapping around - giving full keyboard reach to
+        the per-segment menus a right-click opens with the mouse."""
+        menu = self.context_menu
+        # Menu already open (F7 pressed again): step to the next cycle target.
+        if self.screen.showed_views[-1] is menu:
+            menu.advance_cycle()
+            return
+
         view = self.screen.get_active_view()
         if not view or not hasattr(view, 'get_selected'):
             return
         item = view.get_selected()
         if item is None:
             return
-        if at_selection:
-            win_y, win_x = view.win.getbegyx()
-            self.mouse.screen_x = win_x + view.x
-            self.mouse.screen_y = win_y + view.y + (view._selected - view._offset_y)
-        self.context_menu.show_context_menu(item)
+
+        win_y, win_x = view.win.getbegyx()
+        row_x = win_x + view.x - view._offset_x
+        # Anchor one row BELOW the selection so the selected row stays visible
+        # above the menu (the keyboard has no cursor to show what it acts on).
+        row_y = win_y + view.y + (view._selected - view._offset_y) + 1
+
+        targets = item.get_context_menu_targets() if hasattr(item, 'get_context_menu_targets') else None
+        if at_selection and targets:
+            menu.start_cycle(targets, view, row_x, row_y)
+        else:
+            # Mouse bar button, or a row with no segment menus: a single menu.
+            # The keyboard anchors it at the row; the mouse keeps its position.
+            if at_selection:
+                self.mouse.screen_x = max(0, row_x)
+                self.mouse.screen_y = row_y
+            menu.show_context_menu(item)
 
     def reload_refs_commits(self):
         self.git_refs.reload_refs()

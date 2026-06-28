@@ -14,6 +14,10 @@ class ContextMenu(ListView):
     def __init__(self, app):
         super().__init__(app, ID_CONTEXT_MENU, 'window')
         self.is_popup = True
+        # F7 cycle state: (targets, view, row_x, row_y) and the index shown, or
+        # None when no segment cycle is active. See start_cycle / advance_cycle.
+        self._cycle = None
+        self._cycle_index = -1
 
     def on_activated(self):
         super().on_activated()
@@ -30,14 +34,40 @@ class ContextMenu(ListView):
         self.append(ContextMenuItem("Copy range to clipboard", view.copy_text_range_to_clipboard, [item]))
         self.append(ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
 
-    def show_context_menu(self, item, view_id:str = '') -> bool:
-        if self.app.screen.showed_views[-1] == self:
+    def start_cycle(self, targets, view, row_x, row_y):
+        """Begin the F7 segment cycle for a row. `targets` is the ordered
+        (menu_item, view_id, x) list from get_context_menu_targets, `view` the
+        originating view (so the menu's callbacks bind to it, not to this popup),
+        and (row_x, row_y) the row's top-left on screen. Shows the first target."""
+        self._cycle = (targets, view, row_x, row_y)
+        self._cycle_index = -1
+        self.advance_cycle()
+
+    def advance_cycle(self):
+        """Show the next menu in the active F7 cycle, wrapping past the last back
+        to the first. No-op when no cycle is active."""
+        if not self._cycle:
+            return
+        targets, view, row_x, row_y = self._cycle
+        self._cycle_index = (self._cycle_index + 1) % len(targets)
+        menu_item, view_id, segment_x = targets[self._cycle_index]
+        self.app.mouse.screen_x = max(0, row_x + segment_x)
+        self.app.mouse.screen_y = row_y
+        self.show_context_menu(menu_item, view_id, view=view, force=True)
+
+    def show_context_menu(self, item, view_id:str = '', view=None, force=False) -> bool:
+        if not force and self.app.screen.showed_views[-1] == self:
             return True
+        # A plain (non-cycle) open clears any leftover cycle; force=True keeps it
+        # so the next F7 advances rather than restarting.
+        if not force:
+            self._cycle = None
         self.clear()
         self._selected = -1
+        if view is None:
+            view = self.app.screen.get_active_view()
         if not view_id:
-            view_id = self.app.screen.showed_views[-1].id
-        view = self.app.screen.get_active_view()
+            view_id = view.id
         x = self.app.mouse.screen_x
         y = self.app.mouse.screen_y
         if item is self.app: # main menu
