@@ -213,6 +213,21 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 49 (review dialogs+main; revert a regression; fix RefPush Tab).**
+  Fourth review (dialogs.py + main.py event loop). Two findings:
+  (1) [the reviewer flagged the mouse release-synthesis labels in main.py as
+  "inverted"] — TRIED swapping them, but it broke the `ctx_menu_branch` golden:
+  that path IS exercised (a left press whose release the harness doesn't send,
+  then a right-click), and the existing labels produce the correct, contractual
+  on-screen result. REVERTED — the golden is the oracle; the "inversion" doesn't
+  hold against the real curses event model. (Good: the suite caught a
+  plausible-but-wrong change.)
+  (2) FIXED a genuine crash: `RefPushDialogPopup.handle_input` Tab did
+  `names.index(self.remote)`/`% len(names)` on an empty remote list (repo with
+  no remotes) → ValueError / ZeroDivisionError out of handle_input. Guarded with
+  `if names:`. Not golden-covered (test repo has 3 remotes), so the normal cycle
+  path is unchanged. Everything else in dialogs/main reviewed clean. Full suite
+  **60/60** (goldens unchanged); units **27/27**.
 - **2026-06-28 — Iteration 48 (coverage: UserInputListItem word navigation).**
   Re-confirmed #3 can't be unit-tested headlessly (`Screen.color` needs
   `initscr()`, so `draw_line` isn't callable without curses) and its fix touches

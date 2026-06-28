@@ -155,7 +155,8 @@ class RefPushDialogPopup(ListView):
             self.force.toggle()
         elif key == KEY_TAB: # cycle through remotes
             names = [r.txt for r in self.remotes]
-            self.change_remote(names[(names.index(self.remote) + 1) % len(names)])
+            if names:  # a repo with no remotes has none to cycle (avoids index/%0 errors)
+                self.change_remote(names[(names.index(self.remote) + 1) % len(names)])
         else:
             return super().handle_input(keyboard)
         return True
