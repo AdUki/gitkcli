@@ -222,6 +222,13 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 56 (verify combined CI suite: `pytest test/`).**
+  Ran the project's actual CI invocation `python3 -m pytest test/` end-to-end
+  (not the golden + unit suites separately): **98 passed** (62 golden cases via
+  run.py's test_case + 36 unit tests) in ~181s, no collection conflicts, existing
+  goldens untouched. Confirms the documented test command is green with all the
+  post-refactor additions (the 2 new golden cases + 36 unit tests coexist
+  cleanly under one pytest run). Doc-only iteration.
 - **2026-06-28 — Iteration 55 (coverage: ButtonRowItem focus navigation).**
   Added 4 pure unit tests for the button-row navigation used by every dialog:
   `_button_indices` finds segments with `activate` (skipping text/filler),
