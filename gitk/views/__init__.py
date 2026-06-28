@@ -9,3 +9,5 @@ from gitk.views.git_diff import GitDiffView
 from gitk.views.git_refs import GitRefsView
 from gitk.views.log import LogView
 from gitk.views.context_menu import ContextMenu
+
+__all__ = ['GitLogView', 'GitDiffView', 'GitRefsView', 'LogView', 'ContextMenu']

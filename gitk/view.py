@@ -13,7 +13,6 @@ import curses
 import re
 import typing
 
-from gitk.config import KEY_CTRL, copy_to_clipboard
 from gitk.screen import Screen
 from gitk.segmented_items import WindowTopBarItem
 

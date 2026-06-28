@@ -25,9 +25,14 @@
   segmented_items(330); views.py(658) → `gitk/views/` package
   (git_log 358, context_menu 163, git_diff 109, log 33, git_refs 27, __init__ 11).
   setup.py find_packages → ['gitk','gitk.views'].
-- **NEXT (Phase 4):** the cross-module loose-coupling/import audit (verify each
-  module imports base classes + App-injected data, not sibling internals). Unit
-  tests DONE. After the audit, verify all exit criteria and finish.
+- **Phase 4 — essentially COMPLETE.** Import audit done: the gitk load-time
+  import graph is a DAG (no cycles; the two genuine back-edges items↔jobs and
+  items↔segments are broken with documented function-local imports). No module
+  imports a concrete sibling view — views reach each other via `app` at runtime;
+  every module imports only lower-layer base classes/helpers + injected `app`.
+  Removed the last unused imports (view.py KEY_CTRL/copy_to_clipboard, jobs.py
+  ID_GIT_LOG); added `__all__` to views/__init__.
+- **NEXT:** final exit-criteria verification pass, then declare completion.
 - **NEXT (Phase 3):** `gitk/main.py` (move `launch_curses` + `main`, importing
   the needed names directly from their gitk modules) → reduce gitkcli.py to a
   thin shim `from gitk.main import main; if __name__=='__main__': main()`, drop
@@ -141,7 +146,10 @@
 
 ## Phase 4 — Loose-coupling, readability, new tests
 
-- [ ] Cross-module import audit (base classes + App only; no sibling internals).
+- [x] Cross-module import audit: load-time import graph is a DAG (verified by
+      AST cycle check); two genuine cycles (items↔jobs, items↔segments) broken
+      via documented function-local imports. No concrete-sibling-view imports
+      (siblings reached via app). Unused imports removed; views/__init__ __all__.
 - [x] Every module ≤ ~600 lines. view→view 426 + list_view 333; items→items 341
       + segmented_items 330; views.py 658 → gitk/views/ package (git_log 358,
       context_menu 163, git_diff 109, log 33, git_refs 27). No exceptions needed.
@@ -168,6 +176,16 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 34 (Phase 4: loose-coupling / import audit + tidy).**
+  Mapped the gitk load-time import graph via AST and confirmed it is a DAG (no
+  cycles). The only genuine back-edges — items↔jobs and items↔segments — are
+  broken with function-local imports (DiffListItem→jobs, RefSegment→items),
+  documented inline. Confirmed no module imports a concrete sibling view (each
+  view reaches its siblings through `app`); modules depend only on lower-layer
+  base classes/helpers + the injected App. Removed genuinely-unused imports
+  (view.py KEY_CTRL/copy_to_clipboard — moved to list_view; jobs.py ID_GIT_LOG —
+  passed in by the view) and added `__all__` to views/__init__. Full suite:
+  **60 passed, 0 failed**; goldens clean; units 9/9.
 - **2026-06-28 — Iteration 33 (Phase 4: add unit tests for pure pieces).**
   Added `test/test_units.py` (9 pytest tests, no terminal): KEY_CTRL control
   codes, DEFAULT_CONFIG shape, get_config_path suffix, load_config
