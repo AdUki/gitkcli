@@ -15,10 +15,12 @@
 
 ## Current status
 
-- **Phase:** 1 — in progress. `App` instance + bridge introduced.
-- **gitkcli.py:** 4078 lines · **Gitkcli. refs:** 299 (297 code + 2 doc-comment
-  prose in the bridge note; code refs still resolve via the bridge) ·
-  **`class Gitkcli`:** 0 (now `class App`) · **package:** not created.
+- **Phase:** 1 — in progress. `App` instance + bridge + `self.app` access path
+  on Screen/View established. Next: migrate view-method `Gitkcli.<x>` refs to
+  `self.app.<x>` cluster by cluster; add `get_app()` for items/segments.
+- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 298 (≈296 code + 2 doc-comment
+  prose; code refs still resolve via the bridge) · **`class Gitkcli`:** 0 (now
+  `class App`) · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
 
@@ -34,13 +36,22 @@
 
 - [~] Introduce `App` instance + access path (`self.app` on views; `get_app()`
       parent-chain walk for items/segments; Screen holds `app`).
-      DONE: `Gitkcli` class → `App` instance (10 classmethods → instance methods,
-      `cls`→`self`; class attrs → `__init__`). A transitional module-level
-      `Gitkcli` name is bound to the single `App()` in `launch_curses` (via
-      `global Gitkcli`) so all 297 existing `Gitkcli.<x>` call sites keep
-      working unchanged. STILL TODO in this checklist item: add `self.app` on
-      views (inject at construction) + `get_app()` parent-chain walk + Screen
-      holding `app`. Doing that next, before migrating clusters.
+      DONE: (a) `Gitkcli` class → `App` instance (10 classmethods → instance
+      methods, `cls`→`self`; class attrs → `__init__`). Transitional
+      module-level `Gitkcli` name bound to the single `App()` in `launch_curses`
+      (via `global Gitkcli`) so all existing `Gitkcli.<x>` call sites keep
+      working. (b) `Screen.__init__` and `View.__init__` now set `self.app`
+      (from the bridge at construction; Screen is the root holder, views read
+      it). `View.__init__` uses `self.app.screen.add_view(...)`.
+      STILL TODO in this item: `get_app()` parent-chain walk for items/segments
+      (the current code has NO item→view parent wiring — items reach `Gitkcli`
+      directly — so this needs append/insert/header/segment back-refs added,
+      its own iteration). Then migrate clusters.
+
+      NOTE / deviation from STRUCTURE.md: the stale `ui/` parent-chain
+      (`get_screen`/`set_parent`) does NOT exist in the current single-file
+      app; items/segments currently use the `Gitkcli` global directly. So the
+      `get_app()` parent walk must be built, not merely "wired up".
 - [ ] Migrate the 10 classmethods to `App` methods (consider `SplitLayout`).
 - [ ] Replace all `Gitkcli.<x>` references with injected access, cluster by
       cluster (e.g. one iteration: all `Gitkcli.git_diff` in the diff view).
@@ -95,6 +106,17 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 2 (Phase 1: `self.app` access path on Screen/View).**
+  Added `self.app` to `Screen.__init__` and `View.__init__`, bound from the
+  transitional `Gitkcli` bridge at construction (Screen is created first, before
+  any view, so `self.app.screen` is always valid). `View.__init__` now calls
+  `self.app.screen.add_view(...)` (−1 `Gitkcli.` ref). All 16 view/dialog classes
+  subclass `ListView`→`View`, so they inherit `self.app` with no per-class
+  change. Verified the access path is live without touching call sites yet.
+  Discovered the planned `get_app()` "parent-chain walk" has no existing chain
+  to walk — items/segments reference `Gitkcli` directly today — so that becomes
+  its own iteration (add item→view + segment→item back-refs first). Full suite:
+  **60 passed, 0 failed**; goldens clean. gitkcli.py 4078→4089 lines.
 - **2026-06-28 — Iteration 1 (Phase 1 start: `Gitkcli` class → `App` instance).**
   Converted the `Gitkcli` service-locator class into an `App` *instance* class:
   the 10 `@classmethod`s became plain instance methods (`cls`→`self`), and the

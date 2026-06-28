@@ -1087,6 +1087,11 @@ class View:
                  x:typing.Optional[int] = None, y:typing.Optional[int] = None,
                  height:typing.Optional[int] = None, width:typing.Optional[int] = None):
 
+        # The App struct, reached at construction through the screen the view
+        # registers with. Views use `self.app.<x>` instead of the `Gitkcli`
+        # global; this is the injected access path the modularization moves to.
+        self.app = Gitkcli
+
         self.id:str = id
         self.view_mode:str = view_mode
         self.header_item:typing.Any = None
@@ -1113,8 +1118,8 @@ class View:
         self.panel = curses.panel.new_panel(self.win)
         self.panel.hide()
 
-        Gitkcli.screen.add_view(id, self)
-        
+        self.app.screen.add_view(id, self)
+
     def split_border_sides(self):
         """Border lines this view draws while it is a tiled split pane, as a
         subset of {'left', 'right', 'bottom'} (the top row is always the title).
@@ -3312,6 +3317,13 @@ class Screen:
         return color
 
     def __init__(self, stdscr:curses.window):
+
+        # The App struct this screen belongs to. Screen is the root holder of
+        # `app`; views read it as `self.app`, and items/segments reach it by
+        # walking up to their view. (Bound from the transitional `Gitkcli`
+        # bridge here; becomes explicit constructor injection when the bridge
+        # is removed in Phase 3.)
+        self.app = Gitkcli
 
         # Pick a colour-rendering tier from the terminal's capability. vt200/vt220
         # report no colour; NO_COLOR / --no-color force the same monochrome tier;
