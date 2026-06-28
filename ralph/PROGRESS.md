@@ -20,17 +20,14 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 3 — DONE. `launch_curses` + `main` moved to `gitk/main.py`;
-  `gitkcli.py` is now a 9-line shim (`from gitk.main import main`). The
-  re-export crutch block is GONE — no `gitk` module imports from `gitkcli`
-  anymore. setup.py ships `packages=find_packages(include=["gitk","gitk.*"])`
-  and the console script points at `gitk.main:main` (the `gitkcli` py_module shim
-  stays for the `python3 gitkcli.py` path). `import gitkcli` works; suite (which
-  launches `python3 gitkcli.py`) green.
-- **NEXT (Phase 4):** loose-coupling/readability + split oversized modules
-  (items 654→items+segmented_items, view 743→view+list_view, views 658→views/
-  package) and add unit tests for pure pieces. NOTE: items 654, view 743,
-  views 658 are > ~600 cap.
+- **Phase:** 4 — in progress (split oversized modules + loose-coupling + tests).
+  `view.py` (743) split → `view.py` (View, 426) + `gitk/list_view.py` (ListView
+  + `_raise_split_sibling`, 333); importers (dialogs, views) repointed to
+  gitk.list_view. Remaining over-cap: `items.py` 654, `views.py` 658.
+- **NEXT (Phase 4):** split `items.py` → items + segmented_items; split
+  `views.py` → views/ package (or per-view modules); then loose-coupling audit
+  + add unit tests for pure pieces (config parsing, KEY_CTRL, ref_color_and_title,
+  segment geometry, job line-parsers).
 - **NEXT (Phase 3):** `gitk/main.py` (move `launch_curses` + `main`, importing
   the needed names directly from their gitk modules) → reduce gitkcli.py to a
   thin shim `from gitk.main import main; if __name__=='__main__': main()`, drop
@@ -38,10 +35,10 @@
   STANDING LESSON: run the AST undefined-name check (scratchpad) after each
   extraction — re-exported names aren't `class` defs so a class-only scan misses
   them, and thread/runtime NameErrors only surface as wrong goldens.
-- **gitkcli.py:** 9-line shim · **package:** `gitk/{__init__,config,ids,input,
-  screen,segments,items,view,jobs,dialogs,views,log,app,main}.py` (items 654,
-  view 743, views 658, dialogs 559, jobs 427, screen 347, segments 245, main 178,
-  app 154, log 51) · **Gitkcli refs:** 0.
+- **gitkcli.py:** 9-line shim · **package (15 modules):** view 426 + list_view
+  333 (was view 743); still over cap: views 658, items 654; others ≤ 559
+  (dialogs 559, jobs 427, screen 347, segments 245, main 178, app 154, log 51,
+  config, ids, input, __init__). · **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
 
@@ -145,7 +142,9 @@
 ## Phase 4 — Loose-coupling, readability, new tests
 
 - [ ] Cross-module import audit (base classes + App only; no sibling internals).
-- [ ] Every module ≤ ~600 lines (or documented exception below).
+- [~] Every module ≤ ~600 lines (or documented exception below).
+      DONE: view.py 743 → view.py 426 + list_view.py 333. TODO: views.py 658,
+      items.py 654.
 - [ ] Introduce passed structs/dataclasses where it improves clarity (no
       behavior change).
 - [ ] Add unit tests for pure pieces (config parsing, KEY_CTRL, job line
@@ -166,6 +165,13 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 30 (Phase 4: split `view.py` → view + list_view).**
+  `gitk/view.py` was 743 lines (> ~600 cap). Split `ListView` and the
+  `_raise_split_sibling` helper into `gitk/list_view.py` (imports `View` +
+  constants from gitk.view — one-way, no cycle). view.py now 426, list_view.py
+  333. Repointed the two importers (`dialogs.py`, `views.py`) to
+  `from gitk.list_view import ...`. STRUCTURE.md updated to list both modules.
+  Full suite: **60 passed, 0 failed**; goldens clean.
 - **2026-06-28 — Iteration 29 (Phase 3: `gitk/main.py` + thin shim + packaging).**
   Moved `launch_curses` + `main` into `gitk/main.py` (imports its deps directly
   from the gitk modules). Reduced `gitkcli.py` to a 9-line shim

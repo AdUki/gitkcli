@@ -19,7 +19,7 @@ from gitk.ids import (ID_GIT_RESET, ID_GIT_REF_PUSH, ID_CONFIRM_DIALOG,
                       ID_GIT_LOG_SEARCH)
 from gitk.screen import Screen
 from gitk.jobs import Job
-from gitk.view import ListView
+from gitk.list_view import ListView
 from gitk.items import (ResetModeItem, TextListItem, SegmentedListItem,
                         UserInputListItem, SpacerListItem, PreferenceRow,
                         SeparatorItem, button_row)

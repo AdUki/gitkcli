@@ -24,7 +24,8 @@ gitk/
   segmented_items.py       # SegmentedListItem, ButtonRowItem (+ button_row),
                            #   WindowTopBarItem, UncommittedChangesListItem,
                            #   CommitListItem, PreferenceRow
-  view.py                  # View, ListView (+ _raise_split_sibling helper)
+  view.py                  # View (base) + view constants
+  list_view.py             # ListView (+ _raise_split_sibling helper)
   views/
     __init__.py
     git_log.py             # GitLogView

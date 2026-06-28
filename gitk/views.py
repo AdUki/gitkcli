@@ -17,7 +17,7 @@ from gitk.input import KeyboardState
 from gitk.ids import (ID_GIT_LOG, ID_GIT_DIFF, ID_GIT_DIFF_SEARCH, ID_GIT_REFS,
                       ID_GIT_REFS_SEARCH, ID_LOG, ID_LOG_SEARCH, ID_CONTEXT_MENU)
 from gitk.screen import Screen
-from gitk.view import ListView, _raise_split_sibling
+from gitk.list_view import ListView, _raise_split_sibling
 from gitk.jobs import (Job, GitLogJob, GitRefreshHeadJob, GitDiffJob,
                        GitSearchJob, GitRefsJob)
 from gitk.items import (WindowTopBarItem, CommitListItem,
