@@ -20,9 +20,9 @@ from gitk.ids import (ID_GIT_RESET, ID_GIT_REF_PUSH, ID_CONFIRM_DIALOG,
 from gitk.screen import Screen
 from gitk.jobs import Job
 from gitk.list_view import ListView
-from gitk.items import (ResetModeItem, TextListItem, SegmentedListItem,
-                        UserInputListItem, SpacerListItem, PreferenceRow,
-                        SeparatorItem, button_row)
+from gitk.items import (ResetModeItem, TextListItem, UserInputListItem,
+                        SpacerListItem, SeparatorItem)
+from gitk.segmented_items import SegmentedListItem, PreferenceRow, button_row
 from gitk.segments import (TextSegment, FillerSegment, ButtonSegment,
                            ToggleSegment, OnOffToggleSegment, ChoiceSegment)
 

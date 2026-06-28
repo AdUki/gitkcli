@@ -20,9 +20,10 @@ from gitk.screen import Screen
 from gitk.list_view import ListView, _raise_split_sibling
 from gitk.jobs import (Job, GitLogJob, GitRefreshHeadJob, GitDiffJob,
                        GitSearchJob, GitRefsJob)
-from gitk.items import (WindowTopBarItem, CommitListItem,
-                        UncommittedChangesListItem, ContextMenuItem,
-                        SeparatorItem, RefListItem, StatListItem, DiffListItem)
+from gitk.items import (ContextMenuItem, SeparatorItem, RefListItem,
+                        StatListItem, DiffListItem)
+from gitk.segmented_items import (WindowTopBarItem, CommitListItem,
+                                  UncommittedChangesListItem)
 from gitk.segments import (TextSegment, ButtonSegment, SplitButtonSegment,
                            DynamicTextSegment, HighlightToggleSegment)
 from gitk.dialogs import (ResetDialogPopup, RefPushDialogPopup, NewRefDialogPopup,

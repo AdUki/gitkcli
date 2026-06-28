@@ -18,8 +18,8 @@ import threading
 
 from gitk.ids import (ID_GIT_LOG, ID_GIT_DIFF, ID_GIT_REFS, ID_GIT_SEARCH,
                       ID_GIT_REFRESH_HEAD)
-from gitk.items import (TextListItem, CommitListItem, RefListItem,
-                        DiffListItem, StatListItem)
+from gitk.items import TextListItem, RefListItem, DiffListItem, StatListItem
+from gitk.segmented_items import CommitListItem
 
 class Job:
 

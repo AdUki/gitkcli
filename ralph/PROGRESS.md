@@ -20,13 +20,11 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 4 — in progress (split oversized modules + loose-coupling + tests).
-  `view.py` (743) split → `view.py` (View, 426) + `gitk/list_view.py` (ListView
-  + `_raise_split_sibling`, 333); importers (dialogs, views) repointed to
-  gitk.list_view. Remaining over-cap: `items.py` 654, `views.py` 658.
-- **NEXT (Phase 4):** split `items.py` → items + segmented_items; split
-  `views.py` → views/ package (or per-view modules); then loose-coupling audit
-  + add unit tests for pure pieces (config parsing, KEY_CTRL, ref_color_and_title,
+- **Phase:** 4 — in progress. Splits done: view→view(426)+list_view(333);
+  items→items(341)+segmented_items(330). Only `views.py` (658) remains over cap.
+- **NEXT (Phase 4):** split `views.py` → views/ package (git_log/git_diff/
+  git_refs/log/context_menu) or per-view modules; then loose-coupling audit +
+  add unit tests for pure pieces (config parsing, KEY_CTRL, ref_color_and_title,
   segment geometry, job line-parsers).
 - **NEXT (Phase 3):** `gitk/main.py` (move `launch_curses` + `main`, importing
   the needed names directly from their gitk modules) → reduce gitkcli.py to a
@@ -143,8 +141,8 @@
 
 - [ ] Cross-module import audit (base classes + App only; no sibling internals).
 - [~] Every module ≤ ~600 lines (or documented exception below).
-      DONE: view.py 743 → view.py 426 + list_view.py 333. TODO: views.py 658,
-      items.py 654.
+      DONE: view.py 743 → view.py 426 + list_view.py 333; items.py 654 →
+      items.py 341 + segmented_items.py 330. TODO: views.py 658.
 - [ ] Introduce passed structs/dataclasses where it improves clarity (no
       behavior change).
 - [ ] Add unit tests for pure pieces (config parsing, KEY_CTRL, job line
@@ -165,6 +163,16 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 31 (Phase 4: split `items.py` → items + segmented_items).**
+  Moved the 6 SegmentedListItem-family classes + `button_row` into
+  `gitk/segmented_items.py` (imports `Item` from gitk.items + segments + Screen +
+  ENTER_KEYS — one-way, no cycle). items.py (plain items) dropped to 341 lines,
+  segmented_items 330. Trimmed items.py's now-unused segment-class import to just
+  `ref_color_and_title`. Repointed the segmented-class importers: view (→
+  WindowTopBarItem), jobs (→ CommitListItem), dialogs (→ SegmentedListItem,
+  PreferenceRow, button_row), views (→ WindowTopBarItem, CommitListItem,
+  UncommittedChangesListItem). AST check clean. Full suite: **60 passed, 0
+  failed**; goldens clean.
 - **2026-06-28 — Iteration 30 (Phase 4: split `view.py` → view + list_view).**
   `gitk/view.py` was 743 lines (> ~600 cap). Split `ListView` and the
   `_raise_split_sibling` helper into `gitk/list_view.py` (imports `View` +

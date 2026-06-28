@@ -15,7 +15,7 @@ import typing
 
 from gitk.config import KEY_CTRL, copy_to_clipboard
 from gitk.screen import Screen
-from gitk.items import WindowTopBarItem, SpacerListItem, TextListItem
+from gitk.segmented_items import WindowTopBarItem
 
 HORIZONTAL_OFFSET_JUMP = 1
 
