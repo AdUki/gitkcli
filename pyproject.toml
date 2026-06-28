@@ -7,3 +7,9 @@ testpaths = ["test"]
 # test/run.py doubles as the pytest module (test_case lives there), so collect it
 # alongside the usual test_*.py pattern.
 python_files = ["run.py", "test_*.py"]
+
+[tool.ruff.lint]
+# Default rule set, with one suppression: annotations deliberately name types
+# that aren't imported (avoids import cycles; `from __future__ import annotations`
+# makes them harmless strings), so F821 would flag every forward reference.
+ignore = ["F821"]

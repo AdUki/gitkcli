@@ -36,11 +36,17 @@ import dsl  # noqa: E402
 try:
     from harness import Harness, ESC_GAP  # noqa: E402
 except ImportError as e:
-    sys.exit(f"cannot import harness ({e}); is pyte installed? "
-             f"pip install -r {os.path.join(HERE, 'requirements.txt')}")
+    sys.exit(
+        f"cannot import harness ({e}); is pyte installed? "
+        f"pip install -r {os.path.join(HERE, 'requirements.txt')}"
+    )
 
 ROOT = os.path.dirname(HERE)
 GITKCLI = os.path.join(ROOT, "gitkcli.py")
+COVERAGERC = os.path.join(ROOT, ".coveragerc")
+# All per-process parallel data files land next to this base name, regardless of
+# the child's (throwaway) cwd, so `coverage combine` can find them afterwards.
+COVERAGE_DATA = os.path.join(ROOT, ".coverage")
 PRISTINE_REPO = os.path.join(ROOT, "test", "repo")
 CONFIG_DIR = os.path.join(HERE, "config")
 CASES_DIR = os.path.join(HERE, "cases")
@@ -81,18 +87,43 @@ def normalize_golden(text):
     return lines
 
 
+def _coverage_site_dir():
+    """Directory containing the `coverage` package, for the child's PYTHONPATH."""
+    try:
+        import coverage
+    except ImportError:
+        sys.exit(
+            "coverage not installed (needed for --coverage):\n"
+            f"  pip install -r {os.path.join(HERE, 'requirements.txt')}"
+        )
+    return os.path.dirname(os.path.dirname(os.path.abspath(coverage.__file__)))
+
+
+def _coverage_cmd(*subcmd):
+    """Run `python3 -m coverage <subcmd>` against the suite's data file."""
+    env = {**os.environ, "COVERAGE_FILE": COVERAGE_DATA}
+    subprocess.run(
+        [sys.executable, "-m", "coverage", *subcmd, f"--rcfile={COVERAGERC}"],
+        cwd=ROOT,
+        env=env,
+        check=False,
+    )
+
+
 class CaseError(Exception):
     pass
 
 
 class Runner:
-    def __init__(self, update=False, verbose=False, keep=False):
+    def __init__(self, update=False, verbose=False, keep=False, coverage=False):
         self.update = update
         self.verbose = verbose
         self.keep = keep
+        self.coverage = coverage
 
     def _make_workdir(self, name, config_name):
         import tempfile
+
         work = tempfile.mkdtemp(prefix=f"gkc_{name}_")
         repo = os.path.join(work, "repo")
         xdg = os.path.join(work, "xdg")
@@ -107,15 +138,41 @@ class Runner:
         return work, repo, xdg, home
 
     def _launch(self, repo, env, rows, cols, app_args):
-        h = Harness([sys.executable, GITKCLI] + list(app_args), cwd=repo,
-                    env=env, rows=rows, cols=cols)
+        argv = [sys.executable, GITKCLI] + list(app_args)
+        if self.coverage:
+            # Run the app under coverage; --parallel-mode gives each case its
+            # own data file (combined later). COVERAGE_FILE pins them to ROOT so
+            # the child's throwaway cwd doesn't scatter them. The child env fakes
+            # HOME (git isolation), which hides the real user site-packages, so
+            # put coverage's location on PYTHONPATH explicitly.
+            pp = _coverage_site_dir()
+            if env.get("PYTHONPATH"):
+                pp += os.pathsep + env["PYTHONPATH"]
+            argv = [
+                sys.executable,
+                "-m",
+                "coverage",
+                "run",
+                f"--rcfile={COVERAGERC}",
+                GITKCLI,
+            ] + list(app_args)
+            env = {**env, "COVERAGE_FILE": COVERAGE_DATA, "PYTHONPATH": pp}
+        h = Harness(
+            argv,
+            cwd=repo,
+            env=env,
+            rows=rows,
+            cols=cols,
+            graceful=self.coverage,
+        )
         h.settle(require_output=True)
         return h
 
     def _run_shell(self, cmd, repo, env):
         """Run a shell command in the work repo (external change / setup)."""
-        r = subprocess.run(cmd, shell=True, cwd=repo, env=env,
-                           capture_output=True, text=True)
+        r = subprocess.run(
+            cmd, shell=True, cwd=repo, env=env, capture_output=True, text=True
+        )
         if r.returncode != 0:
             raise CaseError(f"run failed ({cmd!r}): {r.stderr.strip()}")
 
@@ -137,9 +194,11 @@ class Runner:
 
         # In live mode, replay only up to the last capture, then hand over.
         if live:
-            cut = max((i for i, d in enumerate(directives)
-                       if d.op == "capture"), default=len(directives) - 1)
-            directives = [d for d in directives[:cut + 1] if d.op != "expect-exit"]
+            cut = max(
+                (i for i, d in enumerate(directives) if d.op == "capture"),
+                default=len(directives) - 1,
+            )
+            directives = [d for d in directives[: cut + 1] if d.op != "expect-exit"]
 
         config_name = "default"
         size = None
@@ -187,18 +246,22 @@ class Runner:
                 elif d.op == "expect-exit":
                     if not h.wait_exit():
                         passed = False
-                        messages.append(f"  expect-exit: app still running "
-                                        f"(line {d.lineno})")
+                        messages.append(
+                            f"  expect-exit: app still running (line {d.lineno})"
+                        )
 
             if live:
                 if h is not None and h.is_alive():
-                    print(f"\n[live] replay done; handing over terminal for "
-                          f"'{name}'. Quit the app (F10) to return.\n")
+                    print(
+                        f"\n[live] replay done; handing over terminal for "
+                        f"'{name}'. Quit the app (F10) to return.\n"
+                    )
                     time.sleep(0.3)
                     h.bridge()
                 else:
-                    print(f"[live] app for '{name}' already exited; nothing to "
-                          f"attach to.")
+                    print(
+                        f"[live] app for '{name}' already exited; nothing to attach to."
+                    )
         finally:
             if h is not None:
                 h.close()
@@ -220,30 +283,39 @@ class Runner:
                 f.write("\n".join(actual) + "\n")
             return True, f"  updated {cap_name}"
         if not os.path.exists(golden_path):
-            return False, (f"  MISSING golden for '{cap_name}' "
-                           f"(run with --update to create)")
+            return False, (
+                f"  MISSING golden for '{cap_name}' (run with --update to create)"
+            )
         with open(golden_path) as f:
             expected = normalize_golden(f.read())
         if expected == actual:
             if self.verbose:
                 return True, f"  ok {cap_name}\n" + "\n".join(actual)
             return True, None
-        diff = "\n".join(difflib.unified_diff(
-            expected, actual,
-            fromfile=f"golden/{cap_name}.txt", tofile=f"actual/{cap_name}",
-            lineterm=""))
+        diff = "\n".join(
+            difflib.unified_diff(
+                expected,
+                actual,
+                fromfile=f"golden/{cap_name}.txt",
+                tofile=f"actual/{cap_name}",
+                lineterm="",
+            )
+        )
         return False, f"  DIFF {cap_name}:\n{_indent(diff)}"
 
 
 def _indent(text):
-    return "\n".join("    " + l for l in text.splitlines())
+    return "\n".join("    " + line for line in text.splitlines())
 
 
 def discover_cases(flt=None):
     if not os.path.isdir(CASES_DIR):
         return []
-    names = sorted(d for d in os.listdir(CASES_DIR)
-                   if os.path.isfile(os.path.join(CASES_DIR, d, "spec.txt")))
+    names = sorted(
+        d
+        for d in os.listdir(CASES_DIR)
+        if os.path.isfile(os.path.join(CASES_DIR, d, "spec.txt"))
+    )
     if flt:
         names = [n for n in names if flt in n]
     return names
@@ -254,8 +326,8 @@ def main():
         prog="run.py",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Golden-screen tests: feed keys to the real curses app on a "
-                    "fixed-size pty, capture the screen, and diff it against "
-                    "cases/<name>/golden/*.txt.",
+        "fixed-size pty, capture the screen, and diff it against "
+        "cases/<name>/golden/*.txt.",
         epilog=textwrap.dedent("""\
             examples:
               python3 test/run.py                  run all cases
@@ -275,19 +347,43 @@ def main():
                    reports button press/release, not motion)
 
             first run needs the fixture:  bash test/create_test_repo.sh
-            """))
-    ap.add_argument("-u", "--update", action="store_true",
-                    help="(re)generate golden snapshots instead of comparing")
-    ap.add_argument("--filter", metavar="SUBSTR",
-                    help="only run cases whose name contains SUBSTR")
-    ap.add_argument("-v", "--verbose", action="store_true",
-                    help="print captured frames for passing captures too")
-    ap.add_argument("--keep", action="store_true",
-                    help="keep per-case work dirs (print their paths)")
-    ap.add_argument("--live", metavar="CASE",
-                    help="replay CASE in this terminal, then hand over control")
-    ap.add_argument("--list", action="store_true",
-                    help="list available case names (respects --filter) and exit")
+            """),
+    )
+    ap.add_argument(
+        "-u",
+        "--update",
+        action="store_true",
+        help="(re)generate golden snapshots instead of comparing",
+    )
+    ap.add_argument(
+        "--filter", metavar="SUBSTR", help="only run cases whose name contains SUBSTR"
+    )
+    ap.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="print captured frames for passing captures too",
+    )
+    ap.add_argument(
+        "--keep",
+        action="store_true",
+        help="keep per-case work dirs (print their paths)",
+    )
+    ap.add_argument(
+        "--live",
+        metavar="CASE",
+        help="replay CASE in this terminal, then hand over control",
+    )
+    ap.add_argument(
+        "--list",
+        action="store_true",
+        help="list available case names (respects --filter) and exit",
+    )
+    ap.add_argument(
+        "--coverage",
+        action="store_true",
+        help="measure gitk/ coverage while running, then print a report",
+    )
     args = ap.parse_args()
 
     if args.list:
@@ -296,10 +392,23 @@ def main():
         return
 
     if not os.path.exists(PRISTINE_REPO):
-        sys.exit(f"fixture missing: {PRISTINE_REPO}\n"
-                 f"run: bash {os.path.join(ROOT, 'test', 'create_test_repo.sh')}")
+        sys.exit(
+            f"fixture missing: {PRISTINE_REPO}\n"
+            f"run: bash {os.path.join(ROOT, 'test', 'create_test_repo.sh')}"
+        )
 
-    runner = Runner(update=args.update, verbose=args.verbose, keep=args.keep)
+    if args.coverage and args.update:
+        sys.exit("--coverage and --update don't mix (one measures, one rewrites)")
+
+    runner = Runner(
+        update=args.update,
+        verbose=args.verbose,
+        keep=args.keep,
+        coverage=args.coverage,
+    )
+
+    if args.coverage:
+        _coverage_cmd("erase")  # drop any stale data from a previous run
 
     if args.live:
         passed, messages = runner.run_case(args.live, live=True)
@@ -309,8 +418,9 @@ def main():
 
     names = discover_cases(args.filter)
     if not names:
-        sys.exit("no cases found"
-                 + (f" matching {args.filter!r}" if args.filter else ""))
+        sys.exit(
+            "no cases found" + (f" matching {args.filter!r}" if args.filter else "")
+        )
 
     n_pass = n_fail = 0
     for name in names:
@@ -330,6 +440,14 @@ def main():
             n_fail += 1
 
     print(f"\n{n_pass} passed, {n_fail} failed")
+
+    if args.coverage:
+        print()
+        _coverage_cmd("combine")  # merge the per-case parallel data files
+        _coverage_cmd("report")
+        _coverage_cmd("html")
+        print(f"\nHTML report: {os.path.join(ROOT, 'htmlcov', 'index.html')}")
+
     sys.exit(1 if n_fail else 0)
 
 
@@ -343,13 +461,14 @@ except ImportError:
     _pytest = None
 
 if _pytest is not None:
+
     @_pytest.fixture(scope="session", autouse=True)
     def _fixture_repo():
         """Build the deterministic fixture repo once if it isn't there yet."""
         if not os.path.exists(PRISTINE_REPO):
             subprocess.run(
-                ["bash", os.path.join(ROOT, "test", "create_test_repo.sh")],
-                check=True)
+                ["bash", os.path.join(ROOT, "test", "create_test_repo.sh")], check=True
+            )
 
     @_pytest.mark.parametrize("name", discover_cases())
     def test_case(name):

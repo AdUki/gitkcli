@@ -8,13 +8,14 @@ from gitk.jobs import GitRefsJob
 from gitk.list_view import ListView
 from gitk.segmented_items import WindowTopBarItem
 
+
 class GitRefsView(ListView):
     def __init__(self, app):
-        super().__init__(app, ID_GIT_REFS) 
+        super().__init__(app, ID_GIT_REFS)
 
-        self.refs = {} # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
+        self.refs = {}  # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
 
-        self.set_header_item(WindowTopBarItem('Git references', title_color = 5))
+        self.set_header_item(WindowTopBarItem("Git references", title_color=5))
         self.set_search_dialog(SearchDialogPopup(app, ID_GIT_REFS_SEARCH))
 
         self.view_new_ref = NewRefDialogPopup(app)

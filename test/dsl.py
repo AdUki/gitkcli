@@ -29,19 +29,45 @@ class SpecError(Exception):
 
 # token name (lower-case, inside <...>) -> bytes, application-mode forms.
 NAMED = {
-    "up": b"\x1bOA", "down": b"\x1bOB", "right": b"\x1bOC", "left": b"\x1bOD",
-    "home": b"\x1b[1~", "end": b"\x1b[4~",
-    "enter": b"\r", "return": b"\r", "tab": b"\t", "space": b" ",
-    "bspace": b"\x7f", "backspace": b"\x7f", "esc": b"\x1b", "escape": b"\x1b",
-    "pgup": b"\x1b[5~", "pageup": b"\x1b[5~",
-    "pgdn": b"\x1b[6~", "pagedown": b"\x1b[6~",
-    "ins": b"\x1b[2~", "insert": b"\x1b[2~", "del": b"\x1b[3~", "delete": b"\x1b[3~",
-    "f1": b"\x1bOP", "f2": b"\x1bOQ", "f3": b"\x1bOR", "f4": b"\x1bOS",
-    "f5": b"\x1b[15~", "f6": b"\x1b[17~", "f7": b"\x1b[18~", "f8": b"\x1b[19~",
-    "f9": b"\x1b[20~", "f10": b"\x1b[21~", "f11": b"\x1b[23~", "f12": b"\x1b[24~",
+    "up": b"\x1bOA",
+    "down": b"\x1bOB",
+    "right": b"\x1bOC",
+    "left": b"\x1bOD",
+    "home": b"\x1b[1~",
+    "end": b"\x1b[4~",
+    "enter": b"\r",
+    "return": b"\r",
+    "tab": b"\t",
+    "space": b" ",
+    "bspace": b"\x7f",
+    "backspace": b"\x7f",
+    "esc": b"\x1b",
+    "escape": b"\x1b",
+    "pgup": b"\x1b[5~",
+    "pageup": b"\x1b[5~",
+    "pgdn": b"\x1b[6~",
+    "pagedown": b"\x1b[6~",
+    "ins": b"\x1b[2~",
+    "insert": b"\x1b[2~",
+    "del": b"\x1b[3~",
+    "delete": b"\x1b[3~",
+    "f1": b"\x1bOP",
+    "f2": b"\x1bOQ",
+    "f3": b"\x1bOR",
+    "f4": b"\x1bOS",
+    "f5": b"\x1b[15~",
+    "f6": b"\x1b[17~",
+    "f7": b"\x1b[18~",
+    "f8": b"\x1b[19~",
+    "f9": b"\x1b[20~",
+    "f10": b"\x1b[21~",
+    "f11": b"\x1b[23~",
+    "f12": b"\x1b[24~",
     "s-f5": b"\x1b[15;2~",
-    "c-left": b"\x1b[1;5D", "c-right": b"\x1b[1;5C",
-    "c-del": b"\x1b[3;5~", "c-delete": b"\x1b[3;5~",
+    "c-left": b"\x1b[1;5D",
+    "c-right": b"\x1b[1;5C",
+    "c-del": b"\x1b[3;5~",
+    "c-delete": b"\x1b[3;5~",
 }
 
 _COUNT_RE = re.compile(r"^(?P<base>.+)\*(?P<n>\d+)$")
@@ -58,18 +84,18 @@ MOUSE_GAP = 0.08
 class KeyEvent:
     data: bytes
     is_esc: bool
-    post_delay: float = 0.0   # pause after sending this event's bytes
+    post_delay: float = 0.0  # pause after sending this event's bytes
 
 
 @dataclasses.dataclass
 class Directive:
-    op: str            # size|config|launch|run|key|text|wait|resize|capture|expect-exit
+    op: str  # size|config|launch|run|key|text|wait|resize|capture|expect-exit
     lineno: int
     # op-specific payload
     rows: int = 0
     cols: int = 0
-    name: str = ""             # capture/config name, or shell command for `run`
-    seconds: float = 0.0       # for wait <seconds>; 0 means "stable"
+    name: str = ""  # capture/config name, or shell command for `run`
+    seconds: float = 0.0  # for wait <seconds>; 0 means "stable"
     keys: list = dataclasses.field(default_factory=list)  # for key/text: [KeyEvent]
     args: list = dataclasses.field(default_factory=list)  # extra argv for `launch`
 
@@ -98,7 +124,7 @@ def _parse_key_line(rest: str) -> list:
         m = _COUNT_RE.match(token)
         if m:
             try:
-                cand = _token_bytes(m.group("base"))
+                _token_bytes(m.group("base"))  # validate; raises if not a key
                 base, count = m.group("base"), int(m.group("n"))
             except SpecError:
                 pass  # not a real key*N; fall through to literal handling
@@ -138,8 +164,9 @@ def _parse_mouse(rest: str, lineno: int) -> "Directive":
         raise SpecError(f"line {lineno}: mouse COL ROW out of X10 range (1..223)")
 
     def ev(button):  # X10: left press=0, right press=2, release=3
-        return KeyEvent(b"\x1b[M" + bytes([32 + button, 32 + x, 32 + y]),
-                        False, MOUSE_GAP)
+        return KeyEvent(
+            b"\x1b[M" + bytes([32 + button, 32 + x, 32 + y]), False, MOUSE_GAP
+        )
 
     verb = verb.lower()
     if verb == "click":
@@ -186,8 +213,10 @@ def parse_spec(text: str):
                 raise SpecError(f"line {lineno}: bad text literal ({e})")
             literal = "".join(parts) if parts else ""
             directives.append(
-                Directive("text", lineno,
-                          keys=[KeyEvent(literal.encode("utf-8"), False)]))
+                Directive(
+                    "text", lineno, keys=[KeyEvent(literal.encode("utf-8"), False)]
+                )
+            )
         elif op == "wait":
             if rest in ("", "stable"):
                 directives.append(Directive("wait", lineno, seconds=0.0))

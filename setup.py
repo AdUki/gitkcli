@@ -2,7 +2,8 @@
 """
 Setup script for GitkCLI
 """
-from setuptools import setup, find_packages
+
+from setuptools import find_packages, setup
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -16,7 +17,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/AdUki/gitkcli",
-    py_modules=["gitkcli"],   # the entry-point shim
+    py_modules=["gitkcli"],  # the entry-point shim
     packages=find_packages(include=["gitk", "gitk.*"]),  # the application package
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -34,7 +35,7 @@ setup(
     # pyperclip is optional: the clipboard helper imports it lazily and degrades
     # to a warning when absent. Offer it as an extra: pip install gitkcli[clipboard]
     extras_require={
-        'clipboard': ['pyperclip'],
+        "clipboard": ["pyperclip"],
     },
     entry_points={
         "console_scripts": [
@@ -42,4 +43,3 @@ setup(
         ],
     },
 )
-

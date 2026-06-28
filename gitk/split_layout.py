@@ -8,6 +8,7 @@ only to get at the screen and the two panes (`self.app.screen` / `git_log` /
 
 from __future__ import annotations
 
+
 class SplitLayout:
     def __init__(self, app):
         self.app = app
@@ -16,12 +17,12 @@ class SplitLayout:
         #   'off'     - normal single-view behaviour
         #   'side'    - git-log left, git-diff right
         #   'stacked' - git-log top, git-diff bottom
-        self.split_mode = 'off'
-        self.split_ratio = 0.5         # fraction of the screen given to the git-log pane
+        self.split_mode = "off"
+        self.split_ratio = 0.5  # fraction of the screen given to the git-log pane
         self._raising_split_sibling = False
 
         # Layout the app opens in: 'fullscreen' (single view), 'side' or 'stacked'.
-        self.default_view_mode = 'fullscreen'
+        self.default_view_mode = "fullscreen"
 
     def split_active(self):
         """True only when the split is currently shown as two tiled panes.
@@ -31,22 +32,24 @@ class SplitLayout:
         only make sense with a visible split (Esc/q stepping, divider drag,
         pane focus pairing) key off this, not off `split_mode` alone.
         """
-        return self.split_mode != 'off' and self.app.git_log.view_mode == 'window'
+        return self.split_mode != "off" and self.app.git_log.view_mode == "window"
 
     def cycle_split_view(self):
-        self.set_split_mode({'off': 'side', 'side': 'stacked', 'stacked': 'off'}[self.split_mode])
+        self.set_split_mode(
+            {"off": "side", "side": "stacked", "stacked": "off"}[self.split_mode]
+        )
         return True
 
     def set_split_mode(self, mode):
         self.split_mode = mode
         self.apply_split_layout()
-        if mode != 'off':
+        if mode != "off":
             # Seed the diff pane from the current selection if it has no content yet.
             if not self.app.git_diff.items:
                 item = self.app.git_log.get_selected()
-                if item and hasattr(item, 'load_to_view'):
+                if item and hasattr(item, "load_to_view"):
                     item.load_to_view()
-            self.app.git_log.show()   # focus the log pane (raises the diff pane with it)
+            self.app.git_log.show()  # focus the log pane (raises the diff pane with it)
 
     def apply_split_layout(self):
         """Position the git-log/git-diff panes for the current split mode."""
@@ -54,15 +57,20 @@ class SplitLayout:
         min_w, min_h = 12, 4
         # Both axes must clear their minimum, otherwise a pane would be tiled
         # into a degenerate (<=0 content) window.
-        fits = ((self.split_mode == 'side' and cols >= 2 * min_w and lines >= min_h) or
-                (self.split_mode == 'stacked' and lines >= 2 * min_h and cols >= min_w))
-        if self.split_mode != 'off' and fits:
-            if self.split_mode == 'side':
-                log_w = max(min_w, min(cols - min_w, int(round(cols * self.split_ratio))))
+        fits = (self.split_mode == "side" and cols >= 2 * min_w and lines >= min_h) or (
+            self.split_mode == "stacked" and lines >= 2 * min_h and cols >= min_w
+        )
+        if self.split_mode != "off" and fits:
+            if self.split_mode == "side":
+                log_w = max(
+                    min_w, min(cols - min_w, int(round(cols * self.split_ratio)))
+                )
                 self.app.git_log.set_tiled(0, 0, lines, log_w)
                 self.app.git_diff.set_tiled(log_w, 0, lines, cols - log_w)
             else:
-                log_h = max(min_h, min(lines - min_h, int(round(lines * self.split_ratio))))
+                log_h = max(
+                    min_h, min(lines - min_h, int(round(lines * self.split_ratio)))
+                )
                 self.app.git_log.set_tiled(0, 0, log_h, cols)
                 self.app.git_diff.set_tiled(0, log_h, lines - log_h, cols)
         else:

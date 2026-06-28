@@ -1,2 +1,4 @@
-# Test-only dependency (the app itself is stdlib-only).
+# Test-only dependencies (the app itself is stdlib-only).
 pyte>=0.8
+# Optional: only needed for `python3 test/run.py --coverage`.
+coverage>=7.0

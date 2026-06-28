@@ -1,0 +1,19 @@
+# Coverage config for the golden-screen suite (python3 test/run.py --coverage).
+#
+# The app runs as a forked+exec'd child on a pty, one process per case. We
+# measure it with `coverage run --parallel-mode` (one data file per process)
+# and `coverage combine` the lot afterwards.
+[run]
+source = gitk
+branch = true
+parallel = true
+# The app drains git subprocess pipes on helper threads.
+concurrency = thread
+# The harness ends a case by sending SIGTERM (see test/harness.py close()).
+# This makes coverage flush its data on that signal instead of losing it.
+sigterm = true
+
+[report]
+show_missing = true
+# The bottom line is what we care about; per-file detail is opt-in.
+skip_empty = true

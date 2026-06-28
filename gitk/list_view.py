@@ -11,24 +11,32 @@ import re
 import typing
 
 from gitk.config import KEY_CTRL, copy_to_clipboard
-from gitk.screen import Screen
 from gitk.items import SpacerListItem, TextListItem
-from gitk.view import View, HORIZONTAL_OFFSET_JUMP, SPLIT_DIVIDER_COLOR
+from gitk.screen import Screen
+from gitk.view import HORIZONTAL_OFFSET_JUMP, SPLIT_DIVIDER_COLOR, View
+
 
 class ListView(View):
-    def __init__(self, app, id:str, view_mode:str = 'fullscreen',
-                 x:typing.Optional[int] = None, y:typing.Optional[int] = None,
-                 height:typing.Optional[int] = None, width:typing.Optional[int] = None):
+    def __init__(
+        self,
+        app,
+        id: str,
+        view_mode: str = "fullscreen",
+        x: typing.Optional[int] = None,
+        y: typing.Optional[int] = None,
+        height: typing.Optional[int] = None,
+        width: typing.Optional[int] = None,
+    ):
 
         super().__init__(app, id, view_mode, x, y, height, width)
         self.items = []
-        self._selected:int = 0
-        self._offset_y:int = 0
-        self._offset_x:int = 0
-        self.autoscroll:bool = False
-        self._search_dialog:typing.Optional[SearchDialogPopup] = None
+        self._selected: int = 0
+        self._offset_y: int = 0
+        self._offset_x: int = 0
+        self.autoscroll: bool = False
+        self._search_dialog: typing.Optional[SearchDialogPopup] = None
 
-    def set_search_dialog(self, search_dialog:"SearchDialogPopup"):
+    def set_search_dialog(self, search_dialog: "SearchDialogPopup"):
         self._search_dialog = search_dialog
         self._search_dialog.parent_list_view = self
 
@@ -37,17 +45,21 @@ class ListView(View):
         size themselves to their content; fixed_x/y = None centres it."""
         self.set_dimensions(None, None, height, width)
 
-    def _focus_button_row(self, focus = 'first'):
+    def _focus_button_row(self, focus="first"):
         """Make only self._button_row navigable (Left/Right pick a button, Enter
         activates it) and select it. focus='last' defaults to the final button -
         used for destructive confirmations so a bare Enter lands on [Cancel]."""
         for item in self.items:
             item.is_selectable = False
         self._button_row.is_selectable = True
-        (self._button_row.focus_last if focus == 'last' else self._button_row.reset_focus)()
+        (
+            self._button_row.focus_last
+            if focus == "last"
+            else self._button_row.reset_focus
+        )()
         self._selected = len(self.items) - 1
 
-    def _show_message_box(self, lines, button_row_item, focus = 'first'):
+    def _show_message_box(self, lines, button_row_item, focus="first"):
         """Lay out a content-sized popup and show it: a spacer, the message
         `lines` (each a str or (text, color) tuple, indented two spaces), a
         spacer, then the button row - the only navigable item. Sizes to the
@@ -57,7 +69,7 @@ class ListView(View):
         content = len(self.header_item.get_text())
         for line in lines:
             text, color = line if isinstance(line, tuple) else (line, 1)
-            self.append(TextListItem('  ' + text, color, selectable = False))
+            self.append(TextListItem("  " + text, color, selectable=False))
             content = max(content, len(text) + 2)  # + 2 for the left indent
         self.append(SpacerListItem())
         self._button_row = button_row_item
@@ -114,21 +126,25 @@ class ListView(View):
                 self.dirty = True
 
     def clear(self):
-        self.app.log.debug(f'Clear view {self.id}')
+        self.app.log.debug(f"Clear view {self.id}")
         self.items = []
         self.set_selected(0)
         self._offset_y = 0
         self._offset_x = 0
         self.dirty = True
 
-    def set_selected(self, what:int|str|re.Pattern, visible_mode = 'center') -> bool:
+    def set_selected(self, what: int | str | re.Pattern, visible_mode="center") -> bool:
         new_index = None
 
         if isinstance(what, int):
             if (0 <= what < len(self.items)) or (what <= 0 and len(self.items) == 0):
                 new_index = what
         elif isinstance(what, (str, re.Pattern)):
-            test = (lambda t: what in t) if isinstance(what, str) else (lambda t: what.match(t))
+            test = (
+                (lambda t: what in t)
+                if isinstance(what, str)
+                else (lambda t: what.match(t))
+            )
             for i, item in enumerate(self.items):
                 if test(item.get_text()):
                     new_index = i
@@ -136,7 +152,6 @@ class ListView(View):
 
         if new_index is not None:
             if self._selected != new_index:
-
                 # The target row is non-selectable: land on the nearest
                 # selectable row, preferring the travel direction. Search both
                 # passes from the ORIGINAL target and stop at the first hit, so
@@ -144,7 +159,10 @@ class ListView(View):
                 # match. Each pass stops at the current selection (never crosses
                 # it). If neither finds one, leave selection unchanged.
                 direction = 1 if new_index > self._selected else -1
-                if 0 <= new_index < len(self.items) and not self.items[new_index].is_selectable:
+                if (
+                    0 <= new_index < len(self.items)
+                    and not self.items[new_index].is_selectable
+                ):
                     target = new_index
                     for dir in [direction, -direction]:
                         i = target + dir
@@ -165,11 +183,17 @@ class ListView(View):
                     # do not change view offset when item is already visible
                     return True
 
-                if visible_mode == 'center':
-                    self._offset_y = max(0, min(self._selected - int(self.height / 2), len(self.items) - self.height))
-                elif visible_mode == 'top':
+                if visible_mode == "center":
+                    self._offset_y = max(
+                        0,
+                        min(
+                            self._selected - int(self.height / 2),
+                            len(self.items) - self.height,
+                        ),
+                    )
+                elif visible_mode == "top":
                     self._offset_y = max(0, self._selected)
-                elif visible_mode == 'bottom':
+                elif visible_mode == "bottom":
                     self._offset_y = max(0, self._selected - self.height + 1)
             return True
 
@@ -181,7 +205,7 @@ class ListView(View):
         else:
             return None
 
-    def search(self, backward:bool = False, repeat:bool = False):
+    def search(self, backward: bool = False, repeat: bool = False):
         if not self._search_dialog:
             return
 
@@ -202,11 +226,13 @@ class ListView(View):
                     return
 
     def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == 'wheel-up':
+        if mouse.event_type == "wheel-up":
             self._offset_y = max(0, self._offset_y - 5)
             return True
-        if mouse.event_type == 'wheel-down':
-            self._offset_y = min(self._offset_y + 5, max(0, len(self.items) - self.height))
+        if mouse.event_type == "wheel-down":
+            self._offset_y = min(
+                self._offset_y + 5, max(0, len(self.items) - self.height)
+            )
             return True
 
         if not self.resize_mode:
@@ -214,12 +240,23 @@ class ListView(View):
             view_y = mouse.y - self.y
             index = self._offset_y + view_y
 
-            if 0 <= view_y < self.height and 0 <= view_x < self.width and 0 <= index < len(self.items):
+            if (
+                0 <= view_y < self.height
+                and 0 <= view_x < self.width
+                and 0 <= index < len(self.items)
+            ):
                 selected = False
-                if 'move' in mouse.event_type:
+                if "move" in mouse.event_type:
                     if self._selected == index:
-                        return False # do not redraw when hovering over same item
-                if mouse.event_type == 'left-click' or mouse.event_type == 'double-click' or ('move' in mouse.event_type and self in self.app.mouse.movement_capture):
+                        return False  # do not redraw when hovering over same item
+                if (
+                    mouse.event_type == "left-click"
+                    or mouse.event_type == "double-click"
+                    or (
+                        "move" in mouse.event_type
+                        and self in self.app.mouse.movement_capture
+                    )
+                ):
                     if self.items[index].is_selectable:
                         self.set_selected(index)
                         selected = True
@@ -230,7 +267,10 @@ class ListView(View):
                 mouse.x = view_x + self._offset_x
                 mouse.y = index
                 handled = item.handle_mouse_input(mouse)
-                if handled and ('left-click' == mouse.event_type or 'double-click' == mouse.event_type):
+                if handled and (
+                    "left-click" == mouse.event_type
+                    or "double-click" == mouse.event_type
+                ):
                     self.app.mouse.clicked_item = item
                 if selected or handled:
                     return True
@@ -248,43 +288,49 @@ class ListView(View):
             self.dirty = True
             return True
 
-        if key == curses.KEY_UP or key == ord('k'):
-            self.set_selected(self._selected - 1, visible_mode = 'top')
-        elif key == curses.KEY_DOWN or key == ord('j'):
-            self.set_selected(self._selected + 1, visible_mode = 'bottom')
-        elif key == curses.KEY_LEFT or key == ord('h'):
+        if key == curses.KEY_UP or key == ord("k"):
+            self.set_selected(self._selected - 1, visible_mode="top")
+        elif key == curses.KEY_DOWN or key == ord("j"):
+            self.set_selected(self._selected + 1, visible_mode="bottom")
+        elif key == curses.KEY_LEFT or key == ord("h"):
             if self._offset_x - HORIZONTAL_OFFSET_JUMP >= 0:
                 self._offset_x -= HORIZONTAL_OFFSET_JUMP
             else:
                 self._offset_x = 0
-        elif key == curses.KEY_RIGHT or key == ord('l'):
+        elif key == curses.KEY_RIGHT or key == ord("l"):
             max_length = 0
-            for i in range(self._offset_y, min(self._offset_y + self.height, len(self.items))):
+            for i in range(
+                self._offset_y, min(self._offset_y + self.height, len(self.items))
+            ):
                 length = len(self.items[i].get_text())
                 if length > max_length:
                     max_length = length
             if self._offset_x + self.width < max_length:
                 self._offset_x += HORIZONTAL_OFFSET_JUMP
-        elif key == curses.KEY_PPAGE or key == KEY_CTRL('b'):
+        elif key == curses.KEY_PPAGE or key == KEY_CTRL("b"):
             self._offset_y = max(0, self._offset_y - self.height)
             self.set_selected(max(0, self._selected - self.height))
-        elif key == curses.KEY_NPAGE or key == KEY_CTRL('f'):
-            self._offset_y = min(self._offset_y + self.height, max(0, len(self.items) - self.height))
-            self.set_selected(min(self._selected + self.height, max(0, len(self.items) - 1)))
-        elif key == curses.KEY_HOME or key == ord('g'):
+        elif key == curses.KEY_NPAGE or key == KEY_CTRL("f"):
+            self._offset_y = min(
+                self._offset_y + self.height, max(0, len(self.items) - self.height)
+            )
+            self.set_selected(
+                min(self._selected + self.height, max(0, len(self.items) - 1))
+            )
+        elif key == curses.KEY_HOME or key == ord("g"):
             self.set_selected(0)
-        elif key == curses.KEY_END or key == ord('G'):
+        elif key == curses.KEY_END or key == ord("G"):
             self.set_selected(max(0, len(self.items) - 1))
-        elif key == ord('/'):
+        elif key == ord("/"):
             if self._search_dialog:
                 self._search_dialog.clear()
                 self._search_dialog.show()
-        elif key == ord('n'):
+        elif key == ord("n"):
             # repeat=True so 'next' wraps past the last match back to the first
             # (less/vim/gitk behaviour), instead of silently stopping at the end.
-            self.search(repeat = True)
-        elif key == ord('N'):
-            self.search(backward = True, repeat = True)
+            self.search(repeat=True)
+        elif key == ord("N"):
+            self.search(backward=True, repeat=True)
         else:
             return super().handle_input(keyboard)
 
@@ -296,7 +342,9 @@ class ListView(View):
             idx = i + self._offset_y
             item = self.items[idx]
             selected = idx == self._selected
-            matched = self._search_dialog.matches(item) if self._search_dialog else False
+            matched = (
+                self._search_dialog.matches(item) if self._search_dialog else False
+            )
 
             # curses throws exception if you want to write a character in bottom left corner
             width = self.width
@@ -307,7 +355,9 @@ class ListView(View):
                 separator_items.append((i, width))
             else:
                 self.win.move(self.y + i, self.x)
-                item.draw_line(self.win, self._offset_x, width, selected, matched, False)
+                item.draw_line(
+                    self.win, self._offset_x, width, selected, matched, False
+                )
 
         self.win.clrtobot()
         super().draw()
@@ -321,22 +371,23 @@ class ListView(View):
                 i, width = pair
                 if sides is not None:
                     # split pane: join only the borders that are actually drawn
-                    if 'left' in sides:
+                    if "left" in sides:
                         self.win.move(self.y + i, self.x - 1)
-                        self.win.addstr('├', join)
+                        self.win.addstr("├", join)
                     else:
                         self.win.move(self.y + i, self.x)
-                    self.win.addstr('─' * width, Screen.color(color))
-                    if 'right' in sides:
-                        self.win.addstr('┤', join)
-                elif self.view_mode == 'window':
-                    self.win.move(self.y + i, self.x-1)
-                    self.win.addstr('├', Screen.color(color))
-                    self.win.addstr('─' * width, Screen.color(color))
-                    self.win.addstr('┤', Screen.color(color))
+                    self.win.addstr("─" * width, Screen.color(color))
+                    if "right" in sides:
+                        self.win.addstr("┤", join)
+                elif self.view_mode == "window":
+                    self.win.move(self.y + i, self.x - 1)
+                    self.win.addstr("├", Screen.color(color))
+                    self.win.addstr("─" * width, Screen.color(color))
+                    self.win.addstr("┤", Screen.color(color))
                 else:
                     self.win.move(self.y + i, self.x)
-                    self.win.addstr('─' * width, Screen.color(color))
+                    self.win.addstr("─" * width, Screen.color(color))
+
 
 def _raise_split_sibling(view, sibling):
     """Keep both split panes adjacent on top of the stack with `view` focused.

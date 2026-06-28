@@ -41,8 +41,17 @@ def _set_winsize(fd, rows, cols):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
-_NAMED = {"black": 0, "red": 1, "green": 2, "brown": 3, "yellow": 3,
-          "blue": 4, "magenta": 5, "cyan": 6, "white": 7}
+_NAMED = {
+    "black": 0,
+    "red": 1,
+    "green": 2,
+    "brown": 3,
+    "yellow": 3,
+    "blue": 4,
+    "magenta": 5,
+    "cyan": 6,
+    "white": 7,
+}
 
 
 def _color_sgr(color, fg):
@@ -55,7 +64,7 @@ def _color_sgr(color, fg):
         return str((90 if fg else 100) + _NAMED[color[6:]])
     if len(color) == 6:
         try:
-            r, g, b = (int(color[i:i + 2], 16) for i in (0, 2, 4))
+            r, g, b = (int(color[i : i + 2], 16) for i in (0, 2, 4))
             return ("38" if fg else "48") + ";2;%d;%d;%d" % (r, g, b)
         except ValueError:
             pass
@@ -78,7 +87,11 @@ def _sgr(state):
 class Harness:
     """A gitkcli process on a pty plus its emulated screen."""
 
-    def __init__(self, argv, cwd, env, rows, cols):
+    def __init__(self, argv, cwd, env, rows, cols, graceful=False):
+        # graceful: end the child with SIGTERM (and let it shut down) before
+        # falling back to SIGKILL. Needed under coverage so coverage.py's
+        # SIGTERM handler can flush its data file; a bare SIGKILL loses it.
+        self.graceful = graceful
         self.rows = rows
         self.cols = cols
         self.pid = None
@@ -155,12 +168,21 @@ class Harness:
     def close(self):
         """Terminate the child and release the pty."""
         if self.pid is not None and self._alive:
-            try:
-                os.kill(self.pid, signal.SIGKILL)
-                os.waitpid(self.pid, 0)
-            except OSError:
-                pass
-            self._alive = False
+            if self.graceful:
+                # Ask politely first so coverage.py can flush, then drain the
+                # pty for a moment to let the child run its shutdown + exit.
+                try:
+                    os.kill(self.pid, signal.SIGTERM)
+                except OSError:
+                    pass
+                self.wait_exit(timeout=3.0)
+            if self._alive:
+                try:
+                    os.kill(self.pid, signal.SIGKILL)
+                    os.waitpid(self.pid, 0)
+                except OSError:
+                    pass
+                self._alive = False
         if self.master >= 0:
             try:
                 os.close(self.master)
@@ -252,8 +274,14 @@ class Harness:
         default = ("default", "default", False, False, False, False)
 
         def st(c):
-            return (c.fg, c.bg, bool(c.bold), bool(c.reverse),
-                    bool(c.italics), bool(c.underscore))
+            return (
+                c.fg,
+                c.bg,
+                bool(c.bold),
+                bool(c.reverse),
+                bool(c.italics),
+                bool(c.underscore),
+            )
 
         lines = []
         for y in range(self.rows):
@@ -302,8 +330,10 @@ class Harness:
         keeps the test's fixed size, faithfully reproducing the captured frame.
         """
         if not sys.stdin.isatty() or not sys.stdout.isatty():
-            sys.stderr.write("--live needs a real terminal (stdin/stdout are "
-                             "not a tty); nothing to hand over.\n")
+            sys.stderr.write(
+                "--live needs a real terminal (stdin/stdout are "
+                "not a tty); nothing to hand over.\n"
+            )
             return
         stdin_fd = sys.stdin.fileno()
         old = termios.tcgetattr(stdin_fd)
@@ -317,7 +347,7 @@ class Harness:
             # text-only repaint would hide the cursor row entirely.
             buf = bytes(self._raw)
             while buf:
-                buf = buf[os.write(sys.stdout.fileno(), buf):]
+                buf = buf[os.write(sys.stdout.fileno(), buf) :]
             while self.is_alive() and self.master >= 0:
                 try:
                     r, _, _ = select.select([self.master, stdin_fd], [], [], 0.2)

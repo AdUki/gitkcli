@@ -12,6 +12,7 @@ from gitk.input import KeyboardState
 from gitk.jobs import Job
 from gitk.split_layout import SplitLayout
 
+
 class App:
     """The application struct: holds the app's components and the service
     methods that coordinate them.
@@ -24,34 +25,50 @@ class App:
 
     def __init__(self):
         self.running = True
-        self.screen:Screen = None
-        self.mouse:MouseState = None
-        self.keyboard:KeyboardState = None
-        self.log:Log = None
-        self.git_log:GitLogView = None
-        self.git_diff:GitDiffView = None
-        self.git_refs:GitRefsView = None
-        self.context_menu:ContextMenu = None
-        self.preferences:"PreferencesDialogPopup" = None
-        self.confirm_dialog:"ConfirmDialogPopup" = None
-        self.error_dialog:"ErrorDialogPopup" = None
+        self.screen: Screen = None
+        self.mouse: MouseState = None
+        self.keyboard: KeyboardState = None
+        self.log: Log = None
+        self.git_log: GitLogView = None
+        self.git_diff: GitDiffView = None
+        self.git_refs: GitRefsView = None
+        self.context_menu: ContextMenu = None
+        self.preferences: "PreferencesDialogPopup" = None
+        self.confirm_dialog: "ConfirmDialogPopup" = None
+        self.error_dialog: "ErrorDialogPopup" = None
 
         # Split-view state + tiling logic, reached as `app.split`.
         self.split = SplitLayout(self)
 
-    def run_git(self, args, ok=None, err='Error', refresh_head=False, reload_refs=False,
-                check_uncommitted=False, force=False, reasons=(), retry=None,
-                title='', lines=(), label='[Yes]'):
+    def run_git(
+        self,
+        args,
+        ok=None,
+        err="Error",
+        refresh_head=False,
+        reload_refs=False,
+        check_uncommitted=False,
+        force=False,
+        reasons=(),
+        retry=None,
+        title="",
+        lines=(),
+        label="[Yes]",
+    ):
         """Run a git command and react to the result. On success: run the
         requested refreshes and log `ok`. On a forceable rejection (`retry` set,
         not already forcing, and a `reasons` substring in stderr): pop a confirm
         dialog. Otherwise log `err` + stderr. Returns the CompletedProcess."""
         result = Job.run_job(self, args)
         if result.returncode == 0:
-            if refresh_head: self.git_log.refresh_head()
-            if reload_refs: self.git_refs.reload_refs()
-            if check_uncommitted: self.git_log.check_uncommitted_changes()
-            if ok: self.log.success(ok)
+            if refresh_head:
+                self.git_log.refresh_head()
+            if reload_refs:
+                self.git_refs.reload_refs()
+            if check_uncommitted:
+                self.git_log.check_uncommitted_changes()
+            if ok:
+                self.log.success(ok)
         elif retry and not force and any(r in result.stderr for r in reasons):
             self.confirm_dialog.confirm(title, list(lines), retry, confirm_label=label)
         else:
@@ -67,7 +84,7 @@ class App:
         """Open the active view's search dialog (the F6 / '/' action)."""
         view = self.screen.get_active_view()
         if view:
-            view.handle_input(KeyboardState(ord('/')))
+            view.handle_input(KeyboardState(ord("/")))
 
     def open_context_menu(self, at_selection=True):
         """Open the context menu for the active view's selected item.
@@ -86,7 +103,7 @@ class App:
             return
 
         view = self.screen.get_active_view()
-        if not view or not hasattr(view, 'get_selected'):
+        if not view or not hasattr(view, "get_selected"):
             return
         item = view.get_selected()
         if item is None:
@@ -98,7 +115,11 @@ class App:
         # above the menu (the keyboard has no cursor to show what it acts on).
         row_y = win_y + view.y + (view._selected - view._offset_y) + 1
 
-        targets = item.get_context_menu_targets() if hasattr(item, 'get_context_menu_targets') else None
+        targets = (
+            item.get_context_menu_targets()
+            if hasattr(item, "get_context_menu_targets")
+            else None
+        )
         if at_selection and targets:
             menu.start_cycle(targets, view, row_x, row_y)
         else:

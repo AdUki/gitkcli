@@ -49,6 +49,7 @@ from gitk.items import UserInputListItem
 # (color_depth / _default_bg are class attributes; save+restore so the chosen
 # tier doesn't leak into other tests.)
 
+
 @contextlib.contextmanager
 def _screen_tier(depth, default_bg=-1):
     odepth, obg = Screen.color_depth, Screen._default_bg
@@ -58,18 +59,21 @@ def _screen_tier(depth, default_bg=-1):
     finally:
         Screen.color_depth, Screen._default_bg = odepth, obg
 
+
 def test_to_pal_full_tier_passes_through():
     with _screen_tier(256):
         assert Screen._to_pal(5) == 5
-        assert Screen._to_pal(20) == 20       # 256-only index preserved
+        assert Screen._to_pal(20) == 20  # 256-only index preserved
         assert Screen._to_pal(247) == 247
+
 
 def test_to_pal_8_and_mono_collapse_high_indices_to_white():
     for depth in (8, 0):
         with _screen_tier(depth):
-            assert Screen._to_pal(5) == 5      # the 8 base ANSI colours survive
+            assert Screen._to_pal(5) == 5  # the 8 base ANSI colours survive
             assert Screen._to_pal(20) == curses.COLOR_WHITE
             assert Screen._to_pal(247) == curses.COLOR_WHITE
+
 
 def test_to_pal_negative_is_the_default_bg():
     with _screen_tier(8, default_bg=-1):
@@ -84,20 +88,25 @@ def test_to_pal_negative_is_the_default_bg():
 # Pure arithmetic on (txt, cursor_pos); the two-phase skip (over spaces, then
 # over the word) is the part that actually breaks.
 
+
 def _input(txt, cursor):
     return SimpleNamespace(txt=txt, cursor_pos=cursor)
+
 
 def test_prev_word_pos_from_mid_word_goes_to_word_start():
     # "foo bar baz", cursor at 6 (inside "bar") -> 4 (start of "bar")
     assert UserInputListItem.prev_word_pos(_input("foo bar baz", 6)) == 4
 
+
 def test_prev_word_pos_from_word_start_skips_over_space_to_previous_word():
     # cursor at 4 (start of "bar", preceded by a space) -> 0 (start of "foo")
     assert UserInputListItem.prev_word_pos(_input("foo bar baz", 4)) == 0
 
+
 def test_next_word_pos_from_word_start_goes_to_word_end():
     # cursor at 0 ("foo") -> 3 (the space after "foo")
     assert UserInputListItem.next_word_pos(_input("foo bar baz", 0)) == 3
+
 
 def test_next_word_pos_skips_leading_spaces_then_word():
     # cursor at 3 (the space) -> 7 (end of "bar")
@@ -110,18 +119,20 @@ def test_next_word_pos_skips_leading_spaces_then_word():
 # shows the rendered row but cannot reveal that column->segment mapping, which
 # the click routing and draw_line must agree on under horizontal scroll.
 
+
 def test_get_segment_on_offset_maps_columns_to_segments():
-    a, b, c = TextSegment('ab'), TextSegment('cd'), TextSegment('ef')
-    it = SegmentedListItem([a, b, c])          # get_text() == 'ab cd ef'
+    a, b, c = TextSegment("ab"), TextSegment("cd"), TextSegment("ef")
+    it = SegmentedListItem([a, b, c])  # get_text() == 'ab cd ef'
     assert it.get_segment_on_offset(0) is a
     assert it.get_segment_on_offset(1) is a
-    assert it.get_segment_on_offset(3) is b     # after 'ab' + separator column
+    assert it.get_segment_on_offset(3) is b  # after 'ab' + separator column
     assert it.get_segment_on_offset(4) is b
     assert it.get_segment_on_offset(6) is c
 
+
 def test_get_segment_on_offset_separator_column_hits_no_segment():
-    a, b = TextSegment('ab'), TextSegment('cd')
-    it = SegmentedListItem([a, b])             # 'ab cd'; column 2 is the separator gap
+    a, b = TextSegment("ab"), TextSegment("cd")
+    it = SegmentedListItem([a, b])  # 'ab cd'; column 2 is the separator gap
     hit = it.get_segment_on_offset(2)
-    assert hit is not a and hit is not b        # the gap maps to a fresh empty Segment
-    assert hit.get_text() == ''
+    assert hit is not a and hit is not b  # the gap maps to a fresh empty Segment
+    assert hit.get_text() == ""

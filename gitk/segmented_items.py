@@ -12,18 +12,18 @@ import curses
 
 from gitk.ids import ID_GIT_LOG
 from gitk.input import ENTER_KEYS
-from gitk.screen import Screen
 from gitk.items import Item
-from gitk.segments import (Segment, FillerSegment, TextSegment, RefSegment,
-                           ButtonSegment)
+from gitk.screen import Screen
+from gitk.segments import ButtonSegment, FillerSegment, RefSegment, Segment, TextSegment
+
 
 class SegmentedListItem(Item):
-    def __init__(self, segments = [], bg_color = 1):
+    def __init__(self, segments=[], bg_color=1):
         super().__init__()
-        self.segment_separator = ' '
+        self.segment_separator = " "
         # Character used for the FillerSegment and the trailing fill. Defaults to
         # a space (an ordinary row); the rule-line title bar overrides it to '─'.
-        self.fill_char = ' '
+        self.fill_char = " "
         self.segments = segments
         # Wire each segment back to this item so segments can reach the App
         # struct (segment -> item -> view -> app) via get_app().
@@ -56,7 +56,7 @@ class SegmentedListItem(Item):
         segment_pos = 0
         for segment in self.get_segments():
             if isinstance(segment, FillerSegment):
-                length = getattr(self, 'fill_width', 0)
+                length = getattr(self, "fill_width", 0)
             else:
                 length = len(segment.get_text())
             menu = segment.get_context_menu()
@@ -79,13 +79,16 @@ class SegmentedListItem(Item):
 
     def handle_mouse_input(self, mouse) -> bool:
         segment = self.clicked_segment or self.get_segment_on_offset(mouse.x)
-        if 'left-click' == mouse.event_type or 'double-click' == mouse.event_type:
+        if "left-click" == mouse.event_type or "double-click" == mouse.event_type:
             self.clicked_segment = segment
         elif self.clicked_segment:
-            if 'release' in mouse.event_type:
+            if "release" in mouse.event_type:
                 self.clicked_segment = None
-            if 'move-in' in mouse.event_type and self.clicked_segment != self.get_segment_on_offset(mouse.x):
-                mouse.event_type = mouse.event_type.replace('in', 'out')
+            if (
+                "move-in" in mouse.event_type
+                and self.clicked_segment != self.get_segment_on_offset(mouse.x)
+            ):
+                mouse.event_type = mouse.event_type.replace("in", "out")
         if segment and segment.handle_mouse_input(mouse):
             return True
         return super().handle_mouse_input(mouse)
@@ -99,9 +102,11 @@ class SegmentedListItem(Item):
             # Clamp to 0: a negative width (content wider than the window) would
             # otherwise rewind segment_pos in get_segment_on_offset and misroute
             # clicks on the buttons that follow the filler.
-            self.fill_width = max(0, int((width - len(self.get_text())) / fillers_count))
+            self.fill_width = max(
+                0, int((width - len(self.get_text())) / fillers_count)
+            )
             return self.fill_width * self.fill_char
-        return ''
+        return ""
 
     def _segment_selected(self, index, selected):
         # Per-segment highlight flag. Base: whole row follows the row selection.
@@ -115,7 +120,7 @@ class SegmentedListItem(Item):
         remaining_width = width
         bg_selected = self._bg_selected(selected)
         sep = self.segment_separator
-        prev_visible = False   # did the previous segment render any columns?
+        prev_visible = False  # did the previous segment render any columns?
         for index, segment in enumerate(self.get_segments()):
             if index > 0 and sep:
                 # The inter-segment separator occupies a column in get_text()
@@ -132,13 +137,25 @@ class SegmentedListItem(Item):
                     offset = 0
                     if prev_visible:
                         remaining_width -= len(visible_sep)
-                        win.addstr(visible_sep, Screen.color(self.bg_color, bg_selected, marked, matched))
+                        win.addstr(
+                            visible_sep,
+                            Screen.color(self.bg_color, bg_selected, marked, matched),
+                        )
             if isinstance(segment, FillerSegment):
                 txt = self.get_fill_txt(width)
-                win.addstr(txt, Screen.color(self.bg_color, bg_selected, marked, matched))
+                win.addstr(
+                    txt, Screen.color(self.bg_color, bg_selected, marked, matched)
+                )
                 length = len(txt)
             else:
-                length = segment.draw(win, offset, remaining_width, self._segment_selected(index, selected), matched, marked)
+                length = segment.draw(
+                    win,
+                    offset,
+                    remaining_width,
+                    self._segment_selected(index, selected),
+                    matched,
+                    marked,
+                )
                 txt = segment.get_text()
             prev_visible = length > 0
             remaining_width -= length
@@ -148,24 +165,32 @@ class SegmentedListItem(Item):
 
         if remaining_width > 0:
             if bg_selected or marked:
-                win.addstr(' ' * remaining_width, Screen.color(self.bg_color, bg_selected, marked, matched))
-            elif self.fill_char != ' ':
+                win.addstr(
+                    " " * remaining_width,
+                    Screen.color(self.bg_color, bg_selected, marked, matched),
+                )
+            elif self.fill_char != " ":
                 # rule-line bar: trail the title with its fill character ('─')
-                win.addstr(self.fill_char * remaining_width, Screen.color(self.bg_color, bg_selected, marked, matched))
+                win.addstr(
+                    self.fill_char * remaining_width,
+                    Screen.color(self.bg_color, bg_selected, marked, matched),
+                )
             else:
                 win.clrtoeol()
+
 
 class ButtonRowItem(SegmentedListItem):
     """A row of buttons navigable with Left/Right (or h/l); Enter activates the
     focused button. Only the focused button is highlighted, not the whole row."""
-    def __init__(self, segments = [], bg_color = 1):
+
+    def __init__(self, segments=[], bg_color=1):
         super().__init__(segments, bg_color)
         self.is_selectable = True
         indices = self._button_indices()
         self.focused = indices[0] if indices else 0
 
     def _button_indices(self):
-        return [i for i, s in enumerate(self.segments) if hasattr(s, 'activate')]
+        return [i for i, s in enumerate(self.segments) if hasattr(s, "activate")]
 
     def reset_focus(self):
         # Back to the default (first/primary) button. Reused dialogs call this on
@@ -188,14 +213,16 @@ class ButtonRowItem(SegmentedListItem):
 
     def handle_input(self, keyboard):
         key = keyboard.key
-        if key == curses.KEY_LEFT or key == ord('h'):
+        if key == curses.KEY_LEFT or key == ord("h"):
             self._move_focus(-1)
             return True
-        if key == curses.KEY_RIGHT or key == ord('l'):
+        if key == curses.KEY_RIGHT or key == ord("l"):
             self._move_focus(1)
             return True
         if key in ENTER_KEYS:
-            if 0 <= self.focused < len(self.segments) and hasattr(self.segments[self.focused], 'activate'):
+            if 0 <= self.focused < len(self.segments) and hasattr(
+                self.segments[self.focused], "activate"
+            ):
                 self.segments[self.focused].activate()
             return True
         return False
@@ -207,9 +234,11 @@ class ButtonRowItem(SegmentedListItem):
         # Never band the whole row; only the focused button is highlighted.
         return False
 
+
 def button_row(*buttons):
     """A centered, keyboard-navigable row of buttons (fillers pad both ends)."""
     return ButtonRowItem([FillerSegment(), *buttons, FillerSegment()])
+
 
 class WindowTopBarItem(SegmentedListItem):
     """Top title bar of a main view, rendered as a horizontal rule line with the
@@ -226,29 +255,29 @@ class WindowTopBarItem(SegmentedListItem):
     TEXT_ACTIVE, TEXT_INACTIVE = 1, 18
     CLOSE_COLOR = 2  # red [X] close button, in both active and inactive bars
 
-    def __init__(self, title:str, additional_segments = [], title_color = None):
+    def __init__(self, title: str, additional_segments=[], title_color=None):
         # title_color overrides the title's text colour when active. The bar
         # shows a live "[current/total]" line counter after the title, updated
         # generically by View.draw_header from the owning view's state.
         self._base_title = title
         self.title_segment = TextSegment(title, self.TEXT_ACTIVE)
         self._title_color = title_color
-        self._leading = TextSegment('─', self.LINE_ACTIVE)
-        self._close_segment = ButtonSegment("[X]", lambda: self.get_app().screen.hide_active_view(), self.TEXT_ACTIVE)
-        segments = [self._leading,
-                    self.title_segment,
-                    FillerSegment()]
+        self._leading = TextSegment("─", self.LINE_ACTIVE)
+        self._close_segment = ButtonSegment(
+            "[X]", lambda: self.get_app().screen.hide_active_view(), self.TEXT_ACTIVE
+        )
+        segments = [self._leading, self.title_segment, FillerSegment()]
         segments.extend(additional_segments)
         segments.append(self._close_segment)
         super().__init__(segments, self.LINE_INACTIVE)
-        self.fill_char = '─'
+        self.fill_char = "─"
 
-    def set_title(self, txt:str):
+    def set_title(self, txt: str):
         self._base_title = txt
         self.title_segment.set_text(txt)
 
-    def set_counter(self, current:int, total:int):
-        self.title_segment.set_text(f'{self._base_title} [{current}/{total}]')
+    def set_counter(self, current: int, total: int):
+        self.title_segment.set_text(f"{self._base_title} [{current}/{total}]")
 
     def get_fill_txt(self, width):
         # Reserve one trailing column so the rule always ends "…[X]─": a dash
@@ -278,23 +307,24 @@ class WindowTopBarItem(SegmentedListItem):
     def handle_mouse_input(self, mouse) -> bool:
         if super().handle_mouse_input(mouse):
             return True
-        if 'double-click' == mouse.event_type:
+        if "double-click" == mouse.event_type:
             self.get_app().screen.get_active_view().toggle_window_mode()
             return True
         return False
 
+
 class UncommittedChangesListItem(SegmentedListItem):
-    def __init__(self, staged:bool = False):
+    def __init__(self, staged: bool = False):
         super().__init__()
         self._staged = staged
-        self.id = 'local-staged' if staged else 'local-working'
+        self.id = "local-staged" if staged else "local-working"
         # Graph art mirrored from the HEAD row when in --graph mode; set by
         # GitLogView._place_uncommitted_rows, empty otherwise.
-        self.graph_prefix = ''
+        self.graph_prefix = ""
         if self._staged:
-            self.txt, self.color = 'Uncommitted changes (staged)', 3
+            self.txt, self.color = "Uncommitted changes (staged)", 3
         else:
-            self.txt, self.color = 'Uncommitted changes (working directory)', 2
+            self.txt, self.color = "Uncommitted changes (working directory)", 2
 
     def get_row_context_menu(self):
         return (self, ID_GIT_LOG)
@@ -310,16 +340,22 @@ class UncommittedChangesListItem(SegmentedListItem):
         diff = self.get_app().git_diff
         if diff.commit_id == self.id:
             return
-        diff.job.show_diff('HEAD', cached = self._staged, title = self.txt,
-                           view_id = self.id, add_to_jump_list = True)
+        diff.job.show_diff(
+            "HEAD",
+            cached=self._staged,
+            title=self.txt,
+            view_id=self.id,
+            add_to_jump_list=True,
+        )
 
     def activate(self) -> bool:
         self.load_to_view()
         self.get_app().git_diff.show()
         return True
 
+
 class CommitListItem(SegmentedListItem):
-    def __init__(self, id:str):
+    def __init__(self, id: str):
         super().__init__()
         self.id = id
 
@@ -331,20 +367,26 @@ class CommitListItem(SegmentedListItem):
         commit = app.git_log.commits[self.id]
         segments = []
 
-        if commit['prefix']:
-            segments.append(TextSegment(commit['prefix']))
+        if commit["prefix"]:
+            segments.append(TextSegment(commit["prefix"]))
         if app.git_log.show_commit_id:
             segments.append(TextSegment(self.id[:7], 4))
         if app.git_log.show_commit_date:
-            segments.append(TextSegment(commit['date'].strftime("%Y-%m-%d %H:%M"), 5))
+            segments.append(TextSegment(commit["date"].strftime("%Y-%m-%d %H:%M"), 5))
         if app.git_log.show_commit_author:
-            segments.append(TextSegment(commit['author'], 6))
-        segments.append(TextSegment(commit['title']))
+            segments.append(TextSegment(commit["author"], 6))
+        segments.append(TextSegment(commit["title"]))
 
-        head_position = len(segments) + 1 # +1, because we want to skip 'HEAD ->' segment
+        head_position = (
+            len(segments) + 1
+        )  # +1, because we want to skip 'HEAD ->' segment
         for ref in app.git_refs.refs.get(self.id, []):
-            segments.insert(head_position if ref['name'] == app.git_log.head_branch else len(segments),
-                            RefSegment(ref, app.git_log.head_branch))
+            segments.insert(
+                head_position
+                if ref["name"] == app.git_log.head_branch
+                else len(segments),
+                RefSegment(ref, app.git_log.head_branch),
+            )
 
         # These segments are rebuilt each call (not the wired self.segments), so
         # back-wire them so they can reach the app via get_app() too.
@@ -353,7 +395,14 @@ class CommitListItem(SegmentedListItem):
         return segments
 
     def draw_line(self, win, offset, width, selected, matched, marked):
-        super().draw_line(win, offset, width, selected, matched, self.get_app().git_log.marked_commit_id == self.id)
+        super().draw_line(
+            win,
+            offset,
+            width,
+            selected,
+            matched,
+            self.get_app().git_log.marked_commit_id == self.id,
+        )
 
     def load_to_view(self):
         diff = self.get_app().git_diff
@@ -365,13 +414,16 @@ class CommitListItem(SegmentedListItem):
         self.get_app().git_diff.show()
         return True
 
+
 class PreferenceRow(SegmentedListItem):
     """A label + interactive control (toggle/choice). Enter activates the control."""
+
     def __init__(self, label, control):
-        super().__init__([TextSegment(f'  {label}  '), FillerSegment(), control, TextSegment('  ')])
+        super().__init__(
+            [TextSegment(f"  {label}  "), FillerSegment(), control, TextSegment("  ")]
+        )
         self.control = control
 
     def activate(self) -> bool:
         self.control.activate()
         return True
-
