@@ -536,6 +536,12 @@ class GitSearchDialogPopup(SearchDialogPopup):
             if self.search_type == "txt":
                 return super().handle_input(keyboard)
 
+            if not self.input.txt:
+                # An empty query would launch a doomed git command — e.g. ID
+                # search runs `git log ^!` → "fatal: bad revision" → a spurious
+                # red error dialog. Swallow Enter and keep the prompt open.
+                return True
+
             self.hide()
 
             args = []

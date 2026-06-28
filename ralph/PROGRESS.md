@@ -222,6 +222,21 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 72 (BUG: empty git-search query popped a fatal-error dialog).**
+  First swept all `re.{compile,search,match,sub}` in gitk/ — clean now (every
+  remaining use is a fixed literal or already guarded: iter-70 try/except,
+  iter-71 re.escape). Then found a real UX bug in `GitSearchDialogPopup.handle_input`
+  (gitk/dialogs.py): for the non-`txt` search types, pressing Enter built git
+  args from `self.input.txt` with NO empty check and launched the job. Verified
+  the empty [ID] case runs `git log ^!` → `fatal: bad revision '^!'` on stderr,
+  and `Log.error` raises a modal red dialog for every stderr line — so just
+  opening search, Tab→[ID], Enter pops a scary error. FIX: guard `if not
+  self.input.txt: return True` (swallow Enter, keep the prompt open) — mirrors
+  the txt path, which already no-ops on empty input. Added an additive golden
+  `search_empty_id` (/, Tab, Enter on empty → dialog stays, no error popup;
+  verified the frame shows the Search dialog and zero "fatal/bad revision").
+  Suite **68/68** (existing goldens untouched; one new case); units **50/50**.
+  (16th genuine bug.)
 - **2026-06-28 — Iteration 71 (BUG: unescaped file path in diff-jump regex).**
   Sibling of iter-70, found auditing `StatListItem.jump_to_file` (gitk/items.py).
   Clicking/Enter on a diff *stat* row jumps to that file's hunk via

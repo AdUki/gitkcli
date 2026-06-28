@@ -1,0 +1,12 @@
+# Pressing Enter on an empty git-search query must NOT launch a doomed git
+# command. Cycle to [ID] with one Tab and hit Enter with an empty field: the
+# search prompt stays open and no red "fatal: bad revision '^!'" error dialog
+# appears (regression for the empty-input guard in GitSearchDialogPopup).
+size      120x40
+config    default
+launch
+key       /
+key       <Tab>
+key       <Enter>
+wait      stable
+capture   empty_id_no_error
