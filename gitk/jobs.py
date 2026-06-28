@@ -151,10 +151,14 @@ class Job:
 
         self.app.log.info(' '.join(['Job started', self.id + ':', self.cmd] + args + self.args))
 
+        # Pin LC_ALL=C (same convention as run_job) so git speaks English: the
+        # commit --format output is locale-independent, but stderr conditions
+        # (e.g. an unborn branch) are parsed by callers.
         self.job = subprocess.Popen(
                 self.cmd.split(' ') + args + self.args,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
+                stderr=subprocess.PIPE,
+                env={**os.environ, 'LC_ALL': 'C'})
 
         stdout_thread = threading.Thread(target=self._reader_thread, args=(self.job.stdout, False))
         stderr_thread = threading.Thread(target=self._reader_thread, args=(self.job.stderr, True))
@@ -196,7 +200,15 @@ class GitLogJob(Job):
 
     def start_job(self, args = [], on_finished = None):
         self.app.git_log.commits.clear()
-        super().start_job(args, on_finished) 
+        super().start_job(args, on_finished)
+
+    def process_message(self, message):
+        # A repo with no commits yet (fresh `git init`, unborn branch) makes
+        # `git log` exit non-zero with this stderr. That's an empty log, not an
+        # error — swallow it instead of popping a scary red error dialog.
+        if message['type'] == 'error' and 'does not have any commits yet' in message['message']:
+            return
+        super().process_message(message)
 
     def process_line(self, line) -> typing.Any:
         try:

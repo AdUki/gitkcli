@@ -1,0 +1,9 @@
+# A repository with no commits yet (fresh `git init`, unborn branch) must show an
+# empty Git Log, NOT a "fatal: ... does not have any commits yet" error dialog.
+# Reset the work repo to an empty one, then launch. Regression guard for the
+# GitLogJob unborn-branch stderr handling.
+size      120x40
+config    default
+run       rm -rf .git && git init -q && git config user.email t@example.com && git config user.name Tester
+launch
+capture   empty_repo

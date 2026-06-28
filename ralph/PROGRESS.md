@@ -222,6 +222,21 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 63 (BUG: empty-repo error dialog; + LC_ALL on streaming jobs).**
+  Probed a previously-untested real scenario — launching in a repo with no
+  commits (fresh `git init`, unborn branch) — via a pty harness and found a
+  genuine UX bug: `git log` exits non-zero with "fatal: your current branch
+  '…' does not have any commits yet", whose stderr was surfaced as a scary red
+  **error dialog** on startup instead of just an empty log. Fixes: (1) pin
+  `LC_ALL=C` on the streaming `Job` Popen (it lacked it, unlike `run_job` —
+  aligns with the documented git-output convention and makes stderr reliably
+  English; commit `--format` output is locale-independent, so the 62 populated
+  goldens stay byte-identical — verified); (2) `GitLogJob.process_message`
+  swallows the unborn-branch stderr (empty repo → empty log, no dialog;
+  inherited by GitRefreshHeadJob). Verified via the pty probe (dialog gone,
+  clean `[0/0]` log) and added an additive `log_empty_repo` golden (resets the
+  work repo to empty via `run`, then captures). Full suite **63/63** (existing
+  goldens untouched); units **39/39**.
 - **2026-06-28 — Iteration 62 (docs audit complete: Search/Context sections verified).**
   Finished the README↔code audit: the **Search Features** section is accurate —
   the mode labels `[Txt]/[ID]/[Message]/[Filepaths]/[Diff]` match
