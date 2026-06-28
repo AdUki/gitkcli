@@ -222,6 +222,20 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 93 (coverage: the force-confirm dialog; no bug).**
+  Applied the confirm-pattern lens to the remaining destructive ops: `remove_tag`
+  (deletes local + pushes --delete to ALL remotes) and `remove_remote_ref` are
+  aggressive-but-defensible (no git safe/force distinction, explicit "Remove…"
+  items) — not clear bugs, left as-is. (Noted: their synchronous network pushes
+  can freeze the UI, but that's the app-wide synchronous-run_git design, not a
+  one-step fix.) Then closed a real coverage gap: the shared force/overwrite
+  ConfirmDialogPopup (used by checkout/create/push/rename/remove-branch) had ZERO
+  golden coverage despite gating every destructive force op. Added
+  `force_confirm_dialog` (b -> New Branch -> type existing name "master" -> Enter
+  -> `git branch master <c>` fails "already exists" -> red confirm with
+  [Overwrite]/[Cancel]), deterministic 6/6 — locks the dialog rendering and the
+  end-to-end force-confirm flow. No code change. Suite **77/77** (existing
+  goldens untouched; one new case); units **93/93**.
 - **2026-06-28 — Iteration 92 (SAFETY FIX: branch delete force-confirms instead of bare -D).**
   Probed stash handling (fine: show-ref lists refs/stash, parsed as type 'stash',
   shows as a "stash" row, context menu -> Copy ref name; can't jump since stashes

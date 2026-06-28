@@ -1,0 +1,14 @@
+# The force/overwrite confirm dialog (shared by checkout/create/push/rename/
+# remove-branch) had no coverage. Trigger it: 'b' opens New Branch on the
+# selected commit; typing an existing name ("master") makes `git branch master
+# <commit>` fail "already exists", so run_git pops the red confirm with
+# [Overwrite]/[Cancel] (focus defaults to the safe [Cancel]).
+size      120x40
+config    default
+launch
+key       b
+wait      stable
+text      "master"
+key       <Enter>
+wait      stable
+capture   force_confirm
