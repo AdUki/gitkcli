@@ -1,0 +1,12 @@
+# Pressing Enter with an empty name in the New Branch dialog must NOT run
+# `git branch "" <commit>` (which errors "fatal: '' is not a valid branch
+# name" and pops a red error dialog). 'b' opens the dialog on the selected
+# commit; Enter on the empty field cancels with no error popup, back to the log.
+size      120x40
+config    default
+launch
+key       b
+wait      stable
+key       <Enter>
+wait      stable
+capture   no_error_after_empty

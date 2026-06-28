@@ -222,6 +222,17 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 80 (BUG: empty New-Branch name popped a fatal-error dialog).**
+  Audited the refs view / RefListItem (sound — last-row width reduced upstream,
+  negative-pad is safe), then found an empty-input bug (same class as iter-72) in
+  `NewRefDialogPopup.execute` (gitk/dialogs.py): pressing 'b' on a commit opens
+  the New Branch dialog, and Enter on an empty field ran `git branch "" <commit>`
+  → `fatal: '' is not a valid branch name` → a spurious red error dialog (also
+  affects tag creation). FIX: guard `if not self.input.txt.strip(): return`
+  (treat empty Enter as cancel — the base handler already hid the dialog). Added
+  an additive golden `new_branch_empty_name` (b, Enter on empty → back to the
+  log, no "fatal/not a valid" dialog). Suite **72/72** (existing goldens
+  untouched; one new case); units **66/66**. (24th genuine bug.)
 - **2026-06-28 — Iteration 79 (BUG: jump-to-file used the wrong path for renamed files).**
   Probed the diffstat rename formats. The stat regex's group(1) — used as the
   jump-to-file target in `StatListItem` — mangles directory renames:

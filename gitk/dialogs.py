@@ -439,6 +439,11 @@ class NewRefDialogPopup(UserInputDialogPopup):
         return True
 
     def execute(self):
+        # An empty name would run `git branch "" <commit>` -> "fatal: '' is not a
+        # valid branch name" -> a spurious red error dialog. Treat empty Enter as
+        # a cancel (the base handler already hid the dialog).
+        if not self.input.txt.strip():
+            return
         self._create_ref(self.ref_type, self.input.txt, self.commit_id, self.force.toggled)
         super().execute()
 
