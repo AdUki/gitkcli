@@ -31,11 +31,12 @@
   SplitButtonSegment (callback deferred via lambda). Jobs DONE (instance
   methods): Job base + GitLogJob/GitRefreshHeadJob/GitDiffJob/GitSearchJob/
   GitRefsJob now hold `self.app` (injected via constructor by the owning view).
-  Remaining 73 refs: the `Job.run_job` classmethod (1, logging — needs an app
-  handle without `self`), the `GitRefsView.get_ref_color_and_title` classmethod
-  (1), `MouseState`/`KeyboardState` (~7), `copy_to_clipboard` module fn (2), and
-  the App/launch_curses/main-loop entry point (~61, become `app.` in Phase 2/3).
-- **gitkcli.py:** 4121 lines · **Gitkcli. refs:** 73 (code; +2 doc-prose) ·
+  `MouseState`/`KeyboardState` DONE (`app` set on the real instances in
+  launch_curses; methods use `self.app`). Remaining 68 refs: the `Job.run_job`
+  classmethod (1, logging), the `GitRefsView.get_ref_color_and_title`
+  classmethod (1), `copy_to_clipboard` module fn (2), and the
+  App/launch_curses/main-loop entry point (~64, become `app.` in Phase 2/3).
+- **gitkcli.py:** 4131 lines · **Gitkcli. refs:** 68 (code; +2 doc-prose) ·
   **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
@@ -127,6 +128,17 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 13 (Phase 1: migrate MouseState/KeyboardState).**
+  Both are `@dataclass`es and `KeyboardState` is constructed in ~6 places as
+  synthetic single-positional key events, so adding `app` as a *field* would
+  break those. Instead added an UNANNOTATED `app = None` class attribute to each
+  (dataclass ignores unannotated names → no new field), set it on the single
+  real `mouse`/`keyboard` in launch_curses, and migrated their instance-method
+  refs (`read`, `read_curses_event`, `process_mouse_event`) to `self.app`. The
+  synthetic KeyboardState instances keep `app=None` but never call the logging
+  `read()`. Full suite: **60 passed, 0 failed**; goldens clean. `Gitkcli.` refs
+  73→68 (7 helper refs migrated; +2 new `Gitkcli.mouse/keyboard.app =` lines in
+  the entry point, which convert to `app.` in Phase 3).
 - **2026-06-28 — Iteration 12 (Phase 1: migrate Git*Job classes to self.app).**
   Jobs have no parent chain (not items), so they hold `app` directly: added an
   `app` first param to `Job.__init__` and threaded it through every subclass

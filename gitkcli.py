@@ -3622,6 +3622,11 @@ class KeyboardState:
     key: int = -1                                   # normalized key code
     sequence: list = dataclasses.field(default_factory=list)  # raw escape bytes
 
+    # The App struct. Unannotated so dataclass does NOT make it a field — the
+    # many synthetic KeyboardState(<key>) instances stay single-positional. Set
+    # only on the real keyboard (the one that calls read(), which logs).
+    app = None
+
     def read(self, stdscr) -> bool:
         """Read and normalize a key from curses. Returns False when nothing
         usable was read (timeout or an unrecognized escape sequence)."""
@@ -3636,7 +3641,7 @@ class KeyboardState:
                 if key == 27: sequence.clear()
                 sequence.append(key)
                 key = stdscr.getch()
-            Gitkcli.log.debug('Escape sequence: ' + str(sequence))
+            self.app.log.debug('Escape sequence: ' + str(sequence))
             self.sequence = sequence
             if len(sequence) == 1:
                 key = curses.KEY_EXIT
@@ -3651,7 +3656,7 @@ class KeyboardState:
             else:
                 return False
         else:
-            Gitkcli.log.debug('Key: ' + str(key))
+            self.app.log.debug('Key: ' + str(key))
             self.sequence = [key]
 
         # Ctrl+Backspace arrives as ^H (8) on most terminals; plain
@@ -3682,6 +3687,10 @@ class MouseState:
     clicked_view: 'View|None' = None    # drag targets that captured a press
     clicked_item: 'Item|None' = None
 
+    # The App struct, set on the single real mouse in launch_curses. Unannotated
+    # so dataclass does not treat it as a field.
+    app = None
+
     def capture_mouse_movement(self, enable:bool, id = None):
         enabled = len(self.movement_capture) > 0
         if enable:
@@ -3702,7 +3711,7 @@ class MouseState:
         self.rel_y = screen_y - self.screen_y
         self.screen_x = screen_x
         self.screen_y = screen_y
-        Gitkcli.log.debug('Mouse state: ' + str(self.state))
+        self.app.log.debug('Mouse state: ' + str(self.state))
 
         self.event_type = ''
         if self.state == curses.BUTTON1_PRESSED:
@@ -3779,17 +3788,17 @@ class MouseState:
         # no double-click meaning, and firing twice would e.g. open then instantly
         # close the menu/preferences popup an entry just raised.)
         if event_type == 'left-click':
-            bar_y = Gitkcli.screen.stdscr.getmaxyx()[0] - 1
-            active = Gitkcli.screen.get_active_view()
+            bar_y = self.app.screen.stdscr.getmaxyx()[0] - 1
+            active = self.app.screen.get_active_view()
             if self.screen_y == bar_y and not (active and active.is_popup):
-                for x_start, x_end, callback in Gitkcli.screen.bar_hitmap:
+                for x_start, x_end, callback in self.app.screen.bar_hitmap:
                     if x_start <= self.screen_x < x_end:
                         callback()
                         break
                 return
 
         enclosed_view = None
-        for view in reversed(Gitkcli.screen.showed_views):
+        for view in reversed(self.app.screen.showed_views):
             if view.is_popup or view.win.enclose(self.screen_y, self.screen_x):
                 enclosed_view = view
                 break
@@ -3986,7 +3995,9 @@ def launch_curses(stdscr, git_args:typing.List, cmd_args:typing.List):
 
     Gitkcli.screen = Screen(stdscr)
     Gitkcli.mouse = MouseState()
+    Gitkcli.mouse.app = Gitkcli
     Gitkcli.keyboard = KeyboardState()
+    Gitkcli.keyboard.app = Gitkcli
     Gitkcli.log = Log()
     Gitkcli.git_log = GitLogView(git_args, cmd_args)
     Gitkcli.git_diff = GitDiffView()
