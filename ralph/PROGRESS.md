@@ -16,12 +16,12 @@
 ## Current status
 
 - **Phase:** 1 — in progress. Migrating view-method `Gitkcli.<x>` → `self.app.<x>`
-  cluster by cluster. Done: `GitDiffView`, `GitLogView`. Next clusters: `View`
-  base (41), `PreferencesDialogPopup` (23), `ContextMenu` (22), `Screen` (12),
+  cluster by cluster. Done: `GitDiffView`, `GitLogView`, `View` base. Next
+  clusters: `PreferencesDialogPopup` (23), `ContextMenu` (22), `Screen` (12),
   `ListView` (8), `LogView` (2). Still pending: `get_app()` for
   items/segments/jobs (no parent chain yet); launch_curses/main-loop refs
   (~61, become `app.` in Phase 2/3).
-- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 262 (code; +2 doc-prose are
+- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 221 (code; +2 doc-prose are
   inside this count) · **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
@@ -108,6 +108,12 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 5 (Phase 1: migrate `View` base refs to `self.app`).**
+  Replaced all 41 `Gitkcli.<x>` → `self.app.<x>` inside the `View` base class
+  (1083–1484). All sites are instance methods (no static/class methods; every
+  `def` takes `self`), covering split geometry, window drag/resize, z-order
+  (`screen.showed_views`), and logging. Full suite: **60 passed, 0 failed**;
+  goldens clean. `Gitkcli.` refs 262→221.
 - **2026-06-28 — Iteration 4 (Phase 1: migrate `GitLogView` refs to `self.app`).**
   Replaced all 24 `Gitkcli.<x>` → `self.app.<x>` inside `GitLogView`
   (1801–2141). Pre-checked: no `@staticmethod`/`@classmethod` in range and every

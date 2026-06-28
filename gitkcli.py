@@ -1129,15 +1129,15 @@ class View:
         (right) pane is borderless. Stacked: both panes are borderless and the
         bottom pane's title bar doubles as the draggable divider.
         """
-        if not (Gitkcli.split_active() and self in (Gitkcli.git_log, Gitkcli.git_diff)):
+        if not (self.app.split_active() and self in (self.app.git_log, self.app.git_diff)):
             return None
-        if Gitkcli.split_mode == 'side' and self is Gitkcli.git_log:
+        if self.app.split_mode == 'side' and self is self.app.git_log:
             return {'right'}
         return set()
 
     def _calculate_dimensions(self, lines = None, cols = None):
         if lines is None or cols is None:
-            lines, cols = Gitkcli.screen.getmaxyx()
+            lines, cols = self.app.screen.getmaxyx()
 
         # fullscreen dimensions
         win_height = lines
@@ -1210,7 +1210,7 @@ class View:
             if was_top:
                 self.panel.top()
             else:
-                Gitkcli.screen._restack()
+                self.app.screen._restack()
         self.dirty = True
 
     def set_header_item(self, item):
@@ -1220,7 +1220,7 @@ class View:
     def set_view_mode(self, view_mode:str):
         if self.view_mode == view_mode:
             return
-        stdscr_height, stdscr_width = Gitkcli.screen.getmaxyx()
+        stdscr_height, stdscr_width = self.app.screen.getmaxyx()
         self.view_mode = view_mode
         height, width, y, x = self._calculate_dimensions(stdscr_height, stdscr_width)
         self._set_geometry(height, width, y, x)
@@ -1236,8 +1236,8 @@ class View:
     def toggle_window_mode(self):
         # In split view the log/diff panes are managed by the split layout;
         # toggling a pane "maximizes" it by leaving split view altogether.
-        if Gitkcli.split_active() and self in (Gitkcli.git_log, Gitkcli.git_diff):
-            Gitkcli.set_split_mode('off')
+        if self.app.split_active() and self in (self.app.git_log, self.app.git_diff):
+            self.app.set_split_mode('off')
             return
         self.set_view_mode('fullscreen' if self.view_mode == 'window' else 'window')
 
@@ -1253,8 +1253,8 @@ class View:
         """Arm a drag of the split divider when the grab is on the shared edge."""
         win_y, win_x = self.win.getbegyx()
         win_height, win_width = self.win.getmaxyx()
-        is_log = self is Gitkcli.git_log
-        if Gitkcli.split_mode == 'side':
+        is_log = self is self.app.git_log
+        if self.app.split_mode == 'side':
             # divider is the right edge of the log pane / left edge of the diff pane
             on_divider = (x >= win_x + win_width - 1) if is_log else (x <= win_x)
         else:  # stacked: there is no line, so the bottom pane's title bar is the grip
@@ -1267,7 +1267,7 @@ class View:
     def start_resize(self, x:int, y:int) -> bool:
         self.resize_mode = ''
         # Split panes are fixed in place; only the shared divider can be dragged.
-        if Gitkcli.split_active() and self in (Gitkcli.git_log, Gitkcli.git_diff):
+        if self.app.split_active() and self in (self.app.git_log, self.app.git_diff):
             return self._start_split_resize(x, y)
         if self.view_mode != 'window':
             return False
@@ -1294,21 +1294,21 @@ class View:
 
     def handle_resize(self):
         if self.resize_mode == 'split':
-            lines, cols = Gitkcli.screen.getmaxyx()
-            if Gitkcli.split_mode == 'side':
-                ratio = Gitkcli.mouse.screen_x / max(1, cols)
+            lines, cols = self.app.screen.getmaxyx()
+            if self.app.split_mode == 'side':
+                ratio = self.app.mouse.screen_x / max(1, cols)
             else:
-                ratio = Gitkcli.mouse.screen_y / max(1, lines)
-            Gitkcli.split_ratio = min(0.85, max(0.15, ratio))
-            Gitkcli.apply_split_layout()
+                ratio = self.app.mouse.screen_y / max(1, lines)
+            self.app.split_ratio = min(0.85, max(0.15, ratio))
+            self.app.apply_split_layout()
             return
-        stdscr_height, stdscr_width = Gitkcli.screen.getmaxyx()
+        stdscr_height, stdscr_width = self.app.screen.getmaxyx()
         win_y, win_x = self.win.getbegyx()
         win_height, win_width = self.win.getmaxyx()
 
         if 'm' in self.resize_mode:
-            new_x = max(0, min(win_x + Gitkcli.mouse.rel_x, stdscr_width - win_width))
-            new_y = max(0, min(win_y + Gitkcli.mouse.rel_y, stdscr_height - win_height))
+            new_x = max(0, min(win_x + self.app.mouse.rel_x, stdscr_width - win_width))
+            new_y = max(0, min(win_y + self.app.mouse.rel_y, stdscr_height - win_height))
             if new_x == win_x and new_y == win_y:
                 return
             self.panel.move(new_y, new_x)
@@ -1319,12 +1319,12 @@ class View:
             new_width = win_width
             new_height = win_height
             if 'w' in self.resize_mode:
-                new_x = max(0, win_x + Gitkcli.mouse.rel_x)
+                new_x = max(0, win_x + self.app.mouse.rel_x)
                 new_width = win_width - (new_x - win_x)
             if 'e' in self.resize_mode:
-                new_width = max(5, min(stdscr_width - new_x, win_width + Gitkcli.mouse.rel_x))
+                new_width = max(5, min(stdscr_width - new_x, win_width + self.app.mouse.rel_x))
             if 's' in self.resize_mode:
-                new_height = max(5, min(stdscr_height - new_y, win_height + Gitkcli.mouse.rel_y))
+                new_height = max(5, min(stdscr_height - new_y, win_height + self.app.mouse.rel_y))
             self.set_dimensions(new_x, new_y, new_height, new_width)
 
     def screen_size_changed(self, lines, cols):
@@ -1372,8 +1372,8 @@ class View:
 
         self.draw_header(sides)
 
-        if self != Gitkcli.log.view and self.get_parent() != Gitkcli.log.view:
-            Gitkcli.log.debug(f'Draw view {self.id}')
+        if self != self.app.log.view and self.get_parent() != self.app.log.view:
+            self.app.log.debug(f'Draw view {self.id}')
 
     def draw_header(self, sides):
         """Draw only the header line (row 0). Called by the full draw() and, on
@@ -1411,10 +1411,10 @@ class View:
             self.header_item.draw_line(self.win, 0, right - left, self.is_active(), False, False)
 
     def on_activated(self):
-        Gitkcli.log.debug(f'View {self.id} activated')
+        self.app.log.debug(f'View {self.id} activated')
 
     def on_deactivated(self):
-        Gitkcli.log.debug(f'View {self.id} deactivated')
+        self.app.log.debug(f'View {self.id} deactivated')
 
     def handle_mouse_input(self, mouse) -> bool:
         if mouse.event_type == 'left-release':
@@ -1422,12 +1422,12 @@ class View:
         if mouse.event_type == 'left-move' and self.resize_mode:
             self.handle_resize()
             return True
-        if self.win.enclose(Gitkcli.mouse.screen_y, Gitkcli.mouse.screen_x):
+        if self.win.enclose(self.app.mouse.screen_y, self.app.mouse.screen_x):
             if mouse.y == 0 and self.header_item and self.header_item.handle_mouse_input(mouse):
                 if 'left-click' == mouse.event_type or 'double-click' == mouse.event_type:
-                    Gitkcli.mouse.clicked_item = self.header_item
+                    self.app.mouse.clicked_item = self.header_item
                 return True
-            if mouse.event_type == 'left-click' and self.start_resize(Gitkcli.mouse.screen_x, Gitkcli.mouse.screen_y):
+            if mouse.event_type == 'left-click' and self.start_resize(self.app.mouse.screen_x, self.app.mouse.screen_y):
                 return True
         elif self.is_popup and 'click' in mouse.event_type:
             self.hide()
@@ -1439,23 +1439,23 @@ class View:
 
     def get_parent(self):
         try:
-            index = Gitkcli.screen.showed_views.index(self)
+            index = self.app.screen.showed_views.index(self)
             if index > 0:
-                return Gitkcli.screen.showed_views[index - 1]
+                return self.app.screen.showed_views[index - 1]
         except ValueError:
             pass
         return None
     
     def is_active(self) -> bool:
-        return len(Gitkcli.screen.showed_views) > 0 and Gitkcli.screen.showed_views[-1] == self
+        return len(self.app.screen.showed_views) > 0 and self.app.screen.showed_views[-1] == self
 
     def show(self):
         if self.is_active():
             return
-        prev_view = Gitkcli.screen.get_active_view()
-        if self in Gitkcli.screen.showed_views:
-            Gitkcli.screen.showed_views.remove(self)
-        Gitkcli.screen.showed_views.append(self)
+        prev_view = self.app.screen.get_active_view()
+        if self in self.app.screen.showed_views:
+            self.app.screen.showed_views.remove(self)
+        self.app.screen.showed_views.append(self)
         self.panel.show()
         self.panel.top()
         self.dirty = True
@@ -1467,18 +1467,18 @@ class View:
         self.on_activated()
 
     def hide(self):
-        if len(Gitkcli.screen.showed_views) > 0:
-            if not self in Gitkcli.screen.showed_views:
+        if len(self.app.screen.showed_views) > 0:
+            if not self in self.app.screen.showed_views:
                 return
-            deactivated = Gitkcli.screen.showed_views[-1] == self
+            deactivated = self.app.screen.showed_views[-1] == self
             # Hiding the panel uncovers whatever was underneath; update_panels()
             # repaints it for us, no manual footprint cleanup needed.
             self.panel.hide()
-            Gitkcli.screen.showed_views.remove(self)
+            self.app.screen.showed_views.remove(self)
             if deactivated:
                 self.on_deactivated()
                 # Repaint the newly-exposed top view with its active styling.
-                new_active = Gitkcli.screen.get_active_view()
+                new_active = self.app.screen.get_active_view()
                 if new_active:
                     new_active.dirty = True
 
