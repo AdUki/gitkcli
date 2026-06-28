@@ -222,6 +222,19 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 76 (BUG: search history DOWN stranded the user / discarded typed input).**
+  Audited resize/drag (sound), input.py escape parsing (terminal-dependent, not
+  a bug), then found a real bug in `SearchDialogPopup` history nav (gitk/dialogs.py).
+  UP walks into older queries (leaving the live index -1), but DOWN guarded on
+  `history_index > 0`, so it stopped at the newest entry (index 0) and could
+  never return to index -1 — the user was stranded in history, and the query
+  they were typing before pressing UP was overwritten with no way back. FIX:
+  DOWN now steps from >=0 (so 0 -> -1) and restores the stashed live input;
+  UP stashes the live input the first time it enters history (readline-style).
+  Added an additive golden `search_history_nav` (two searches fill history,
+  type "live", UP/UP into history, DOWN/DOWN back out -> input restored to
+  "live"; old code left it on "second"). Suite **70/70** (existing goldens
+  untouched; one new case); units **58/58**. (21st genuine bug.)
 - **2026-06-28 — Iteration 75 (BUG: autoscroll didn't redraw the body when the list overflowed).**
   Swept the other `self.height`/offset boundary checks in list_view.py/view.py
   after the iter-74 off-by-one — lines 157/162/166/202/210/259/265/286 all check

@@ -1,0 +1,24 @@
+# Search-query history round-trip. Run two searches to fill history (newest
+# first: "second", "first"), then reopen and type a live query "live". UP walks
+# into history (second -> first); DOWN walks back out and must restore the live
+# input "live" (regression: DOWN used to stop at the newest entry, stranding the
+# user in history and discarding what they had typed).
+size      120x40
+config    default
+launch
+key       /
+text      "first"
+key       <Enter>
+wait      stable
+key       /
+text      "second"
+key       <Enter>
+wait      stable
+key       /
+text      "live"
+key       <Up>
+key       <Up>
+key       <Down>
+key       <Down>
+wait      stable
+capture   restored_live_input

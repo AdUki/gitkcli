@@ -256,7 +256,8 @@ class UserInputDialogPopup(ListView):
         self.input = UserInputListItem()
         self.is_popup = True
         self.history_queries = []
-        self.history_index = -1
+        self.history_index = -1     # -1 == the live (not-from-history) input
+        self.pending_input = ''     # live input stashed while browsing history
 
         if not bottom_item:
             bottom_item = SegmentedListItem([FillerSegment(),
@@ -282,6 +283,7 @@ class UserInputDialogPopup(ListView):
     def clear(self):
         self.input.clear()
         self.history_index = -1
+        self.pending_input = ''
 
     def handle_input(self, keyboard):
         key = keyboard.key
@@ -293,12 +295,18 @@ class UserInputDialogPopup(ListView):
             self.hide()
                 
         elif key == curses.KEY_DOWN or key == KEY_CTRL('n'):
-            if self.history_index > 0:
+            # Walk toward newer entries; stepping below index 0 returns to the
+            # live input the user was typing before they entered history.
+            if self.history_index >= 0:
                 self.history_index -= 1
-                self.input.set_text(self.history_queries[self.history_index])
-                
+                self.input.set_text(self.pending_input if self.history_index < 0
+                                    else self.history_queries[self.history_index])
+
         elif key == curses.KEY_UP or key == KEY_CTRL('p') or key == KEY_CTRL('o'):
             if self.history_index + 1 < len(self.history_queries):
+                if self.history_index < 0:
+                    # Entering history: stash the live input so DOWN can restore it.
+                    self.pending_input = self.input.txt
                 self.history_index += 1
                 self.input.set_text(self.history_queries[self.history_index])
 
