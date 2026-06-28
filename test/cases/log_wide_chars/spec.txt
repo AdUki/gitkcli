@@ -1,0 +1,10 @@
+# Commit subjects with wide / non-ASCII characters (CJK, emoji) must render
+# without crashing or mangling the UTF-8 (harness locale is C.UTF-8). Column
+# alignment for wide glyphs is best-effort (the width math counts characters,
+# not display cells) — this golden simply guards that UTF-8 is decoded and
+# emitted intact and the app stays up. Pinned dates keep the hashes deterministic.
+size      120x40
+config    default
+run       rm -rf .git && git init -q && GIT_AUTHOR_DATE='2024-01-01T00:00:00+0000' GIT_COMMITTER_DATE='2024-01-01T00:00:00+0000' git commit -q --allow-empty -m "ascii baseline" && GIT_AUTHOR_DATE='2024-01-02T00:00:00+0000' GIT_COMMITTER_DATE='2024-01-02T00:00:00+0000' git commit -q --allow-empty -m "日本語 CJK wide" && GIT_AUTHOR_DATE='2024-01-03T00:00:00+0000' GIT_COMMITTER_DATE='2024-01-03T00:00:00+0000' git commit -q --allow-empty -m "emoji 🎉 subject"
+launch
+capture   wide_chars

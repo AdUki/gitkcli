@@ -222,6 +222,15 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 66 (probe: wide/non-ASCII commit subjects; add golden).**
+  Probed CJK + emoji commit subjects (a distinct, untested input class — the
+  width math uses `len()`, not display cells). Result: renders without crashing
+  and the UTF-8 is decoded/emitted intact (harness locale is C.UTF-8; the draw
+  guard would catch any addstr overflow — none). Wide-glyph column alignment is
+  best-effort (a known len-vs-wcwidth limitation, not a defect). Locked it with
+  an additive `log_wide_chars` golden (pinned dates → deterministic hashes;
+  ascii/CJK/emoji commits) to guard against UTF-8 decode/mojibake regressions.
+  Full suite **65/65** (existing goldens untouched); units **39/39**.
 - **2026-06-28 — Iteration 65 (robustness probes: empty+graph, tiny terminals).**
   Two more pty probes, both confirming graceful handling (no bug, no golden — see
   rationale): (1) empty repo launched with `--graph` — also shows a clean empty
