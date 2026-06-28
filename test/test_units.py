@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 from gitk.config import (KEY_CTRL, DEFAULT_CONFIG, load_config, save_config,
                          get_config_path)
-from gitk.segments import ref_color_and_title
+from gitk.segments import ref_color_and_title, TextSegment
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
 
@@ -159,3 +159,29 @@ def test_set_selected_selectable_target_is_unchanged():
     lv = _listview([True, True, True, True], selected=0)
     assert ListView.set_selected(lv, 2) is True
     assert lv._selected == 2
+
+
+# --- Segment._draw_text clipping (offset is scroll, width is a column COUNT) --
+
+class _FakeWin:
+    def __init__(self):
+        self.drawn = []
+    def addstr(self, txt, color):
+        self.drawn.append(txt)
+
+def test_draw_text_offset_zero_takes_width_columns():
+    win = _FakeWin()
+    n = TextSegment('abcdefgh')._draw_text(win, 0, 4, color=0)
+    assert win.drawn == ['abcd'] and n == 4
+
+def test_draw_text_with_offset_clips_offset_plus_width():
+    # The historical bug used text[offset:width]; with offset=2,width=3 that
+    # wrongly yielded 'c' (1 col). Correct is text[2:5] = 'cde' (3 cols).
+    win = _FakeWin()
+    n = TextSegment('abcdefgh')._draw_text(win, 2, 3, color=0)
+    assert win.drawn == ['cde'] and n == 3
+
+def test_draw_text_width_beyond_text_is_clamped():
+    win = _FakeWin()
+    n = TextSegment('abc')._draw_text(win, 1, 10, color=0)
+    assert win.drawn == ['bc'] and n == 2

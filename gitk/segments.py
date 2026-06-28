@@ -53,9 +53,11 @@ class Segment:
         return 0
 
     def _draw_text(self, win, offset, width, color) -> int:
-        """Draw the segment's text clipped to [offset, width) in `color` and
-        return how many cells it consumed. Shared by the simple draw() variants."""
-        visible_txt = self.get_text()[offset:width]
+        """Draw the segment's text from horizontal-scroll `offset`, clipped to
+        `width` columns, in `color`; return how many cells it consumed. `width`
+        is a column COUNT (remaining space), not an absolute end index — so the
+        right bound is offset+width. Shared by the simple draw() variants."""
+        visible_txt = self.get_text()[offset:offset + width]
         win.addstr(visible_txt, color)
         return len(visible_txt)
 

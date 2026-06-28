@@ -213,6 +213,21 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 44 (post-refactor bugfix: segment horizontal-scroll clipping).**
+  Third review (segment/item draw geometry) found `Segment._draw_text` sliced
+  `get_text()[offset:width]`, but `width` is a column COUNT (remaining space),
+  not an absolute end index — so when `offset>0` (horizontal scroll via `l`/
+  Right on the log) a straddling segment under-drew by `offset` columns, and the
+  broken return value then drove `draw_line`'s `offset` accounting negative for
+  later segments (the ref segments). Fixed to `[offset:offset+width]`. At
+  `offset=0` (every golden — no golden horizontally-scrolls the segmented log;
+  the only `<Right>`s are Preferences button-row nav) the slice is unchanged, so
+  all 60 goldens stay green. Added 3 pure unit tests for `_draw_text` clipping
+  (fake win). Verified the other review findings: #3 (separator offset mismatch
+  under h-scroll) and #4 (UserInputListItem long-text overflow — gated by the
+  unimplemented field-scroll TODO) noted for later; #5 (fill_width pre-draw
+  AttributeError) not reachable (draw precedes input each frame). Full suite
+  **60/60** (goldens unchanged); units **17/17**.
 - **2026-06-28 — Iteration 43 (tidy: select_line stops at first match; analyze open_context_menu).**
   `GitDiffView.select_line` called `set_selected` for every matching DiffListItem
   rather than the first (intended) one, so with duplicate (file,line) rows the
