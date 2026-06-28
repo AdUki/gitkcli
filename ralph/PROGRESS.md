@@ -222,6 +222,20 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 92 (SAFETY FIX: branch delete force-confirms instead of bare -D).**
+  Probed stash handling (fine: show-ref lists refs/stash, parsed as type 'stash',
+  shows as a "stash" row, context menu -> Copy ref name; can't jump since stashes
+  aren't in the log — all reasonable). Then found that `ContextMenu.remove_branch`
+  was the ONLY destructive op that skipped the codebase's safe-then-confirm-force
+  pattern: it ran `git branch -D` (force) with NO confirmation, silently
+  force-deleting unmerged commits on a single click. Every other force op
+  (checkout/create/push/rename) uses run_git's reasons/retry confirm. FIX: use
+  `-d` (safe) by default and only `-D` after a "not fully merged" force-confirm
+  ([Force delete]) — a merged branch still deletes straight away with no prompt,
+  so the common case is unchanged. Added 2 unit tests (default -> -d + confirm
+  wiring; force -> -D). No existing golden deletes a branch via the menu, so
+  goldens are unaffected. Suite **76/76** (goldens untouched); units **93/93**.
+  (33rd genuine bug — a real data-loss-safety gap.)
 - **2026-06-28 — Iteration 91 (coverage: clean-unstaged destructive path; no bug).**
   Added a golden `clean_unstaged` for the sibling destructive path "Clear
   unstaged changes" (`git restore .`), completing coverage of the

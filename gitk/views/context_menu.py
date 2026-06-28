@@ -132,10 +132,20 @@ class ContextMenu(ListView):
         self.app.git_refs.view_ref_push.clear()
         self.app.git_refs.view_ref_push.show()
 
-    def remove_branch(self, branch_name):
-        self.app.run_git(['git', 'branch', '-D', branch_name],
-                        ok=f'Deleted branch {branch_name}',
-                        err='Error deleting branch', reload_refs=True)
+    def remove_branch(self, branch_name, force = False):
+        # Safe delete by default (-d); only force (-D) after the user confirms the
+        # "not fully merged" warning. This matches the checkout/create/push/rename
+        # force-confirm pattern, instead of silently force-deleting unmerged
+        # commits. A merged branch deletes straight away with no prompt.
+        args = ['git', 'branch', '-D' if force else '-d', branch_name]
+        self.app.run_git(args, ok=f'Deleted branch {branch_name}',
+                        err='Error deleting branch', reload_refs=True,
+                        force=force, reasons=('not fully merged',),
+                        retry=lambda: self.remove_branch(branch_name, True),
+                        title=' Branch not fully merged',
+                        lines=[(f"Branch '{branch_name}' is not fully merged.", 4),
+                               ("Delete anyway? Unmerged commits will be lost.", 2)],
+                        label='[Force delete]')
 
     def remove_tag(self, tag_name):
         remotes = Job.run_job(self.app, ['git', 'remote']).stdout.splitlines()

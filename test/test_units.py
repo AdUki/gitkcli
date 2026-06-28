@@ -31,6 +31,7 @@ from gitk.items import UserInputListItem, StatListItem, TextListItem, ContextMen
 from gitk.screen import Screen
 from gitk.dialogs import SearchDialogPopup, RefPushDialogPopup, NewRefDialogPopup
 from gitk.input import KeyboardState, KEY_CTRL_BACKSPACE, KEY_CTRL_DEL
+from gitk.views.context_menu import ContextMenu
 
 
 # --- KEY_CTRL ---------------------------------------------------------------
@@ -827,3 +828,30 @@ def test_do_search_backward_wraps():
     calls = []
     _SearchProbe(calls).do_search(backward=True)
     assert calls == [((True,), {'repeat': True})]
+
+
+# --- ContextMenu.remove_branch: safe delete + force-confirm (was bare -D) -----
+# Other force ops confirm before forcing; remove_branch used to run `git branch
+# -D` with no confirm, silently force-deleting unmerged commits. It must use -d
+# by default and only -D after the "not fully merged" force-confirm.
+
+def _remove_env():
+    seen = []
+    me = SimpleNamespace(app=SimpleNamespace(run_git=lambda args, **kw: seen.append((args, kw))))
+    return me, seen
+
+def test_remove_branch_uses_safe_delete_and_offers_force():
+    me, seen = _remove_env()
+    ContextMenu.remove_branch(me, 'feature')
+    args, kw = seen[0]
+    assert args == ['git', 'branch', '-d', 'feature']   # safe delete
+    assert kw['reasons'] == ('not fully merged',)
+    assert kw['force'] is False
+    assert callable(kw['retry'])
+
+def test_remove_branch_force_uses_capital_D():
+    me, seen = _remove_env()
+    ContextMenu.remove_branch(me, 'feature', force=True)
+    args, kw = seen[0]
+    assert args == ['git', 'branch', '-D', 'feature']   # forced after confirm
+    assert kw['force'] is True
