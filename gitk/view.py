@@ -87,8 +87,8 @@ class View:
         win_x = 0
 
         if self.view_mode == 'window':
-            win_height = min(lines, self.fixed_height if self.fixed_height else int(lines / 2))
-            win_width = min(cols, self.fixed_width if self.fixed_width else int(cols / 2))
+            win_height = min(lines, self.fixed_height if self.fixed_height is not None else int(lines / 2))
+            win_width = min(cols, self.fixed_width if self.fixed_width is not None else int(cols / 2))
             win_y = min(lines - win_height, int((lines - win_height) / 2) if self.fixed_y is None else self.fixed_y)
             win_x = min(cols - win_width, int((cols - win_width) / 2) if self.fixed_x is None else self.fixed_x)
 
@@ -261,8 +261,13 @@ class View:
             new_width = win_width
             new_height = win_height
             if 'w' in self.resize_mode:
-                new_x = max(0, win_x + self.app.mouse.rel_x)
-                new_width = win_width - (new_x - win_x)
+                # Dragging the left edge keeps the right edge fixed. Clamp new_x
+                # to [0, right-5] so the window keeps a >=5 min width (matching
+                # the 'e'/'s' branches) instead of collapsing to 0/negative,
+                # which would jump to half-screen or raise curses.error.
+                right = win_x + win_width
+                new_x = max(0, min(win_x + self.app.mouse.rel_x, right - 5))
+                new_width = right - new_x
             if 'e' in self.resize_mode:
                 new_width = max(5, min(stdscr_width - new_x, win_width + self.app.mouse.rel_x))
             if 's' in self.resize_mode:

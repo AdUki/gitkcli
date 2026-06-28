@@ -213,6 +213,19 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 42 (post-refactor bugfix: west-edge resize clamp).**
+  A second read-only review (views input + Screen/geometry) found the
+  left-border (`'w'`) resize branch in `View.handle_resize` lacked the `max(5,…)`
+  minimum-width clamp the `'e'`/`'s'` branches have: dragging the left edge
+  rightward shrank `new_width` to 0/negative → either a half-screen jump (0
+  treated as "unset" in `_calculate_dimensions`) or a `curses.error` from
+  `win.resize(h, negative)` outside the draw try/except (crash). FIXED: clamp
+  `new_x` to `[0, right-5]` (right edge fixed) so width stays ≥5 — identical to
+  the old formula for normal drags (`right-new_x == win_width-(new_x-win_x)`).
+  Also made `_calculate_dimensions` use `fixed_width/height is not None`
+  (mirroring fixed_x/y) so a legit 0 isn't read as half-screen. Resize/window
+  goldens (combo_resize_split, window_float/unfloat) still pass. Full suite
+  **60/60** (goldens unchanged); units **14/14**.
 - **2026-06-28 — Iteration 41 (post-refactor bugfix: RefPush empty remote).**
   `RefPushDialogPopup.__init__` parsed `git remote` with `.rstrip().split('\n')`,
   which returns `['']` for a repo with no remotes — creating a blank-named
