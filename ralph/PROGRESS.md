@@ -20,12 +20,14 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 4 — in progress. Splits done: view→view(426)+list_view(333);
-  items→items(341)+segmented_items(330). Only `views.py` (658) remains over cap.
-- **NEXT (Phase 4):** split `views.py` → views/ package (git_log/git_diff/
-  git_refs/log/context_menu) or per-view modules; then loose-coupling audit +
+- **Phase:** 4 — in progress. ALL modules now ≤ ~600 lines (criterion 4 MET).
+  Splits done: view→view(426)+list_view(333); items→items(341)+
+  segmented_items(330); views.py(658) → `gitk/views/` package
+  (git_log 358, context_menu 163, git_diff 109, log 33, git_refs 27, __init__ 11).
+  setup.py find_packages → ['gitk','gitk.views'].
+- **NEXT (Phase 4):** loose-coupling/import audit (base classes + App only) and
   add unit tests for pure pieces (config parsing, KEY_CTRL, ref_color_and_title,
-  segment geometry, job line-parsers).
+  segment geometry, job line-parsers) — the last items before completion.
 - **NEXT (Phase 3):** `gitk/main.py` (move `launch_curses` + `main`, importing
   the needed names directly from their gitk modules) → reduce gitkcli.py to a
   thin shim `from gitk.main import main; if __name__=='__main__': main()`, drop
@@ -113,10 +115,10 @@
 - [x] `gitk/view.py` — View + ListView + `_raise_split_sibling` +
       HORIZONTAL_OFFSET_JUMP/SPLIT_DIVIDER_COLOR. Imports items (no cycle).
       743 lines → split into view.py + list_view.py in Phase 4.
-- [x] `gitk/views.py` — GitLogView, GitDiffView, GitRefsView, LogView,
-      ContextMenu. Single module for now (STRUCTURE's views/ package split
-      deferred to Phase 4). Imports view/items/segments/jobs/dialogs/ids/Screen/
-      config/input; no module imports it back (no cycle).
+- [x] `gitk/views/` package — git_log.py (GitLogView), git_diff.py (GitDiffView),
+      git_refs.py (GitRefsView), log.py (LogView), context_menu.py (ContextMenu);
+      __init__.py re-exports all 5 so `from gitk.views import GitLogView` works.
+      Each view is independent (siblings reached via app at runtime).
 - [x] `gitk/dialogs.py` — 10 modal popups (reset, ref-push, _RedMessageBox,
       confirm, error, user-input base, preferences, new-ref, search, git-search).
       Single module for now (STRUCTURE's dialogs/ package split deferred to
@@ -140,9 +142,9 @@
 ## Phase 4 — Loose-coupling, readability, new tests
 
 - [ ] Cross-module import audit (base classes + App only; no sibling internals).
-- [~] Every module ≤ ~600 lines (or documented exception below).
-      DONE: view.py 743 → view.py 426 + list_view.py 333; items.py 654 →
-      items.py 341 + segmented_items.py 330. TODO: views.py 658.
+- [x] Every module ≤ ~600 lines. view→view 426 + list_view 333; items→items 341
+      + segmented_items 330; views.py 658 → gitk/views/ package (git_log 358,
+      context_menu 163, git_diff 109, log 33, git_refs 27). No exceptions needed.
 - [ ] Introduce passed structs/dataclasses where it improves clarity (no
       behavior change).
 - [ ] Add unit tests for pure pieces (config parsing, KEY_CTRL, job line
@@ -163,6 +165,16 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 32 (Phase 4: split `views.py` → `gitk/views/` package).**
+  Converted the 658-line `gitk/views.py` module into a `gitk/views/` package:
+  one module per view (git_log 358, context_menu 163, git_diff 109, log 33,
+  git_refs 27) + `__init__.py` re-exporting all 5 (so `from gitk.views import
+  GitLogView` etc. is unchanged for importers — app.py annotations, main.py).
+  Each view is independent (no cross-view class refs; siblings via app at
+  runtime), so per-module imports were derived mechanically from usage and
+  mapped to source modules. setup.py find_packages now yields
+  ['gitk','gitk.views']. ALL modules are now ≤ ~600 lines — exit criterion 4
+  MET. AST check clean; full suite: **60 passed, 0 failed**; goldens clean.
 - **2026-06-28 — Iteration 31 (Phase 4: split `items.py` → items + segmented_items).**
   Moved the 6 SegmentedListItem-family classes + `button_row` into
   `gitk/segmented_items.py` (imports `Item` from gitk.items + segments + Screen +
