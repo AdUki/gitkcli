@@ -20,13 +20,16 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 2 — in progress. `gitk/` package created; `gitk/config.py`
-  extracted (config persistence + clipboard + KEY_CTRL). gitkcli.py re-exports
-  via `from gitk.config import (...)`.
-- **NEXT (Phase 2):** extract `gitk/input.py` (KeyboardState, MouseState — and
-  the KEY_* / ENTER_KEYS constants), then `gitk/log.py` (Log), etc., one cluster
-  per iteration with re-export crutches; suite green after each.
-- **gitkcli.py:** 4083 lines · **package:** `gitk/{__init__,config}.py` ·
+- **Phase:** 2 — in progress. Extracted: `gitk/config.py`, `gitk/input.py`
+  (KeyboardState, MouseState + KEY_* / ENTER_KEYS constants; uses
+  `from __future__ import annotations` so the `View`/`Item` hints need no UI
+  imports). gitkcli.py re-exports both.
+- **NEXT (Phase 2):** `gitk/log.py` (Log) — NOTE Log is NOT a leaf: it builds a
+  `LogView` and `TextListItem`, which aren't extracted yet. Likely need to
+  extract view/items first, or inject the LogView factory. Re-evaluate order:
+  the plan's leaf-first list is idealized; real dep order is config/input (done)
+  → segments → items → view → views → log/screen/jobs → dialogs → app → main.
+- **gitkcli.py:** ~3860 lines · **package:** `gitk/{__init__,config,input}.py` ·
   **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
@@ -78,7 +81,9 @@
 - [x] `gitk/config.py` — get_config_path, load_config, save_config,
       copy_to_clipboard, DEFAULT_CONFIG, KEY_CTRL. Leaf module (stdlib only).
       gitkcli.py re-exports them. (KEY_* constants stay for input.py.)
-- [ ] `gitk/input.py`
+- [x] `gitk/input.py` — KeyboardState, MouseState + KEY_*/ENTER_KEYS constants.
+      Uses `from __future__ import annotations` so the View/Item type hints stay
+      lazy (no UI imports). gitkcli.py re-exports them.
 - [ ] `gitk/log.py`
 - [ ] `gitk/screen.py`
 - [ ] `gitk/jobs.py`
@@ -123,6 +128,18 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 19 (Phase 2: extract `gitk/input.py`).**
+  Moved `KeyboardState`, `MouseState`, and the keyboard constants
+  (`KEY_SHIFT_F5`, `KEY_CTRL_LEFT/RIGHT/BACKSPACE/DEL`, `KEY_ENTER`,
+  `KEY_RETURN`, `KEY_TAB`, `ENTER_KEYS`) into `gitk/input.py`. Added
+  `from __future__ import annotations` so the one unquoted hint
+  (`process_mouse_event(active_view:View)`) and the quoted `'View|None'` /
+  `'Item|None'` field hints don't require importing the (not-yet-extracted) UI
+  classes — they're duck-typed via `self.app` at runtime. gitkcli.py re-exports
+  the names. Full suite: **60 passed, 0 failed**; goldens clean. gitkcli.py
+  4083→3860 lines. Gotcha noted: `Log` (next on the plan's list) is not a leaf
+  (needs LogView/TextListItem), so Phase 2 order will follow real deps:
+  segments → items → view → views, then log/screen/jobs.
 - **2026-06-28 — Iteration 18 (Phase 2 start: extract `gitk/config.py`).**
   Created the `gitk/` package (`__init__.py`) and moved the config cluster into
   `gitk/config.py`: `get_config_path`, `load_config`, `save_config`,
