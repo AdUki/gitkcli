@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from gitk.config import copy_to_clipboard
-from gitk.ids import ID_CONTEXT_MENU
+from gitk.ids import ID_CONTEXT_MENU, ID_GIT_LOG, ID_GIT_DIFF, ID_GIT_REFS, ID_LOG
 from gitk.input import KeyboardState
 from gitk.items import ContextMenuItem, DiffListItem, SeparatorItem, StatListItem
 from gitk.jobs import Job
@@ -58,7 +58,7 @@ class ContextMenu(ListView):
             self.append(ContextMenuItem("Preferences", self.app.preferences.show))
             self.append(SeparatorItem())
             self.append(ContextMenuItem("Quit", item.exit_program))
-        elif view_id == 'git-log' and hasattr(item, 'id'):
+        elif view_id == ID_GIT_LOG and hasattr(item, 'id'):
             if isinstance(item, UncommittedChangesListItem):
                 label = "Clear staged changes" if item._staged else "Clear unstaged changes"
                 self.append(ContextMenuItem(label, view.clean_uncommitted_changes, [item._staged]))
@@ -79,12 +79,12 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Return to mark", view.select_commit, [view.marked_commit_id], bool(view.marked_commit_id)))
             self.append(SeparatorItem())
             self._append_copy_items(view, item)
-        elif view_id == 'git-diff':
+        elif view_id == ID_GIT_DIFF:
             self.append(ContextMenuItem("Jump to file", StatListItem.jump_to_file, [item], isinstance(item, StatListItem)))
             self.append(ContextMenuItem("Show origin of this line", DiffListItem.jump_to_origin, [item], isinstance(item, DiffListItem) and item.old_file_path and item.old_file_line is not None))
             self.append(SeparatorItem())
             self._append_copy_items(view, item)
-        elif view_id == 'git-refs' and hasattr(item, 'data'):
+        elif view_id == ID_GIT_REFS and hasattr(item, 'data'):
             if item.data['type'] == 'heads':
                 self.append(ContextMenuItem("Check out this branch", self.checkout_branch, [item.data['name']]))
                 self.append(ContextMenuItem("Rename this branch", self.app.git_refs.view_new_ref.rename_branch, [item.data['name']]))
@@ -106,7 +106,7 @@ class ContextMenu(ListView):
                 self.append(ContextMenuItem("Remove this remote branch", self.remove_remote_ref, [item.data['name']]))
             else:
                 self.append(ContextMenuItem("Copy ref name", copy_to_clipboard, [item.data['name'], self.app]))
-        elif view_id == 'log':
+        elif view_id == ID_LOG:
             self._append_copy_items(view, item)
         else:
             return False
