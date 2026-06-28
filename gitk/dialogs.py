@@ -525,7 +525,9 @@ class SearchDialogPopup(UserInputDialogPopup):
         self.parent_list_view.dirty = True
 
     def do_search(self, backward:bool):
-        self.parent_list_view.search(backward)
+        # repeat=True so the [Search Next]/[Search Previous] buttons wrap around
+        # like the 'n'/'N' keys and the initial Enter, instead of dead-ending.
+        self.parent_list_view.search(backward, repeat=True)
         self.dirty = True
         super().execute()
 

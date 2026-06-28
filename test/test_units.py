@@ -804,3 +804,26 @@ def test_copy_to_clipboard_requires_app_arg():
     import inspect
     params = list(inspect.signature(copy_to_clipboard).parameters)
     assert params == ['txt', 'app']
+
+
+# --- SearchDialogPopup.do_search wraps (button parity with n/N keys) ----------
+# The [Search Next]/[Search Previous] buttons route through do_search; it must
+# pass repeat=True so they wrap like the keys / initial Enter.
+
+class _SearchProbe(SearchDialogPopup):
+    def __init__(self, calls):
+        self.parent_list_view = SimpleNamespace(
+            search=lambda *a, **kw: calls.append((a, kw)), dirty=False)
+        self.dirty = False
+        self.input = SimpleNamespace(txt='q')
+        self.history_queries = []
+
+def test_do_search_forward_wraps():
+    calls = []
+    _SearchProbe(calls).do_search(backward=False)
+    assert calls == [((False,), {'repeat': True})]
+
+def test_do_search_backward_wraps():
+    calls = []
+    _SearchProbe(calls).do_search(backward=True)
+    assert calls == [((True,), {'repeat': True})]

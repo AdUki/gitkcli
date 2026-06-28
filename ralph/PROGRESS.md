@@ -222,6 +222,17 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 88 (BUG: search-dialog buttons didn't wrap like the keys).**
+  Audited the header/footer button callbacks (jump [<-]/[->] match between
+  git_log/git_diff and the README; diff [+]/[-]/[Ignore whitespace], log
+  [Clear]/[Autoscroll]/level, SplitButton all correct). Found a parity bug left
+  by iter-84: the `[Search Next]`/`[Search Previous]` buttons route through
+  `SearchDialogPopup.do_search`, which called `search(backward)` with the default
+  `repeat=False` — so the BUTTONS didn't wrap, while the 'n'/'N' keys and the
+  initial Enter all do. FIX: `do_search` passes `repeat=True`. Added 2 unit tests
+  (forward/backward do_search wrap). No golden clicks the search buttons, so
+  goldens are unaffected. Suite **73/73** (goldens untouched); units **91/91**.
+  (31st genuine bug.)
 - **2026-06-28 — Iteration 87 (BUG: "Copy <ref> name" context items crashed).**
   Continued the context-menu action/args audit. Found that the four refs-view
   "Copy branch/tag/remote/ref name" items called the module function
