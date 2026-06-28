@@ -198,11 +198,24 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
       redraw loop. FIXED: set `running=False` unconditionally at the top of
       stop_job (a stopped job is not running; the new-run 'started' message
       re-sets it True on restart).
-- [ ] (low) set_selected non-selectable skip direction; str/regex set_selected
-      hardcodes git_diff.items; RefPush empty-remote — latent, revisit.
+- [x] **str/regex set_selected hardcodes git_diff.items** (list_view.py) —
+      FIXED: search `self.items` (identical for today's sole caller, which runs
+      on git_diff; correct for any other ListView).
+- [ ] (low) set_selected non-selectable skip direction (second pass uses the
+      updated index → can land opposite to travel); RefPush empty-remote when no
+      remotes exist — latent, revisit.
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 39 (post-refactor bugfix: set_selected wrong items list).**
+  `ListView.set_selected`'s str/`re.Pattern` branch iterated
+  `self.app.git_diff.items` (hardcoded) instead of `self.items`, then set
+  `self._selected` to that index on `self` — only correct because the sole
+  current caller (`StatListItem.jump_to_file`) runs on the git_diff view. Any
+  other ListView searching by text/regex would scan git_diff's rows and select a
+  bogus index. Fixed to `self.items` (identical for the current caller; correct
+  in general). Verified `diff_jump_to_file` golden still passes. Full golden
+  suite **60/60** (goldens unchanged); units **11/11**.
 - **2026-06-28 — Iteration 38 (post-refactor bugfix: stop_job running flag).**
   `stop_job` only cleared `self.running` in the `TimeoutExpired` branch; on the
   normal terminate+wait path it stayed True. Since the reader thread breaks on

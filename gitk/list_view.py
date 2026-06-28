@@ -115,7 +115,7 @@ class ListView(View):
                 new_index = what
         elif isinstance(what, (str, re.Pattern)):
             test = (lambda t: what in t) if isinstance(what, str) else (lambda t: what.match(t))
-            for i, item in enumerate(self.app.git_diff.items):
+            for i, item in enumerate(self.items):
                 if test(item.get_text()):
                     new_index = i
                     break
