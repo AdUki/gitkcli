@@ -12,6 +12,7 @@ import datetime
 import json
 import os
 import queue
+import re
 import sys
 
 # Make the repo root importable regardless of how pytest is invoked.
@@ -25,8 +26,8 @@ from gitk.segments import ref_color_and_title, TextSegment, ButtonSegment, Fille
 from gitk.segmented_items import SegmentedListItem, ButtonRowItem
 from gitk.views.git_log import GitLogView
 from gitk.list_view import ListView
-from gitk.jobs import GitLogJob, Job, _CONTROL_CHARS
-from gitk.items import UserInputListItem, StatListItem
+from gitk.jobs import GitLogJob, GitDiffJob, Job, _CONTROL_CHARS
+from gitk.items import UserInputListItem, StatListItem, TextListItem
 from gitk.screen import Screen
 from gitk.dialogs import SearchDialogPopup
 
@@ -530,3 +531,32 @@ def test_append_autoscroll_within_screen_keeps_offset_zero():
     ListView.append(lv, SimpleNamespace())              # len -> 2, fits
     assert lv._offset_y == 0
     assert lv.dirty is True                             # on-screen row -> dirty anyway
+
+
+# --- GitDiffJob.process_line stat-vs-message classification -------------------
+# Before the first hunk, diffstat lines (1-space indent " f | 5 ++") become
+# clickable StatListItems; commit-message body lines (4-space indent) must NOT,
+# even when they contain a "| N +-" that looks like a stat (e.g. a md table).
+
+def _diffjob():
+    # process_line only touches these attributes / the two compiled patterns.
+    return SimpleNamespace(
+        old_file_line=-1, new_file_line=-1, line_count=0,
+        line_pattern=re.compile(r'^(?:( )|(?:\+\+\+ b/(.*))|(?:--- a/(.*))|(\+\+\+|---|diff|index)|(\+)|(-)|(@@ -(\d+),\d+ \+(\d+),\d+ @@))'),
+        stat_pattern=re.compile(r' (?:\.\.\.)?(?:.* => )?(.*?)}? +\| +\d+ \+*-*'))
+
+def test_process_line_diffstat_line_becomes_stat_item():
+    item = GitDiffJob.process_line(_diffjob(), ' src/app.py | 5 +++--')
+    assert isinstance(item, StatListItem)
+    assert item.stat_file_path == 'src/app.py'
+
+def test_process_line_message_line_with_bar_is_not_a_stat():
+    # 4-space-indented commit message line that looks like a stat must stay text.
+    item = GitDiffJob.process_line(_diffjob(), '    col_a | 5 vs col_b')
+    assert isinstance(item, TextListItem)
+    assert not isinstance(item, StatListItem)
+
+def test_process_line_message_plain_line_is_text():
+    item = GitDiffJob.process_line(_diffjob(), '    just a normal message line')
+    assert isinstance(item, TextListItem)
+    assert not isinstance(item, StatListItem)

@@ -382,11 +382,16 @@ class GitDiffJob(Job):
         if match:
             if match.group(1): # code lines, stats and commit message
                 if self.old_file_line < 0 and self.new_file_line < 0: # commit message or stats line
+                    # Diffstat lines are indented with a single space
+                    # (" file | 5 ++"); commit-message body lines with four. Only
+                    # parse a stat on the former, so a message line that happens to
+                    # contain "| N +-" (e.g. a markdown table) is not misread as a
+                    # clickable stat row pointing at a bogus file.
                     if line.startswith(' ') and not line.startswith('    '): # stats line
                         color = 10
-                    stat_match = self.stat_pattern.match(line)
-                    if stat_match: # stats line
-                        return StatListItem(line, color, stat_match.group(1))
+                        stat_match = self.stat_pattern.match(line)
+                        if stat_match:
+                            return StatListItem(line, color, stat_match.group(1))
                     return TextListItem(line, color)
                 self.old_file_line += 1
                 self.new_file_line += 1

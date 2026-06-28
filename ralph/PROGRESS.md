@@ -222,6 +222,21 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 78 (BUG: commit-message line misread as a clickable diffstat row).**
+  Probed binary-file diffs first (rendered gracefully — binary stat ` f | Bin..`
+  doesn't match the `\d+` stat pattern so it's shown as plain text; the "Binary
+  files differ" body line falls through to text too — no crash, no fix needed).
+  Then found a latent parsing bug in `GitDiffJob.process_line` (gitk/jobs.py):
+  before the first hunk it ran `stat_pattern.match` on EVERY line, including
+  commit-message body lines. A message line containing "| N +-" (e.g. a markdown
+  table) was therefore misclassified as a `StatListItem` — a selectable row whose
+  Enter/click tries to jump to a bogus file. Diffstat lines are 1-space-indented
+  and message bodies 4-space-indented, so the fix gates stat parsing on the
+  1-space form (the discriminator the color line already used). Confirmed no
+  fixture message line triggers it (goldens byte-unchanged). Added 3 unit tests
+  (1-space stat -> StatListItem with path; 4-space "| N" message -> TextListItem;
+  plain message -> text); also added `import re` to test_units. Suite **71/71**
+  (goldens untouched); units **61/61**. (22nd genuine bug.)
 - **2026-06-28 — Iteration 77 (coverage: merge-commit diff rendering; no bug found).**
   Audited preferences save (correct), ListView.insert (does not exist post-
   refactor — stale memory note), segment toggle/choice state (correct), and the
