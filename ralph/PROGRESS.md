@@ -222,6 +222,15 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 62 (docs audit complete: Search/Context sections verified).**
+  Finished the README↔code audit: the **Search Features** section is accurate —
+  the mode labels `[Txt]/[ID]/[Message]/[Filepaths]/[Diff]` match
+  `SearchDialogPopup._TYPES` exactly, TAB cycles types, and the `<Case>` /
+  `<Regexp>` flags match. The **Context Menus** groupings (commit / branch / tag
+  operations) match the menu builders. No change needed in these sections. With
+  the earlier fixes (Configuration, function-key bar, reset semantics, toggle
+  label) the entire README is now cross-checked against the code and accurate.
+  No source change. Full suite **62/62**; units **39/39**; goldens untouched.
 - **2026-06-28 — Iteration 61 (docs: fix two wrong README key bindings).**
   Cross-checked the remaining Key Bindings against the handlers. Navigation
   (j/k/h/l/g/G/Ctrl-b/f), b/c/v/m/M, n/N, ENTER, and `+`/`-` all verified
