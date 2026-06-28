@@ -507,6 +507,15 @@ class Item:
     def __init__(self):
         self.is_selectable = True
         self.is_separator = False
+        # Back-reference to the owning ListView, set when the item is added
+        # (ListView.append / .items.insert / set_header_item). Lets the item
+        # reach the App struct via get_app() without the Gitkcli global.
+        self._view = None
+
+    def get_app(self):
+        """The App struct this item belongs to, reached through its view.
+        None only for a transient item not yet added to a view."""
+        return self._view.app if self._view is not None else None
 
     def get_text(self) -> str:
         return ''
@@ -533,7 +542,7 @@ class Item:
         if mouse.event_type == 'double-click':
             return self.activate()
         if mouse.event_type == 'right-click':
-            return Gitkcli.context_menu.show_context_menu(self)
+            return self.get_app().context_menu.show_context_menu(self)
         return False
 
 class SeparatorItem(Item):
@@ -562,10 +571,11 @@ class RefListItem(Item):
         win.clrtoeol()
 
     def activate(self) -> bool:
-        if Gitkcli.git_log.select_commit(self.data['id']):
-            Gitkcli.git_log.show()
+        app = self.get_app()
+        if app.git_log.select_commit(self.data['id']):
+            app.git_log.show()
         else:
-            Gitkcli.log.warning(f"Commit with hash {self.data['id']} not found")
+            app.log.warning(f"Commit with hash {self.data['id']} not found")
         return True
 
 class TextListItem(Item):
@@ -669,6 +679,15 @@ class DiffListItem(TextListItem):
         return True
 
 class Segment:
+    # Back-reference to the owning SegmentedListItem, set in its __init__.
+    # Lets a segment reach the App struct (segment -> item -> view -> app)
+    # without the Gitkcli global.
+    _item = None
+
+    def get_app(self):
+        """The App struct this segment belongs to, reached through its item."""
+        return self._item.get_app() if self._item is not None else None
+
     def get_text(self) -> str:
         return ''
 
@@ -788,6 +807,10 @@ class SegmentedListItem(Item):
         # a space (an ordinary row); the rule-line title bar overrides it to '─'.
         self.fill_char = ' '
         self.segments = segments
+        # Wire each segment back to this item so segments can reach the App
+        # struct (segment -> item -> view -> app) via get_app().
+        for segment in self.segments:
+            segment._item = self
         self.bg_color = bg_color
         self.clicked_segment = None
 
@@ -1215,6 +1238,7 @@ class View:
 
     def set_header_item(self, item):
         self.header_item = item
+        item._view = self
         self._calculate_dimensions()
 
     def set_view_mode(self, view_mode:str):
@@ -1554,6 +1578,7 @@ class ListView(View):
 
     def append(self, item):
         """Add item to end of list"""
+        item._view = self
         self.items.append(item)
         if len(self.items) - self._offset_y < self.height:
             self.dirty = True
@@ -1938,6 +1963,7 @@ class GitLogView(ListView):
             rows.append(UncommittedChangesListItem(staged = True))
         for n, row in enumerate(rows):
             row.graph_prefix = graph_prefix
+            row._view = self
             self.items.insert(insert_at + n, row)
 
         # Keep the previously-selected row on the same screen line. Real commits
@@ -1958,6 +1984,7 @@ class GitLogView(ListView):
         insert_at = 0
         while insert_at < len(self.items) and isinstance(self.items[insert_at], UncommittedChangesListItem):
             insert_at += 1
+        item._view = self
         self.items.insert(insert_at, item)
         if insert_at <= self._selected:
             self._selected += 1
@@ -2319,7 +2346,7 @@ class ContextMenuItem(TextListItem):
 
     def activate(self) -> bool:
         if self.is_selectable:
-            Gitkcli.screen.hide_active_view()
+            self.get_app().screen.hide_active_view()
             self.action(*self.args)
         return True
 

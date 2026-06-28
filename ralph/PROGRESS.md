@@ -21,12 +21,15 @@
   `PreferencesDialogPopup`, `Screen`, `ListView` (+ module fn
   `_raise_split_sibling` via `view.app`), `LogView`, `ResetDialogPopup`,
   `RefPushDialogPopup`, `NewRefDialogPopup`, `GitSearchDialogPopup`. Remaining
-  `Gitkcli.` refs are now ONLY in non-`self`/non-`view` scopes:
-  items/segments/jobs (need `get_app()`), one `GitRefsView` classmethod
-  (`get_ref_color_and_title`), and the App/launch_curses/main-loop entry point
-  (~61). Next: build the item→view / segment→item back-ref + `get_app()` so
-  items/segments can migrate.
-- **gitkcli.py:** 4090 lines · **Gitkcli. refs:** 148 (code; +2 doc-prose) ·
+  `Gitkcli.` refs are now in: items/segments (migrating via the new
+  `get_app()`), jobs (no view; need a different access path), one `GitRefsView`
+  classmethod, `MouseState`/`KeyboardState` helpers, and the
+  App/launch_curses/main-loop entry point (~61). `get_app()` chain is BUILT and
+  validated. Next: migrate the remaining item clusters (CommitListItem,
+  DiffListItem, StatListItem, UncommittedChangesListItem, WindowTopBarItem,
+  ResetModeItem) and segment clusters (RefSegment, SplitButtonSegment) via
+  `get_app()`.
+- **gitkcli.py:** 4115 lines · **Gitkcli. refs:** 143 (code; +2 doc-prose) ·
   **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
@@ -41,8 +44,13 @@
 
 ## Phase 1 — Dissolve `Gitkcli` global into an `App` struct (still one file)
 
-- [~] Introduce `App` instance + access path (`self.app` on views; `get_app()`
+- [x] Introduce `App` instance + access path (`self.app` on views; `get_app()`
       parent-chain walk for items/segments; Screen holds `app`).
+      COMPLETE: App instance + `Gitkcli` bridge; `self.app` on Screen/View;
+      `Item._view` + `Item.get_app()`, `Segment._item` + `Segment.get_app()`
+      wired in `ListView.append`/`.items.insert`/`set_header_item` and
+      `SegmentedListItem.__init__`. Validated by migrating ContextMenuItem,
+      RefListItem, and the Item base right-click handler to `get_app()`.
       DONE: (a) `Gitkcli` class → `App` instance (10 classmethods → instance
       methods, `cls`→`self`; class attrs → `__init__`). Transitional
       module-level `Gitkcli` name bound to the single `App()` in `launch_curses`
@@ -113,6 +121,18 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 9 (Phase 1: build `get_app()` chain for items/segments).**
+  Added the parent back-reference chain so items/segments reach `app` without
+  the global: `Item._view` (+ `Item.get_app()` → `self._view.app`),
+  `Segment._item` (+ `Segment.get_app()` → `self._item.get_app()`). Wired
+  `_view` in `ListView.append`, the two `GitLogView` `self.items.insert` sites
+  (uncommitted pseudo-rows + `prepend_commit`), and `set_header_item`; wired
+  `_item` for all segments in `SegmentedListItem.__init__`. Validated the chain
+  end-to-end by migrating three small Item classes to `get_app()`:
+  `ContextMenuItem.activate`, `RefListItem.activate`, and the `Item` base
+  right-click handler (`get_app().context_menu.show_context_menu`). Full suite:
+  **60 passed, 0 failed** (incl. `tag_context_menu`); goldens clean. `Gitkcli.`
+  refs 148→143. Completes the Phase-1 access-path checklist item.
 - **2026-06-28 — Iteration 8 (Phase 1: finish View/Screen instance-scope refs).**
   Migrated the remaining view/screen-scope clusters in one cohesive pass:
   `Screen` (12, all in `__init__` F-key lambdas + instance methods — none in its
