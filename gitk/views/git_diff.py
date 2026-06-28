@@ -71,6 +71,7 @@ class GitDiffView(ListView):
         for item in self.items:
             if isinstance(item, DiffListItem) and item.new_file_path == file and item.new_file_line == line:
                 self.set_selected(item.line)
+                return  # first match is the target; stop (avoids extra position writes)
 
     def _reload_diff(self):
         self.clear()

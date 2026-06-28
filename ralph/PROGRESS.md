@@ -213,6 +213,17 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 43 (tidy: select_line stops at first match; analyze open_context_menu).**
+  `GitDiffView.select_line` called `set_selected` for every matching DiffListItem
+  rather than the first (intended) one, so with duplicate (file,line) rows the
+  last won and intermediate `selected_line_map` writes fired needlessly. Added a
+  `return` after the first match. Analyzed the other low-confidence note
+  (`App.open_context_menu` could compute a negative `screen_y` if the selected
+  row were scrolled above the viewport): not reachable — `set_selected` always
+  keeps `_offset_y <= _selected < _offset_y+height`, so `_selected - _offset_y`
+  is in `[0, height)`. Recorded as analyzed-benign; left unchanged to avoid
+  churn. diff_blame_origin golden passes; full suite **60/60** (goldens
+  unchanged); units **14/14**.
 - **2026-06-28 — Iteration 42 (post-refactor bugfix: west-edge resize clamp).**
   A second read-only review (views input + Screen/geometry) found the
   left-border (`'w'`) resize branch in `View.handle_resize` lacked the `max(5,…)`
