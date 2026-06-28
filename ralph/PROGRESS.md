@@ -20,11 +20,17 @@
   → nothing. `App` is a plain struct created in `launch_curses` and injected:
   Screen/View/Log/jobs get it at construction (`self.app`), items/segments via
   the `get_app()` parent chain.
-- **Phase:** 2 — essentially done. Extracted everything except the entry point:
-  config, ids, input, screen, segments, items, view, jobs, dialogs, views,
-  `gitk/log.py` (Log), `gitk/app.py` (App). gitkcli.py (215 lines) now holds
-  only `launch_curses` + `main` + the re-export block.
-  NOTE: items 654, view 743, views 658 are > ~600 cap — split in Phase 4.
+- **Phase:** 3 — DONE. `launch_curses` + `main` moved to `gitk/main.py`;
+  `gitkcli.py` is now a 9-line shim (`from gitk.main import main`). The
+  re-export crutch block is GONE — no `gitk` module imports from `gitkcli`
+  anymore. setup.py ships `packages=find_packages(include=["gitk","gitk.*"])`
+  and the console script points at `gitk.main:main` (the `gitkcli` py_module shim
+  stays for the `python3 gitkcli.py` path). `import gitkcli` works; suite (which
+  launches `python3 gitkcli.py`) green.
+- **NEXT (Phase 4):** loose-coupling/readability + split oversized modules
+  (items 654→items+segmented_items, view 743→view+list_view, views 658→views/
+  package) and add unit tests for pure pieces. NOTE: items 654, view 743,
+  views 658 are > ~600 cap.
 - **NEXT (Phase 3):** `gitk/main.py` (move `launch_curses` + `main`, importing
   the needed names directly from their gitk modules) → reduce gitkcli.py to a
   thin shim `from gitk.main import main; if __name__=='__main__': main()`, drop
@@ -32,9 +38,9 @@
   STANDING LESSON: run the AST undefined-name check (scratchpad) after each
   extraction — re-exported names aren't `class` defs so a class-only scan misses
   them, and thread/runtime NameErrors only surface as wrong goldens.
-- **gitkcli.py:** 215 lines · **package:** `gitk/{__init__,config,ids,input,
-  screen,segments,items,view,jobs,dialogs,views,log,app}.py` (items 654,
-  view 743, views 658, dialogs 559, jobs 427, screen 347, segments 245,
+- **gitkcli.py:** 9-line shim · **package:** `gitk/{__init__,config,ids,input,
+  screen,segments,items,view,jobs,dialogs,views,log,app,main}.py` (items 654,
+  view 743, views 658, dialogs 559, jobs 427, screen 347, segments 245, main 178,
   app 154, log 51) · **Gitkcli refs:** 0.
 
 ## Iteration 0 (setup) — DONE
@@ -126,14 +132,15 @@
 - [x] `gitk/app.py` (App struct; only runtime dep is Job + KeyboardState, rest
       are __init__ attribute annotations. SplitLayout not split out — kept on
       App; revisit in Phase 4 if it reads cleaner).
-- [ ] `gitk/main.py` (launch_curses, main)
+- [x] `gitk/main.py` (launch_curses, main).
 
-## Phase 3 — Thin entry point & packaging
+## Phase 3 — Thin entry point & packaging — DONE
 
-- [ ] `gitkcli.py` reduced to the thin shim (≤ ~15 lines).
-- [ ] Remove `from gitk... import *` re-export crutches.
-- [ ] Update `setup.py` / `pyproject.toml`; console script + `python3
-      gitkcli.py` both work.
+- [x] `gitkcli.py` reduced to the thin shim (9 lines).
+- [x] Remove re-export crutches (none remain; no gitk module imports gitkcli).
+- [x] Update `setup.py` (packages=find_packages, console script → gitk.main:main);
+      console script target imports and `python3 gitkcli.py` both work.
+      pyproject.toml unchanged (build-backend + pytest config still valid).
 
 ## Phase 4 — Loose-coupling, readability, new tests
 
@@ -159,6 +166,17 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 29 (Phase 3: `gitk/main.py` + thin shim + packaging).**
+  Moved `launch_curses` + `main` into `gitk/main.py` (imports its deps directly
+  from the gitk modules). Reduced `gitkcli.py` to a 9-line shim
+  (`from gitk.main import main`); DELETED the whole re-export crutch block —
+  confirmed no `gitk` module imports from `gitkcli` (only `gitk.config`'s
+  config-dir name string mentions it). Updated setup.py:
+  `packages=find_packages(include=["gitk","gitk.*"])` (→ `['gitk']`) and console
+  script `gitkcli=gitk.main:main`; kept `py_modules=["gitkcli"]` for the
+  `python3 gitkcli.py` path. AST check clean (only annotation-only flags).
+  `import gitkcli` works, `--help` works. Full suite: **60 passed, 0 failed**;
+  goldens clean. Phase 3 complete — the package is now self-contained.
 - **2026-06-28 — Iteration 28 (Phase 2: extract `gitk/log.py` + `gitk/app.py`).**
   `Log` → gitk/log.py (imports LogView + TextListItem + datetime). `App` →
   gitk/app.py. App's only runtime deps are `Job` (run_git) and `KeyboardState`

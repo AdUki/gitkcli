@@ -16,7 +16,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/AdUki/gitkcli",
-    py_modules=["gitkcli"],  # Use py_modules instead of packages for a single file
+    py_modules=["gitkcli"],   # the entry-point shim
+    packages=find_packages(include=["gitk", "gitk.*"]),  # the application package
     classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
@@ -29,7 +30,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "gitkcli=gitkcli:main",
+            "gitkcli=gitk.main:main",
         ],
     },
 )
