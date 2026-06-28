@@ -3,47 +3,49 @@
 Guidance, not gospel — if a cleaner cut emerges while moving code, take it and
 note the deviation in PROGRESS.md. Keep each file cohesive and ≤ ~600 lines.
 
+**As-built (2026-06-28):** the tree below reflects the real layout. Deviations
+from the original idealized plan: added `ids.py` (shared identifiers, leaf) and
+`list_view.py` (split from view.py); `dialogs.py` is a single module (not a
+`dialogs/` package); `ContextMenu` lives in `views/context_menu.py` (grouped
+with the views, not under dialogs); `OnOffToggleSegment`/`ChoiceSegment` are
+in `segments.py`; `SplitLayout` was not split out (the split logic stays on
+`App`). All modules ≤ ~600 lines.
+
 ```
-gitkcli.py                 # THIN entry shim (final): `from gitk.main import main`
+gitkcli.py                 # THIN entry shim: `from gitk.main import main`
 gitk/
-  __init__.py              # package marker; may re-export `main`
+  __init__.py              # package docstring
+  ids.py                   # ID_* string identifiers (views/dialogs/jobs)  [leaf]
   config.py                # get_config_path, load_config, save_config,
-                           #   copy_to_clipboard, KEY_CTRL
-  input.py                 # KeyboardState, MouseState
-  log.py                   # Log
-  screen.py                # Screen
-  jobs.py                  # Job (base + manager) + Git*Job subclasses
-                           #   (promote to gitk/jobs/ if > ~600 lines)
+                           #   copy_to_clipboard, DEFAULT_CONFIG, KEY_CTRL  [leaf]
+  input.py                 # KeyboardState, MouseState + KEY_*/ENTER_KEYS   [leaf]
+  screen.py                # Screen                                         [leaf]
   segments.py              # Segment, FillerSegment, TextSegment, RefSegment,
                            #   ButtonSegment, ToggleSegment, SplitButtonSegment,
                            #   DynamicTextSegment, HighlightToggleSegment,
-                           #   OnOffToggleSegment, ChoiceSegment
+                           #   OnOffToggleSegment, ChoiceSegment, ref_color_and_title
   items.py                 # Item, SeparatorItem, RefListItem, TextListItem,
                            #   SpacerListItem, StatListItem, DiffListItem,
                            #   ContextMenuItem, UserInputListItem, ResetModeItem
   segmented_items.py       # SegmentedListItem, ButtonRowItem (+ button_row),
                            #   WindowTopBarItem, UncommittedChangesListItem,
                            #   CommitListItem, PreferenceRow
-  view.py                  # View (base) + view constants
+  view.py                  # View (base) + HORIZONTAL_OFFSET_JUMP/SPLIT_DIVIDER_COLOR
   list_view.py             # ListView (+ _raise_split_sibling helper)
+  jobs.py                  # Job (base + registry) + Git*Job subclasses
+  dialogs.py               # _RedMessageBoxPopup, ConfirmDialogPopup, ErrorDialogPopup,
+                           #   UserInputDialogPopup, PreferencesDialogPopup,
+                           #   NewRefDialogPopup, SearchDialogPopup, GitSearchDialogPopup,
+                           #   ResetDialogPopup, RefPushDialogPopup
   views/
-    __init__.py
+    __init__.py            # re-exports the 5 view classes
     git_log.py             # GitLogView
     git_diff.py            # GitDiffView
     git_refs.py            # GitRefsView
     log.py                 # LogView
-  dialogs/
-    __init__.py
-    base.py                # _RedMessageBoxPopup, UserInputDialogPopup
-    context_menu.py        # ContextMenu, ContextMenuItem (if not in items.py)
-    confirm.py             # ConfirmDialogPopup
-    error.py               # ErrorDialogPopup
-    preferences.py         # PreferencesDialogPopup, PreferenceRow
-    reset.py               # ResetDialogPopup, ResetModeItem
-    ref_push.py            # RefPushDialogPopup
-    new_ref.py             # NewRefDialogPopup
-    search.py              # SearchDialogPopup, GitSearchDialogPopup
-  app.py                   # App struct (was Gitkcli) + SplitLayout helper
+    context_menu.py        # ContextMenu
+  log.py                   # Log
+  app.py                   # App struct (was Gitkcli)
   main.py                  # launch_curses, main, curses bootstrap
 ```
 

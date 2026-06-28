@@ -25,14 +25,14 @@
   segmented_items(330); views.py(658) → `gitk/views/` package
   (git_log 358, context_menu 163, git_diff 109, log 33, git_refs 27, __init__ 11).
   setup.py find_packages → ['gitk','gitk.views'].
-- **Phase 4 — essentially COMPLETE.** Import audit done: the gitk load-time
-  import graph is a DAG (no cycles; the two genuine back-edges items↔jobs and
-  items↔segments are broken with documented function-local imports). No module
-  imports a concrete sibling view — views reach each other via `app` at runtime;
-  every module imports only lower-layer base classes/helpers + injected `app`.
-  Removed the last unused imports (view.py KEY_CTRL/copy_to_clipboard, jobs.py
-  ID_GIT_LOG); added `__all__` to views/__init__.
-- **NEXT:** final exit-criteria verification pass, then declare completion.
+- **ALL PHASES COMPLETE.** Every exit criterion in PLAN.md verified TRUE
+  (2026-06-28, iteration 35 — see the Exit-criteria check section below). The
+  `Gitkcli` service-locator is gone; the app is a 14-module `gitk/` package
+  reached through an injected `App` struct; `gitkcli.py` is a 9-line shim; all
+  modules ≤ ~600 lines; golden suite 60/60 with goldens byte-identical to
+  `refactor-baseline`; unit tests 9/9.
+- **NEXT:** refactor done → proceed to code-quality improvements and bug hunting
+  (keeping the golden + unit suites green).
 - **NEXT (Phase 3):** `gitk/main.py` (move `launch_curses` + `main`, importing
   the needed names directly from their gitk modules) → reduce gitkcli.py to a
   thin shim `from gitk.main import main; if __name__=='__main__': main()`, drop
@@ -80,9 +80,6 @@
       (`get_screen`/`set_parent`) does NOT exist in the current single-file
       app; items/segments currently use the `Gitkcli` global directly. So the
       `get_app()` parent walk must be built, not merely "wired up".
-- [ ] Migrate the 10 classmethods to `App` methods (consider `SplitLayout`).
-- [ ] Replace all `Gitkcli.<x>` references with injected access, cluster by
-      cluster (e.g. one iteration: all `Gitkcli.git_diff` in the diff view).
 - [x] Migrate the 10 classmethods to `App` methods (DONE in iteration 1).
 - [x] Replace all `Gitkcli.<x>` references with injected access (DONE,
       iterations 3–15, cluster by cluster).
@@ -97,7 +94,6 @@
 - [x] `gitk/input.py` — KeyboardState, MouseState + KEY_*/ENTER_KEYS constants.
       Uses `from __future__ import annotations` so the View/Item type hints stay
       lazy (no UI imports). gitkcli.py re-exports them.
-- [ ] `gitk/log.py`
 - [x] `gitk/screen.py` — Screen (curses/panel lifecycle, colour palette, panel
       deck, bottom bar). Clean near-leaf; view/item refs duck-typed at runtime.
 - [x] `gitk/ids.py` — all ID_* string constants (leaf, no imports). Not in the
@@ -115,8 +111,8 @@
       SegmentedListItem family; STRUCTURE's separate segmented_items.py folded in
       for now). 654 lines → split in Phase 4. DiffListItem uses a function-local
       `from gitkcli import Job`.
-- [ ] `gitk/segmented_items.py` — DEFERRED: folded into items.py; split out in
-      Phase 4 to respect the ~600-line cap.
+- [x] `gitk/segmented_items.py` — SegmentedListItem family + button_row, split
+      out of items.py in Phase 4 (iteration 31). Imports Item from gitk.items.
 - [x] `gitk/view.py` — View + ListView + `_raise_split_sibling` +
       HORIZONTAL_OFFSET_JUMP/SPLIT_DIVIDER_COLOR. Imports items (no cycle).
       743 lines → split into view.py + list_view.py in Phase 4.
@@ -153,29 +149,53 @@
 - [x] Every module ≤ ~600 lines. view→view 426 + list_view 333; items→items 341
       + segmented_items 330; views.py 658 → gitk/views/ package (git_log 358,
       context_menu 163, git_diff 109, log 33, git_refs 27). No exceptions needed.
-- [ ] Introduce passed structs/dataclasses where it improves clarity (no
-      behavior change).
+- [x] Introduce passed structs/dataclasses where it improves clarity (no
+      behavior change). JUDGMENT: the `App` struct is now passed/injected
+      everywhere (views/jobs at construction; items/segments via get_app()), and
+      record-like data (commit/diff/ref dicts) is already passed as plain dicts
+      via the jobs→items pipeline. No further dataclass conversion was made — it
+      would be churn with behavior-change risk and no clarity gain that the
+      golden suite could vouch for. (Optional task; intent satisfied.)
 - [x] Add unit tests for pure pieces → `test/test_units.py` (9 tests):
       KEY_CTRL, DEFAULT_CONFIG shape, get_config_path, load_config
       (defaults/merge-known-keys/corrupt-json), save_config roundtrip,
       ref_color_and_title per type + head arrow. `pytest test/` collects 69
       (60 golden + 9 unit); all pass. `python3 test/run.py` still 60/60.
 
-## Exit-criteria check (fill in when claiming completion)
+## Exit-criteria check (verified 2026-06-28, iteration 35)
 
-- [ ] `grep -rn 'class Gitkcli' .` → none
-- [ ] `grep -rn 'Gitkcli\.' gitkcli.py gitk/` → 0
-- [ ] `gitkcli.py` is a thin shim; code in `gitk/` modules
-- [ ] no module > ~600 lines (exceptions: …)
-- [ ] full golden suite passes; `git status test/cases` clean vs baseline
-- [ ] `import gitkcli` works; console script works
-- [ ] all tasks above checked; STRUCTURE.md matches reality
-- [ ] added unit tests pass
+- [x] `class Gitkcli` → none in TRACKED files (`git grep 'class Gitkcli'` empty).
+      The only hit `grep -rn 'class Gitkcli' .` finds is in
+      `.claude/worktrees/clipboard-fix/` — a gitignored, unrelated detached-HEAD
+      worktree (pre-refactor checkout), not part of this project's sources.
+- [x] `grep -rn 'Gitkcli\.' gitkcli.py gitk/` → 0 (and no bare `Gitkcli` either).
+- [x] `gitkcli.py` is a 9-line thin shim; all code in the `gitk/` package.
+- [x] no module > ~600 lines (largest gitk module: dialogs 559, git_log 358).
+- [x] full golden suite passes (60/60); `git diff refactor-baseline -- test/cases`
+      empty and `git status test/cases` clean.
+- [x] `import gitkcli` works; console-script target `gitk.main:main` imports;
+      `python3 gitkcli.py --help` works.
+- [x] all tasks above checked; STRUCTURE.md matches reality (deviations recorded:
+      added gitk/ids.py + gitk/list_view.py; ContextMenu lives in views/, not
+      dialogs/; dialogs is a single module not a package).
+- [x] added unit tests pass (`pytest test/test_units.py` → 9/9; `pytest test/`
+      → 69/69).
 
 ---
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 35 (final exit-criteria verification).**
+  Walked every PLAN.md exit criterion and verified each TRUE (filled the
+  Exit-criteria check section with evidence). Reconciled stale/duplicate
+  checkboxes (removed superseded Phase-1 dupes and the stray `gitk/log.py` box;
+  marked segmented_items + the optional structs/dataclasses task done with
+  judgment notes). Rewrote STRUCTURE.md as the as-built tree (records the
+  deviations: ids.py, list_view.py, single dialogs.py, ContextMenu in views/).
+  Note: `grep -rn 'class Gitkcli' .` matches only a gitignored unrelated
+  worktree (`.claude/worktrees/clipboard-fix`) — `git grep` over tracked files
+  is clean. Full suite **60/60**, goldens byte-identical to refactor-baseline,
+  units 9/9. **Refactor complete.**
 - **2026-06-28 — Iteration 34 (Phase 4: loose-coupling / import audit + tidy).**
   Mapped the gitk load-time import graph via AST and confirmed it is a DAG (no
   cycles). The only genuine back-edges — items↔jobs and items↔segments — are
