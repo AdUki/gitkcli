@@ -213,6 +213,18 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 51 (coverage: add golden for the --no-color mono tier).**
+  The monochrome colour-degradation path (`--no-color` → `Screen.force_mono` →
+  `color_depth=0`) had NO golden coverage. Added a NEW (additive) case
+  `test/cases/log_nocolor` — `launch --no-color` then capture the Git Log view —
+  and generated its golden with `--filter log_nocolor -u` (only the new case;
+  existing 60 goldens untouched, verified via `git status`). The golden confirms
+  the degraded tier: white-on-black (`37;40`) + video attributes (reverse/bold)
+  and crucially NONE of the `38;5;`/`48;5;`/`48;2;` palette codes the normal
+  256-colour goldens carry. Deterministic (passes on re-run without `-u`). Suite
+  now **61 passed, 0 failed**; units **27/27**. (This is allowed: a new case's
+  golden is additive coverage of CORRECT behavior, not editing/regenerating an
+  existing golden.)
 - **2026-06-28 — Iteration 50 (doc: accurate gitk/__init__ module map).**
   `gitk/__init__.py`'s docstring still described an *in-progress* migration with
   `from gitk.<mod> import *` re-export crutches that no longer exist. Replaced it

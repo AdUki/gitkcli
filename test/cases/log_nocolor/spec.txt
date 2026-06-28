@@ -1,0 +1,9 @@
+# Launch with --no-color and capture the initial Git Log view. Exercises the
+# monochrome colour tier (Screen.force_mono): the screen must still render
+# correctly using video attributes only (reverse/bold), with no 256/8-colour
+# palette codes. Mirrors log_startup but on the degraded colour path, which had
+# no golden coverage before.
+size      120x40
+config    default
+launch    --no-color
+capture   nocolor_startup
