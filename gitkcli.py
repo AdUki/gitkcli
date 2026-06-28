@@ -1566,7 +1566,7 @@ class ListView(View):
             self._offset_y = max(0, len(self.items) - self.height)
         
     def clear(self):
-        Gitkcli.log.debug(f'Clear view {self.id}')
+        self.app.log.debug(f'Clear view {self.id}')
         self.items = []
         self.set_selected(0)
         self._offset_y = 0
@@ -1581,7 +1581,7 @@ class ListView(View):
                 new_index = what
         elif isinstance(what, (str, re.Pattern)):
             test = (lambda t: what in t) if isinstance(what, str) else (lambda t: what.match(t))
-            for i, item in enumerate(Gitkcli.git_diff.items):
+            for i, item in enumerate(self.app.git_diff.items):
                 if test(item.get_text()):
                     new_index = i
                     break
@@ -1663,7 +1663,7 @@ class ListView(View):
                 if 'move' in mouse.event_type:
                     if self._selected == index:
                         return False # do not redraw when hovering over same item
-                if mouse.event_type == 'left-click' or mouse.event_type == 'double-click' or ('move' in mouse.event_type and self in Gitkcli.mouse.movement_capture):
+                if mouse.event_type == 'left-click' or mouse.event_type == 'double-click' or ('move' in mouse.event_type and self in self.app.mouse.movement_capture):
                     if self.items[index].is_selectable:
                         self.set_selected(index)
                         selected = True
@@ -1675,7 +1675,7 @@ class ListView(View):
                 mouse.y = index
                 handled = item.handle_mouse_input(mouse)
                 if handled and ('left-click' == mouse.event_type or 'double-click' == mouse.event_type):
-                    Gitkcli.mouse.clicked_item = item
+                    self.app.mouse.clicked_item = item
                 if selected or handled:
                     return True
                 mouse.x, mouse.y = saved_x, saved_y
@@ -1787,16 +1787,16 @@ def _raise_split_sibling(view, sibling):
     we first raise the sibling so the side-by-side / stacked layout is restored
     even after a fullscreen view (logs, refs) temporarily covered it.
     """
-    if not Gitkcli.split_active() or Gitkcli._raising_split_sibling:
+    if not view.app.split_active() or view.app._raising_split_sibling:
         return
-    views = Gitkcli.screen.showed_views
+    views = view.app.screen.showed_views
     if len(views) >= 2 and views[-1] is view and views[-2] is sibling:
         return  # already the top two in the right order
-    Gitkcli._raising_split_sibling = True
+    view.app._raising_split_sibling = True
     try:
         sibling.show()
     finally:
-        Gitkcli._raising_split_sibling = False
+        view.app._raising_split_sibling = False
 
 class GitLogView(ListView):
     def __init__(self, git_args:typing.List, cmd_args:typing.List):
@@ -2295,14 +2295,14 @@ class LogView(ListView):
             ButtonSegment("[Clear]", lambda: self.clear(), 30),
             HighlightToggleSegment("[Autoscroll]", lambda: self.autoscroll, self.toggle_autoscroll, 30),
             TextSegment("  Log level:", 30),
-            DynamicTextSegment(lambda: Gitkcli.log.level, 30),
+            DynamicTextSegment(lambda: self.app.log.level, 30),
             ButtonSegment("[+]", lambda: self.change_log_level(+1), 30),
             ButtonSegment("[-]", lambda: self.change_log_level(-1), 30)], title_color = 5))
 
         self.set_search_dialog(SearchDialogPopup(ID_LOG_SEARCH))
 
     def change_log_level(self, value):
-        Gitkcli.log.level = max(0, min(5, Gitkcli.log.level + value))
+        self.app.log.level = max(0, min(5, self.app.log.level + value))
         self.dirty = True
 
     def toggle_autoscroll(self):
@@ -2628,7 +2628,7 @@ class ResetDialogPopup(ListView):
     def _confirm(self):
         # [Ok] applies whichever reset mode is currently highlighted.
         self.hide()
-        Gitkcli.git_log.reset(self.selected_mode, self.commit_id)
+        self.app.git_log.reset(self.selected_mode, self.commit_id)
         return True
 
     def set_selected(self, what, visible_mode = 'center'):
@@ -2643,7 +2643,7 @@ class ResetDialogPopup(ListView):
     def open(self, commit_id):
         self.commit_id = commit_id
         self.selected_mode = '--mixed'
-        title = Gitkcli.git_log.commits.get(commit_id, {}).get('title', '')
+        title = self.app.git_log.commits.get(commit_id, {}).get('title', '')
         if len(title) > 34:
             title = title[:33] + '…'
         self.target_item.set_text(f'  Reset HEAD → {commit_id[:8]}  {title}')
@@ -2708,7 +2708,7 @@ class RefPushDialogPopup(ListView):
 
     def _do_push(self, remote, ref_name, force):
         args = ['git', 'push'] + (['-f'] if force else []) + [remote, ref_name]
-        Gitkcli.run_git(args, ok=f'Branch pushed {ref_name} to {remote}',
+        self.app.run_git(args, ok=f'Branch pushed {ref_name} to {remote}',
                         err=f"Error pushing ref '{ref_name}'", reload_refs=True,
                         force=force, reasons=('non-fast-forward', 'fetch first', 'would clobber'),
                         retry=lambda: self._do_push(remote, ref_name, True),
@@ -3076,7 +3076,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
 
     def _create_ref(self, ref_type, name, commit_id, force):
         args = ['git', ref_type] + (['-f'] if force else []) + [name, commit_id]
-        Gitkcli.run_git(args, ok=f'{ref_type} {name} created successfully',
+        self.app.run_git(args, ok=f'{ref_type} {name} created successfully',
                         err=f'Error creating {ref_type}', reload_refs=True,
                         force=force, reasons=('already exists',),
                         retry=lambda: self._create_ref(ref_type, name, commit_id, True),
@@ -3161,7 +3161,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
         if self.search_type == "txt":
             return super().matches(item)
         elif hasattr(item, 'id'):
-            return item.id in Gitkcli.git_log.job_git_search.found_ids
+            return item.id in self.app.git_log.job_git_search.found_ids
         return False
 
     def handle_input(self, keyboard):
@@ -3193,7 +3193,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
                 args.append(f"*{self.input.txt}*")
 
             self.add_query_to_history()
-            Gitkcli.git_log.job_git_search.start_job(args)
+            self.app.git_log.job_git_search.start_job(args)
 
         elif key == KEY_TAB: # cycle through search types
             self.parent_list_view.dirty = True
@@ -3387,18 +3387,19 @@ class Screen:
         self._full_redraw = False
 
         # Midnight-Commander-style function-key panel pinned to the bottom row.
-        # Each entry is (key label, name, callback); callbacks reference Gitkcli
-        # views lazily, so they are safe to define before those views exist.
+        # Each entry is (key label, name, callback); callbacks reach the app's
+        # views lazily via self.app, so they are safe to define before those
+        # views exist.
         self.bottom_bar_entries = [
-            ('F1',  'Git Log',  lambda: Gitkcli.git_log.show()),
-            ('F2',  'Git Refs', lambda: Gitkcli.git_refs.show()),
-            ('F3',  'Git Diff', lambda: Gitkcli.git_diff.show()),
-            ('F4',  'Logs',     lambda: Gitkcli.log.view.show()),
-            ('F5',  'Refresh',  lambda: Gitkcli.refresh_all()),
-            ('F6',  'Search',   lambda: Gitkcli.open_search()),
-            ('F7',  'Context',  lambda: Gitkcli.open_context_menu(at_selection=False)),
-            ('F9',  'Config',   lambda: Gitkcli.preferences.show()),
-            ('F10', 'Quit',     lambda: Gitkcli.exit_program()),
+            ('F1',  'Git Log',  lambda: self.app.git_log.show()),
+            ('F2',  'Git Refs', lambda: self.app.git_refs.show()),
+            ('F3',  'Git Diff', lambda: self.app.git_diff.show()),
+            ('F4',  'Logs',     lambda: self.app.log.view.show()),
+            ('F5',  'Refresh',  lambda: self.app.refresh_all()),
+            ('F6',  'Search',   lambda: self.app.open_search()),
+            ('F7',  'Context',  lambda: self.app.open_context_menu(at_selection=False)),
+            ('F9',  'Config',   lambda: self.app.preferences.show()),
+            ('F10', 'Quit',     lambda: self.app.exit_program()),
         ]
         # Same bindings driven from the keyboard (single source of truth with the
         # bar). F7 is special-cased in the main loop - from the keyboard it opens
@@ -3442,9 +3443,9 @@ class Screen:
             # the *other* pane up fullscreen, instead of popping a single pane
             # and leaving a gap with no backdrop.
             closing = self.showed_views[-1]
-            if Gitkcli.split_active() and closing in (Gitkcli.git_log, Gitkcli.git_diff):
-                other = Gitkcli.git_log if closing is Gitkcli.git_diff else Gitkcli.git_diff
-                Gitkcli.set_split_mode('off')
+            if self.app.split_active() and closing in (self.app.git_log, self.app.git_diff):
+                other = self.app.git_log if closing is self.app.git_diff else self.app.git_diff
+                self.app.set_split_mode('off')
                 other.show()
                 return
             # Same as closing any top view: blank its footprint (damage-based

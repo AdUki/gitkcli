@@ -16,14 +16,18 @@
 ## Current status
 
 - **Phase:** 1 — in progress. Migrating view-method `Gitkcli.<x>` → `self.app.<x>`
-  cluster by cluster. Done: `GitDiffView`, `GitLogView`, `View` base,
-  `ContextMenu`, `PreferencesDialogPopup`. Next clusters: `Screen` (12),
-  `ListView` (8), `LogView` (2), and the remaining small dialog classes
-  (Reset/RefPush/GitSearch/NewRef). Still pending: `get_app()` for
-  items/segments/jobs (no parent chain yet); launch_curses/main-loop refs
-  (~61, become `app.` in Phase 2/3).
-- **gitkcli.py:** 4089 lines · **Gitkcli. refs:** 176 (code; +2 doc-prose are
-  inside this count) · **`class Gitkcli`:** 0 · **package:** not created.
+  cluster by cluster. View/Screen instance-scope migration COMPLETE: done
+  `GitDiffView`, `GitLogView`, `View` base, `ContextMenu`,
+  `PreferencesDialogPopup`, `Screen`, `ListView` (+ module fn
+  `_raise_split_sibling` via `view.app`), `LogView`, `ResetDialogPopup`,
+  `RefPushDialogPopup`, `NewRefDialogPopup`, `GitSearchDialogPopup`. Remaining
+  `Gitkcli.` refs are now ONLY in non-`self`/non-`view` scopes:
+  items/segments/jobs (need `get_app()`), one `GitRefsView` classmethod
+  (`get_ref_color_and_title`), and the App/launch_curses/main-loop entry point
+  (~61). Next: build the item→view / segment→item back-ref + `get_app()` so
+  items/segments can migrate.
+- **gitkcli.py:** 4090 lines · **Gitkcli. refs:** 148 (code; +2 doc-prose) ·
+  **`class Gitkcli`:** 0 · **package:** not created.
 
 ## Iteration 0 (setup) — DONE
 
@@ -109,6 +113,19 @@
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 8 (Phase 1: finish View/Screen instance-scope refs).**
+  Migrated the remaining view/screen-scope clusters in one cohesive pass:
+  `Screen` (12, all in `__init__` F-key lambdas + instance methods — none in its
+  `cls` colour helpers), `ListView` (instance methods), `LogView`,
+  `ResetDialogPopup`, `RefPushDialogPopup`, `NewRefDialogPopup`,
+  `GitSearchDialogPopup`. The module-level `_raise_split_sibling(view, sibling)`
+  has no `self`, so its 4 refs became `view.app.<x>` (it already receives the
+  focused view). Updated the now-stale Screen bottom-bar comment. Deliberately
+  SKIPPED `GitRefsView`'s 1 ref — it sits in the `get_ref_color_and_title`
+  *classmethod* (no `self`); deferred to the items/jobs phase. Verified each
+  range first: no `@staticmethod`/`@classmethod` in the migrated dialog ranges,
+  every `def` takes `self`, lambdas close over `self`. Full suite: **60 passed,
+  0 failed**; goldens clean. `Gitkcli.` refs 176→148.
 - **2026-06-28 — Iteration 7 (Phase 1: migrate `PreferencesDialogPopup`).**
   Replaced all 23 `Gitkcli.<x>` → `self.app.<x>` inside `PreferencesDialogPopup`
   (2950–3043) — the apply/reset paths that read & write `git_log`/`git_diff`/
