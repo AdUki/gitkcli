@@ -222,6 +222,15 @@ A read-only bug-review of the gitk package surfaced several candidates. Verified
 
 ## Log (newest first)
 
+- **2026-06-28 — Iteration 64 (probe: detached HEAD — works; add regression golden).**
+  Probed another untested startup state — a detached HEAD (a commit checked out
+  directly) — via the pty harness. It renders CORRECTLY: log shown, the detached
+  commit carries `(HEAD)` with NO `-> branch` arrow (head_branch is empty when
+  detached), no error. No bug. Locked it with an additive `log_detached_head`
+  golden built from a self-contained repo with explicitly pinned dates+offsets
+  (so the commit hashes are deterministic across machines/timezones — the
+  harness also pins GIT_AUTHOR/COMMITTER identity), detached at the root commit.
+  Full suite **64/64** (existing goldens untouched); units **39/39**.
 - **2026-06-28 — Iteration 63 (BUG: empty-repo error dialog; + LC_ALL on streaming jobs).**
   Probed a previously-untested real scenario — launching in a repo with no
   commits (fresh `git init`, unborn branch) — via a pty harness and found a
