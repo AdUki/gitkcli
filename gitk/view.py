@@ -278,54 +278,63 @@ class View:
         return False
 
     def handle_resize(self):
+        if self.resize_mode == "split":
+            self._resize_split_divider()
+            return
+        if "m" in self.resize_mode:
+            self._move_window()
+        else:
+            self._resize_window_edges()
+
+    def _resize_split_divider(self):
         from gitk.split_layout import (
             SPLIT_SIDE,
         )  # late import: avoids view<->split_layout cycle
 
-        if self.resize_mode == "split":
-            lines, cols = self.app.screen.getmaxyx()
-            if self.app.split.split_mode == SPLIT_SIDE:
-                ratio = self.app.mouse.screen_x / max(1, cols)
-            else:
-                ratio = self.app.mouse.screen_y / max(1, lines)
-            self.app.split.split_ratio = min(0.85, max(0.15, ratio))
-            self.app.split.apply_split_layout()
-            return
+        lines, cols = self.app.screen.getmaxyx()
+        if self.app.split.split_mode == SPLIT_SIDE:
+            ratio = self.app.mouse.screen_x / max(1, cols)
+        else:
+            ratio = self.app.mouse.screen_y / max(1, lines)
+        self.app.split.split_ratio = min(0.85, max(0.15, ratio))
+        self.app.split.apply_split_layout()
+
+    def _move_window(self):
         stdscr_height, stdscr_width = self.app.screen.getmaxyx()
         win_y, win_x = self.win.getbegyx()
         win_height, win_width = self.win.getmaxyx()
+        new_x = max(0, min(win_x + self.app.mouse.rel_x, stdscr_width - win_width))
+        new_y = max(0, min(win_y + self.app.mouse.rel_y, stdscr_height - win_height))
+        if new_x == win_x and new_y == win_y:
+            return
+        self.panel.move(new_y, new_x)
+        self.dirty = True
 
-        if "m" in self.resize_mode:
-            new_x = max(0, min(win_x + self.app.mouse.rel_x, stdscr_width - win_width))
-            new_y = max(
-                0, min(win_y + self.app.mouse.rel_y, stdscr_height - win_height)
+    def _resize_window_edges(self):
+        stdscr_height, stdscr_width = self.app.screen.getmaxyx()
+        win_y, win_x = self.win.getbegyx()
+        win_height, win_width = self.win.getmaxyx()
+        new_x = win_x
+        new_y = win_y
+        new_width = win_width
+        new_height = win_height
+        if "w" in self.resize_mode:
+            # Dragging the left edge keeps the right edge fixed. Clamp new_x
+            # to [0, right-5] so the window keeps a >=5 min width (matching
+            # the 'e'/'s' branches) instead of collapsing to 0/negative,
+            # which would jump to half-screen or raise curses.error.
+            right = win_x + win_width
+            new_x = max(0, min(win_x + self.app.mouse.rel_x, right - 5))
+            new_width = right - new_x
+        if "e" in self.resize_mode:
+            new_width = max(
+                5, min(stdscr_width - new_x, win_width + self.app.mouse.rel_x)
             )
-            if new_x == win_x and new_y == win_y:
-                return
-            self.panel.move(new_y, new_x)
-            self.dirty = True
-        else:
-            new_x = win_x
-            new_y = win_y
-            new_width = win_width
-            new_height = win_height
-            if "w" in self.resize_mode:
-                # Dragging the left edge keeps the right edge fixed. Clamp new_x
-                # to [0, right-5] so the window keeps a >=5 min width (matching
-                # the 'e'/'s' branches) instead of collapsing to 0/negative,
-                # which would jump to half-screen or raise curses.error.
-                right = win_x + win_width
-                new_x = max(0, min(win_x + self.app.mouse.rel_x, right - 5))
-                new_width = right - new_x
-            if "e" in self.resize_mode:
-                new_width = max(
-                    5, min(stdscr_width - new_x, win_width + self.app.mouse.rel_x)
-                )
-            if "s" in self.resize_mode:
-                new_height = max(
-                    5, min(stdscr_height - new_y, win_height + self.app.mouse.rel_y)
-                )
-            self.set_dimensions(new_x, new_y, new_height, new_width)
+        if "s" in self.resize_mode:
+            new_height = max(
+                5, min(stdscr_height - new_y, win_height + self.app.mouse.rel_y)
+            )
+        self.set_dimensions(new_x, new_y, new_height, new_width)
 
     def screen_size_changed(self, lines, cols):
         self.dirty = True

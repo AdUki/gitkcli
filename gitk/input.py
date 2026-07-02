@@ -180,15 +180,18 @@ class MouseState:
 
         return self.event_type != ""
 
-    def process_mouse_event(self, active_view: View, event_type: str = None):
-        if event_type is None:
-            event_type = self.event_type
-
+    def _update_capture(self, event_type: str):
+        """Start/stop the terminal mouse-movement capture around a click/release,
+        so movement events only stream in while a button is actually held."""
         if "click" in event_type:
             self.capture_mouse_movement(True)
         if "release" in event_type:
             self.capture_mouse_movement(False)
 
+    def _adjust_drag_event(self, event_type: str) -> str:
+        """Rewrite a move/release event relative to the item a drag started on:
+        'in' while still over its row, 'out' once the cursor (or the release)
+        has left it. No-op when no item is being dragged."""
         if self.clicked_item:
             if self.click_y == self.screen_y:
                 if event_type == "left-move":
@@ -197,16 +200,16 @@ class MouseState:
                 event_type = "left-move-out"
             elif event_type == "left-release":
                 event_type = "left-release-out"
+        return event_type
 
-        # expose the (possibly adjusted) type to handlers reading mouse.event_type
-        self.event_type = event_type
-
-        # The function-key bar lives on the reserved bottom row, outside every
-        # view's rect. Route a single click there to its entries — but not while
-        # a modal popup is open: let those fall through so an outside-click
-        # dismisses it. (Only 'left-click', never 'double-click': a bar entry has
-        # no double-click meaning, and firing twice would e.g. open then instantly
-        # close the menu/preferences popup an entry just raised.)
+    def _route_bottom_bar(self, event_type: str) -> bool:
+        """Route a single click on the reserved bottom row to its F-key bar
+        entry. Returns True when the click was consumed (nothing else should
+        process it). Not while a modal popup is open: let those fall through so
+        an outside-click dismisses it. Only 'left-click', never 'double-click':
+        a bar entry has no double-click meaning, and firing twice would e.g.
+        open then instantly close the menu/preferences popup an entry just
+        raised."""
         if event_type == "left-click":
             bar_y = self.app.screen.stdscr.getmaxyx()[0] - 1
             active = self.app.screen.get_active_view()
@@ -215,13 +218,32 @@ class MouseState:
                     if x_start <= self.screen_x < x_end:
                         callback()
                         break
-                return
+                return True
+        return False
 
-        enclosed_view = None
+    def _find_enclosed_view(self):
+        """The topmost shown view whose rect contains the current mouse
+        position (a popup counts as enclosing regardless of its rect, since it
+        should capture everything under it), or None over empty space."""
         for view in reversed(self.app.screen.showed_views):
             if view.is_popup or view.win.enclose(self.screen_y, self.screen_x):
-                enclosed_view = view
-                break
+                return view
+        return None
+
+    def process_mouse_event(self, active_view: View, event_type: str = None):
+        if event_type is None:
+            event_type = self.event_type
+
+        self._update_capture(event_type)
+        event_type = self._adjust_drag_event(event_type)
+
+        # expose the (possibly adjusted) type to handlers reading mouse.event_type
+        self.event_type = event_type
+
+        if self._route_bottom_bar(event_type):
+            return
+
+        enclosed_view = self._find_enclosed_view()
 
         if enclosed_view and event_type == "left-click":
             self.clicked_view = enclosed_view

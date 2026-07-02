@@ -161,30 +161,8 @@ class GitLogView(ListView):
         selected_id = getattr(self.get_selected(), "id", None)
         old_selected = self._selected
 
-        # Rebuild the list without the pseudo-rows.
-        self.items = [
-            it for it in self.items if not isinstance(it, UncommittedChangesListItem)
-        ]
-
-        # Insert directly above the HEAD row; fall back to the top of the
-        # real-commit list when HEAD is not (yet) in view.
-        first_commit = head_index = None
-        for i, it in enumerate(self.items):
-            if isinstance(it, CommitListItem):
-                if first_commit is None:
-                    first_commit = i
-                if it.id == self.head_id:
-                    head_index = i
-                    break
-        insert_at = head_index if head_index is not None else (first_commit or 0)
-
-        # Mirror HEAD's graph art onto the rows only when HEAD is the topmost
-        # commit, so they render as nodes in HEAD's lane; never splice a node into
-        # unrelated lanes when HEAD is buried (e.g. --all). Empty when not in
-        # --graph mode.
-        graph_prefix = ""
-        if head_index is not None and head_index == first_commit:
-            graph_prefix = self.commits.get(self.head_id, {}).get("prefix", "")
+        self._strip_pseudo_rows()
+        insert_at, graph_prefix = self._pseudo_insert_pos()
 
         rows = []
         if self._has_working:
@@ -196,9 +174,44 @@ class GitLogView(ListView):
             row._view = self
             self.items.insert(insert_at + n, row)
 
-        # Keep the previously-selected row on the same screen line. Real commits
-        # keep their identity across the rebuild; pseudo-rows are recreated, so we
-        # match by id (a selected pseudo-row that vanished falls through to clamp).
+        self._restore_selection(selected_id, old_selected)
+        self.dirty = True
+
+    def _strip_pseudo_rows(self):
+        """Rebuild self.items without the uncommitted pseudo-rows."""
+        self.items = [
+            it for it in self.items if not isinstance(it, UncommittedChangesListItem)
+        ]
+
+    def _pseudo_insert_pos(self):
+        """Where to insert the pseudo-rows, and the graph-art prefix to mirror
+        onto them. Insert directly above the HEAD row; fall back to the top of
+        the real-commit list when HEAD is not (yet) in view. Mirror HEAD's
+        graph art onto the rows only when HEAD is the topmost commit, so they
+        render as nodes in HEAD's lane; never splice a node into unrelated
+        lanes when HEAD is buried (e.g. --all). Empty when not in --graph mode.
+        """
+        first_commit = head_index = None
+        for i, it in enumerate(self.items):
+            if isinstance(it, CommitListItem):
+                if first_commit is None:
+                    first_commit = i
+                if it.id == self.head_id:
+                    head_index = i
+                    break
+        insert_at = head_index if head_index is not None else (first_commit or 0)
+
+        graph_prefix = ""
+        if head_index is not None and head_index == first_commit:
+            graph_prefix = self.commits.get(self.head_id, {}).get("prefix", "")
+
+        return insert_at, graph_prefix
+
+    def _restore_selection(self, selected_id, old_selected):
+        """Keep the previously-selected row on the same screen line. Real
+        commits keep their identity across the rebuild; pseudo-rows are
+        recreated, so we match by id (a selected pseudo-row that vanished
+        falls through to clamp)."""
         new_index = next(
             (
                 i
@@ -212,7 +225,6 @@ class GitLogView(ListView):
             self._offset_y = max(0, self._offset_y + (new_index - old_selected))
         if self.items:
             self._selected = max(0, min(self._selected, len(self.items) - 1))
-        self.dirty = True
 
     def prepend_commit(self, item):
         """Insert a freshly-discovered real commit at the front of the

@@ -483,15 +483,8 @@ class GitDiffJob(Job):
                     return TextListItem(line, color)
                 self.old_file_line += 1
                 self.new_file_line += 1
-                return DiffListItem(
-                    self.line_count,
-                    line,
-                    color,
-                    self.old_file_path,
-                    self.old_file_line,
-                    self.new_file_path,
-                    self.new_file_line,
-                )
+                old_path, old_line = self.old_file_path, self.old_file_line
+                new_path, new_line = self.new_file_path, self.new_file_line
             elif match.group(2):  # '+++' new file
                 color = Screen.C_DIFF_INFO
                 self.new_file_path = str(match.group(2))
@@ -506,40 +499,25 @@ class GitDiffJob(Job):
             elif match.group(5):  # '+' added code lines
                 color = Screen.C_DIFF_ADD
                 self.new_file_line += 1
-                return DiffListItem(
-                    self.line_count,
-                    line,
-                    color,
-                    None,
-                    None,
-                    self.new_file_path,
-                    self.new_file_line,
-                )
+                old_path, old_line = None, None
+                new_path, new_line = self.new_file_path, self.new_file_line
             elif match.group(6):  # '-' remove code lines
                 color = Screen.C_DIFF_DEL
                 self.old_file_line += 1
-                return DiffListItem(
-                    self.line_count,
-                    line,
-                    color,
-                    self.old_file_path,
-                    self.old_file_line,
-                    None,
-                    None,
-                )
+                old_path, old_line = self.old_file_path, self.old_file_line
+                new_path, new_line = None, None
             elif match.group(7):  # diff numbers
                 color = Screen.C_DIFF_RANGE
                 self.old_file_line = int(match.group(8)) - 1
                 self.new_file_line = int(match.group(9)) - 1
-                return DiffListItem(
-                    self.line_count,
-                    line,
-                    color,
-                    self.old_file_path,
-                    self.old_file_line,
-                    self.new_file_path,
-                    self.new_file_line,
-                )
+                old_path, old_line = self.old_file_path, self.old_file_line
+                new_path, new_line = self.new_file_path, self.new_file_line
+            else:
+                return TextListItem(line, color)
+
+            return DiffListItem(
+                self.line_count, line, color, old_path, old_line, new_path, new_line
+            )
 
         return TextListItem(line, color)
 
