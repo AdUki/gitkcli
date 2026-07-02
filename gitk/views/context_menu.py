@@ -8,6 +8,7 @@ from gitk.input import KeyboardState
 from gitk.items import ContextMenuItem, DiffListItem, SeparatorItem, StatListItem
 from gitk.jobs import Job
 from gitk.list_view import ListView
+from gitk.screen import Screen
 from gitk.segmented_items import UncommittedChangesListItem
 
 
@@ -121,14 +122,14 @@ class ContextMenu(ListView):
                 self.append(
                     ContextMenuItem(
                         "Create new branch",
-                        self.app.git_refs.view_new_ref.create_ref,
+                        self.app.git_refs.new_ref_dialog.create_ref,
                         [item.id],
                     )
                 )
                 self.append(
                     ContextMenuItem(
                         "Create new tag",
-                        self.app.git_refs.view_new_ref.create_ref,
+                        self.app.git_refs.new_ref_dialog.create_ref,
                         [item.id, "tag"],
                     )
                 )
@@ -222,7 +223,7 @@ class ContextMenu(ListView):
                 self.append(
                     ContextMenuItem(
                         "Rename this branch",
-                        self.app.git_refs.view_new_ref.rename_branch,
+                        self.app.git_refs.new_ref_dialog.rename_branch,
                         [item.data["name"]],
                     )
                 )
@@ -323,17 +324,25 @@ class ContextMenu(ListView):
             retry=lambda: self.checkout_branch(branch_name, True),
             title=" Checkout blocked",
             lines=[
-                (f"Local files conflict with switching to '{branch_name}'.", 4),
-                ("Force checkout? Conflicting local files will be lost.", 2),
+                (
+                    f"Local files conflict with switching to '{branch_name}'.",
+                    Screen.C_GIT_ID,
+                ),
+                (
+                    "Force checkout? Conflicting local files will be lost.",
+                    Screen.C_ERROR,
+                ),
             ],
             label="[Force checkout]",
         )
 
     def push_ref_to_remote(self, branch_name):
-        self.app.git_refs.view_ref_push.ref_name = branch_name
-        self.app.git_refs.view_ref_push.header_item.set_text(f"Push ref: {branch_name}")
-        self.app.git_refs.view_ref_push.clear()
-        self.app.git_refs.view_ref_push.show()
+        self.app.git_refs.ref_push_dialog.ref_name = branch_name
+        self.app.git_refs.ref_push_dialog.header_item.set_text(
+            f"Push ref: {branch_name}"
+        )
+        self.app.git_refs.ref_push_dialog.clear()
+        self.app.git_refs.ref_push_dialog.show()
 
     def remove_branch(self, branch_name, force=False):
         # Safe delete by default (-d); only force (-D) after the user confirms the
@@ -351,8 +360,8 @@ class ContextMenu(ListView):
             retry=lambda: self.remove_branch(branch_name, True),
             title=" Branch not fully merged",
             lines=[
-                (f"Branch '{branch_name}' is not fully merged.", 4),
-                ("Delete anyway? Unmerged commits will be lost.", 2),
+                (f"Branch '{branch_name}' is not fully merged.", Screen.C_GIT_ID),
+                ("Delete anyway? Unmerged commits will be lost.", Screen.C_ERROR),
             ],
             label="[Force delete]",
         )

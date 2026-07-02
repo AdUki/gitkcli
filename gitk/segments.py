@@ -17,21 +17,21 @@ def ref_color_and_title(ref, head_branch=""):
     the ref dict and (for the current HEAD) the branch name. Used by RefSegment
     and RefListItem so neither has to reach into GitRefsView."""
     title = f"({ref['name']})"
-    color = 11
+    color = Screen.C_REF_LOCAL
     if ref["type"] == "head":
-        color = 13
+        color = Screen.C_HEAD
         if head_branch:
             title += " ->"
     elif ref["type"] == "heads":
         title = f"[{ref['name']}]"
     elif ref["type"] == "remotes":
-        color = 15
+        color = Screen.C_REF_REMOTE
         title = f"{{{ref['name']}}}"
     elif ref["type"] == "tags":
-        color = 12
+        color = Screen.C_TAG
         title = f"<{ref['name']}>"
     elif ref["type"] == "stash":
-        color = 14
+        color = Screen.C_STASH
     return color, title
 
 
@@ -74,7 +74,7 @@ class FillerSegment(Segment):
 
 
 class TextSegment(Segment):
-    def __init__(self, txt, color=1):
+    def __init__(self, txt, color=Screen.C_NORMAL):
         super().__init__()
         self.txt = txt
         self.color = color
@@ -115,7 +115,7 @@ class RefSegment(TextSegment):
 
 
 class ButtonSegment(TextSegment):
-    def __init__(self, txt, callback, color=1):
+    def __init__(self, txt, callback, color=Screen.C_NORMAL):
         super().__init__(txt, color)
         self.callback = callback
         self.is_pressed = False
@@ -156,7 +156,9 @@ class ButtonSegment(TextSegment):
 
 
 class ToggleSegment(TextSegment):
-    def __init__(self, txt, toggled=False, callback=lambda val: None, color=1):
+    def __init__(
+        self, txt, toggled=False, callback=lambda val: None, color=Screen.C_NORMAL
+    ):
         super().__init__(txt, color)
         self.callback = callback
         self.toggled = toggled
@@ -192,7 +194,7 @@ class SplitButtonSegment(ButtonSegment):
 
     _LABELS = {"off": "[Split]", "side": "[Split |]", "stacked": "[Split =]"}
 
-    def __init__(self, color=30):
+    def __init__(self, color=Screen.C_TITLE):
         # Defer the action: at construction the segment isn't wired to its item
         # yet, so reach the app lazily (the button is clicked long after wiring).
         super().__init__("", lambda: self.get_app().split.cycle_split_view(), color)
@@ -204,7 +206,7 @@ class SplitButtonSegment(ButtonSegment):
 class DynamicTextSegment(TextSegment):
     """TextSegment whose text is recomputed by a getter on every draw."""
 
-    def __init__(self, getter, color=1):
+    def __init__(self, getter, color=Screen.C_NORMAL):
         super().__init__("", color)
         self.getter = getter
 
@@ -215,7 +217,7 @@ class DynamicTextSegment(TextSegment):
 class HighlightToggleSegment(ButtonSegment):
     """Header button with a fixed label, highlighted while its state is on."""
 
-    def __init__(self, label, is_active, on_toggle, color=30):
+    def __init__(self, label, is_active, on_toggle, color=Screen.C_TITLE):
         super().__init__(label, on_toggle, color)
         self._is_active = is_active
 
@@ -224,7 +226,7 @@ class HighlightToggleSegment(ButtonSegment):
 
 
 class OnOffToggleSegment(ToggleSegment):
-    def __init__(self, toggled=False, color=1):
+    def __init__(self, toggled=False, color=Screen.C_NORMAL):
         super().__init__("", toggled, color=color)
         self.set_toggled(toggled)
 
@@ -271,7 +273,7 @@ class OnOffToggleSegment(ToggleSegment):
 class ChoiceSegment(ButtonSegment):
     """Button that cycles through a fixed list of (value, label) options."""
 
-    def __init__(self, options, value, color=1):
+    def __init__(self, options, value, color=Screen.C_NORMAL):
         self.options = options
         self.value = value
         super().__init__("", self._cycle, color)

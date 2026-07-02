@@ -6,6 +6,7 @@ from gitk.dialogs import NewRefDialogPopup, RefPushDialogPopup, SearchDialogPopu
 from gitk.ids import ID_GIT_REFS, ID_GIT_REFS_SEARCH
 from gitk.jobs import GitRefsJob
 from gitk.list_view import ListView
+from gitk.screen import Screen
 from gitk.segmented_items import WindowTopBarItem
 
 
@@ -15,11 +16,13 @@ class GitRefsView(ListView):
 
         self.refs = {}  # map: git_id --> [ { 'type':<ref-type>, 'name':<ref-name> } ]
 
-        self.set_header_item(WindowTopBarItem("Git references", title_color=5))
+        self.set_header_item(
+            WindowTopBarItem("Git references", title_color=Screen.C_DATA)
+        )
         self.set_search_dialog(SearchDialogPopup(app, ID_GIT_REFS_SEARCH))
 
-        self.view_new_ref = NewRefDialogPopup(app)
-        self.view_ref_push = RefPushDialogPopup(app)
+        self.new_ref_dialog = NewRefDialogPopup(app)
+        self.ref_push_dialog = RefPushDialogPopup(app)
 
         self.job = GitRefsJob(self.app)
 

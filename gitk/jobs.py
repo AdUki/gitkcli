@@ -19,6 +19,7 @@ import typing
 
 from gitk.ids import ID_GIT_DIFF, ID_GIT_REFRESH_HEAD, ID_GIT_REFS, ID_GIT_SEARCH
 from gitk.items import DiffListItem, RefListItem, StatListItem, TextListItem
+from gitk.screen import Screen
 from gitk.segmented_items import CommitListItem
 
 # C0/C1 control characters minus tab (0x09, expanded to spaces) and newline
@@ -458,7 +459,7 @@ class GitDiffJob(Job):
         return path
 
     def process_line(self, line) -> typing.Any:
-        color = 1
+        color = Screen.C_NORMAL
         self.line_count += 1
 
         # 9 capture groups
@@ -476,7 +477,7 @@ class GitDiffJob(Job):
                     if line.startswith(" ") and not line.startswith(
                         "    "
                     ):  # stats line
-                        color = 10
+                        color = Screen.C_DIFF_RANGE
                         if self.stat_pattern.match(line):
                             return StatListItem(line, color, self._stat_file_path(line))
                     return TextListItem(line, color)
@@ -492,18 +493,18 @@ class GitDiffJob(Job):
                     self.new_file_line,
                 )
             elif match.group(2):  # '+++' new file
-                color = 17
+                color = Screen.C_DIFF_INFO
                 self.new_file_path = str(match.group(2))
                 return TextListItem(line, color)
             elif match.group(3):  # '---' old file
-                color = 17
+                color = Screen.C_DIFF_INFO
                 self.old_file_path = str(match.group(3))
                 return TextListItem(line, color)
             elif match.group(4):  # infos
-                color = 17
+                color = Screen.C_DIFF_INFO
                 return TextListItem(line, color)
             elif match.group(5):  # '+' added code lines
-                color = 9
+                color = Screen.C_DIFF_ADD
                 self.new_file_line += 1
                 return DiffListItem(
                     self.line_count,
@@ -515,7 +516,7 @@ class GitDiffJob(Job):
                     self.new_file_line,
                 )
             elif match.group(6):  # '-' remove code lines
-                color = 8
+                color = Screen.C_DIFF_DEL
                 self.old_file_line += 1
                 return DiffListItem(
                     self.line_count,
@@ -527,7 +528,7 @@ class GitDiffJob(Job):
                     None,
                 )
             elif match.group(7):  # diff numbers
-                color = 10
+                color = Screen.C_DIFF_RANGE
                 self.old_file_line = int(match.group(8)) - 1
                 self.new_file_line = int(match.group(9)) - 1
                 return DiffListItem(

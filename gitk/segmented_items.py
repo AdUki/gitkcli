@@ -18,7 +18,7 @@ from gitk.segments import ButtonSegment, FillerSegment, RefSegment, Segment, Tex
 
 
 class SegmentedListItem(Item):
-    def __init__(self, segments=[], bg_color=1):
+    def __init__(self, segments=[], bg_color=Screen.C_NORMAL):
         super().__init__()
         self.segment_separator = " "
         # Character used for the FillerSegment and the trailing fill. Defaults to
@@ -79,7 +79,7 @@ class SegmentedListItem(Item):
 
     def handle_mouse_input(self, mouse) -> bool:
         segment = self.clicked_segment or self.get_segment_on_offset(mouse.x)
-        if "left-click" == mouse.event_type or "double-click" == mouse.event_type:
+        if mouse.event_type == "left-click" or mouse.event_type == "double-click":
             self.clicked_segment = segment
         elif self.clicked_segment:
             if "release" in mouse.event_type:
@@ -183,7 +183,7 @@ class ButtonRowItem(SegmentedListItem):
     """A row of buttons navigable with Left/Right (or h/l); Enter activates the
     focused button. Only the focused button is highlighted, not the whole row."""
 
-    def __init__(self, segments=[], bg_color=1):
+    def __init__(self, segments=[], bg_color=Screen.C_NORMAL):
         super().__init__(segments, bg_color)
         self.is_selectable = True
         self.reset_focus()
@@ -252,9 +252,11 @@ class WindowTopBarItem(SegmentedListItem):
     # Line and text colours, by active state. The ── fill uses the line colour;
     # the title and buttons use the text colour. Selected/highlight backgrounds
     # are intentionally bypassed (see draw_line) so the bar stays a thin line.
-    LINE_ACTIVE, LINE_INACTIVE = 5, 18
-    TEXT_ACTIVE, TEXT_INACTIVE = 1, 18
-    CLOSE_COLOR = 2  # red [X] close button, in both active and inactive bars
+    LINE_ACTIVE, LINE_INACTIVE = Screen.C_DATA, Screen.C_DIM
+    TEXT_ACTIVE, TEXT_INACTIVE = Screen.C_NORMAL, Screen.C_DIM
+    CLOSE_COLOR = (
+        Screen.C_ERROR
+    )  # red [X] close button, in both active and inactive bars
 
     def __init__(self, title: str, additional_segments=[], title_color=None):
         # title_color overrides the title's text colour when active. The bar
@@ -308,7 +310,7 @@ class WindowTopBarItem(SegmentedListItem):
     def handle_mouse_input(self, mouse) -> bool:
         if super().handle_mouse_input(mouse):
             return True
-        if "double-click" == mouse.event_type:
+        if mouse.event_type == "double-click":
             self.get_app().screen.get_active_view().toggle_window_mode()
             return True
         return False
@@ -323,9 +325,12 @@ class UncommittedChangesListItem(SegmentedListItem):
         # GitLogView._place_uncommitted_rows, empty otherwise.
         self.graph_prefix = ""
         if self._staged:
-            self.txt, self.color = "Uncommitted changes (staged)", 3
+            self.txt, self.color = "Uncommitted changes (staged)", Screen.C_STATUS
         else:
-            self.txt, self.color = "Uncommitted changes (working directory)", 2
+            self.txt, self.color = (
+                "Uncommitted changes (working directory)",
+                Screen.C_ERROR,
+            )
 
     def get_row_context_menu(self):
         return (self, ID_GIT_LOG)
@@ -371,11 +376,13 @@ class CommitListItem(SegmentedListItem):
         if commit["prefix"]:
             segments.append(TextSegment(commit["prefix"]))
         if app.git_log.show_commit_id:
-            segments.append(TextSegment(self.id[:7], 4))
+            segments.append(TextSegment(self.id[:7], Screen.C_GIT_ID))
         if app.git_log.show_commit_date:
-            segments.append(TextSegment(commit["date"].strftime("%Y-%m-%d %H:%M"), 5))
+            segments.append(
+                TextSegment(commit["date"].strftime("%Y-%m-%d %H:%M"), Screen.C_DATA)
+            )
         if app.git_log.show_commit_author:
-            segments.append(TextSegment(commit["author"], 6))
+            segments.append(TextSegment(commit["author"], Screen.C_AUTHOR))
         segments.append(TextSegment(commit["title"]))
 
         head_position = (

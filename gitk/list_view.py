@@ -13,7 +13,7 @@ import typing
 from gitk.config import KEY_CTRL, copy_to_clipboard
 from gitk.items import SpacerListItem, TextListItem
 from gitk.screen import Screen
-from gitk.view import SPLIT_DIVIDER_COLOR, View
+from gitk.view import MODE_FULLSCREEN, MODE_WINDOW, SPLIT_DIVIDER_COLOR, View
 
 
 class ListView(View):
@@ -21,7 +21,7 @@ class ListView(View):
         self,
         app,
         id: str,
-        view_mode: str = "fullscreen",
+        view_mode: str = MODE_FULLSCREEN,
         x: typing.Optional[int] = None,
         y: typing.Optional[int] = None,
         height: typing.Optional[int] = None,
@@ -264,8 +264,8 @@ class ListView(View):
                 mouse.y = index
                 handled = item.handle_mouse_input(mouse)
                 if handled and (
-                    "left-click" == mouse.event_type
-                    or "double-click" == mouse.event_type
+                    mouse.event_type == "left-click"
+                    or mouse.event_type == "double-click"
                 ):
                     self.app.mouse.clicked_item = item
                 if selected or handled:
@@ -356,7 +356,7 @@ class ListView(View):
         super().draw()
 
         if separator_items:
-            color = 5 if self.is_active() else 16
+            color = Screen.C_DATA if self.is_active() else Screen.C_MATCH
             # Joins onto the neutral split divider use its colour, not the pane's.
             join = Screen.color(SPLIT_DIVIDER_COLOR)
             sides = self.split_border_sides()
@@ -364,7 +364,7 @@ class ListView(View):
                 # split pane: join only the borders that are actually drawn
                 left = join if "left" in sides else None
                 right = join if "right" in sides else None
-            elif self.view_mode == "window":
+            elif self.view_mode == MODE_WINDOW:
                 left = right = Screen.color(color)
             else:
                 left = right = None

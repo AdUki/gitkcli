@@ -13,6 +13,7 @@ from gitk.input import KeyboardState
 from gitk.items import DiffListItem
 from gitk.jobs import GitDiffJob
 from gitk.list_view import ListView, _raise_split_sibling
+from gitk.screen import Screen
 from gitk.segmented_items import WindowTopBarItem
 from gitk.segments import (
     ButtonSegment,
@@ -38,24 +39,34 @@ class GitDiffView(ListView):
             WindowTopBarItem(
                 "Git commit diff",
                 [
-                    TextSegment("Context:", 30),
-                    DynamicTextSegment(lambda: self.app.git_diff.context_size, 30),
-                    ButtonSegment("[+]", lambda: self.change_context(+1), 30),
-                    ButtonSegment("[-]", lambda: self.change_context(-1), 30),
+                    TextSegment("Context:", Screen.C_TITLE),
+                    DynamicTextSegment(
+                        lambda: self.app.git_diff.context_size, Screen.C_TITLE
+                    ),
+                    ButtonSegment(
+                        "[+]", lambda: self.change_context(+1), Screen.C_TITLE
+                    ),
+                    ButtonSegment(
+                        "[-]", lambda: self.change_context(-1), Screen.C_TITLE
+                    ),
                     HighlightToggleSegment(
                         "[Ignore whitespace]",
                         lambda: self.app.git_diff.ignore_whitespace,
                         lambda: self.app.git_diff.change_ignore_whitespace(),
-                        30,
+                        Screen.C_TITLE,
                     ),
                     ButtonSegment(
-                        "[<-]", lambda: self.app.git_log.move_in_jump_list(+1), 30
+                        "[<-]",
+                        lambda: self.app.git_log.move_in_jump_list(+1),
+                        Screen.C_TITLE,
                     ),
                     ButtonSegment(
-                        "[->]", lambda: self.app.git_log.move_in_jump_list(-1), 30
+                        "[->]",
+                        lambda: self.app.git_log.move_in_jump_list(-1),
+                        Screen.C_TITLE,
                     ),
                 ],
-                title_color=5,
+                title_color=Screen.C_DATA,
             )
         )
 

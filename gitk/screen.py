@@ -35,6 +35,28 @@ class Screen:
     BAR_FLASH_PAIR = 40  # success flash: black on green
     BAR_LABEL_PAIR = 41  # bottom-bar F-key label cells: black on cyan
 
+    # Base colour-pair numbers, initialised in __init__ and used throughout
+    # gitk/ wherever a Screen.color()/bar_color() call needs a palette index.
+    C_NORMAL = 1  # Normal text
+    C_ERROR = 2  # Error text
+    C_STATUS = 3  # Status text
+    C_GIT_ID = 4  # Git ID
+    C_DATA = 5  # Data
+    C_AUTHOR = 6  # Author
+    C_DIFF_DEL = 8  # diff -
+    C_DIFF_ADD = 9  # diff +
+    C_DIFF_RANGE = 10  # diff ranges
+    C_REF_LOCAL = 11  # local ref
+    C_TAG = 12  # tag
+    C_HEAD = 13  # head
+    C_STASH = 14  # stash
+    C_REF_REMOTE = 15  # remote ref
+    C_MATCH = 16  # search match
+    C_DIFF_INFO = 17  # diff info lines
+    C_DIM = 18  # debug text / neutral grey (also SPLIT_DIVIDER_COLOR in view.py)
+    C_TITLE = 30  # window title bar (active/inactive)
+    C_BANNER = 31  # warning title bar (white on red)
+
     @classmethod
     def _to_pal(cls, c: int) -> int:
         """Map a palette index to one the active tier can render. 256-only indices
@@ -112,12 +134,15 @@ class Screen:
         bold=None,
         dim=False,
     ):
+        """Colour pair for base palette index `number`, offset by selection
+        state. `highlighted` is the generic emphasis-background slot: rows pass
+        their `marked` flag, toggle segments pass their `toggled` state."""
         if matched:
             bold = True
-            if number == 1:
-                number = 16
-            elif number == 18:
-                number = 16
+            if number == Screen.C_NORMAL:
+                number = Screen.C_MATCH
+            elif number == Screen.C_DIM:
+                number = Screen.C_MATCH
                 dim = True
         if cls.color_depth >= 256:
             if selected and highlighted:
@@ -174,26 +199,26 @@ class Screen:
                 Screen._default_bg = curses.COLOR_BLACK
             Screen.color_depth = 256 if curses.COLORS >= 256 else 8
 
-        Screen._init_color(1, curses.COLOR_WHITE)  # Normal text
-        Screen._init_color(2, curses.COLOR_RED)  # Error text
-        Screen._init_color(3, curses.COLOR_GREEN)  # Status text
-        Screen._init_color(4, curses.COLOR_YELLOW)  # Git ID
-        Screen._init_color(5, curses.COLOR_BLUE)  # Data
-        Screen._init_color(6, curses.COLOR_GREEN)  # Author
-        Screen._init_color(8, curses.COLOR_RED)  # diff -
-        Screen._init_color(9, curses.COLOR_GREEN)  # diff +
-        Screen._init_color(10, curses.COLOR_CYAN)  # diff ranges
-        Screen._init_color(11, curses.COLOR_GREEN)  # local ref
-        Screen._init_color(12, curses.COLOR_YELLOW)  # tag
-        Screen._init_color(13, curses.COLOR_BLUE)  # head
-        Screen._init_color(14, curses.COLOR_CYAN)  # stash
-        Screen._init_color(15, curses.COLOR_RED)  # remote ref
-        Screen._init_color(16, curses.COLOR_YELLOW)  # search match
-        Screen._init_color(17, curses.COLOR_BLUE)  # diff info lines
-        Screen._init_color(18, 245)  # debug text
+        Screen._init_color(Screen.C_NORMAL, curses.COLOR_WHITE)
+        Screen._init_color(Screen.C_ERROR, curses.COLOR_RED)
+        Screen._init_color(Screen.C_STATUS, curses.COLOR_GREEN)
+        Screen._init_color(Screen.C_GIT_ID, curses.COLOR_YELLOW)
+        Screen._init_color(Screen.C_DATA, curses.COLOR_BLUE)
+        Screen._init_color(Screen.C_AUTHOR, curses.COLOR_GREEN)
+        Screen._init_color(Screen.C_DIFF_DEL, curses.COLOR_RED)
+        Screen._init_color(Screen.C_DIFF_ADD, curses.COLOR_GREEN)
+        Screen._init_color(Screen.C_DIFF_RANGE, curses.COLOR_CYAN)
+        Screen._init_color(Screen.C_REF_LOCAL, curses.COLOR_GREEN)
+        Screen._init_color(Screen.C_TAG, curses.COLOR_YELLOW)
+        Screen._init_color(Screen.C_HEAD, curses.COLOR_BLUE)
+        Screen._init_color(Screen.C_STASH, curses.COLOR_CYAN)
+        Screen._init_color(Screen.C_REF_REMOTE, curses.COLOR_RED)
+        Screen._init_color(Screen.C_MATCH, curses.COLOR_YELLOW)
+        Screen._init_color(Screen.C_DIFF_INFO, curses.COLOR_BLUE)
+        Screen._init_color(Screen.C_DIM, 245)
 
         Screen._init_color(
-            30,
+            Screen.C_TITLE,
             curses.COLOR_BLACK,
             245,
             -1,
@@ -205,7 +230,7 @@ class Screen:
         )  # Active window title
 
         Screen._init_color(
-            31,
+            Screen.C_BANNER,
             curses.COLOR_WHITE,
             curses.COLOR_RED,
             -1,
@@ -302,12 +327,16 @@ class Screen:
                 self.app.git_log,
                 self.app.git_diff,
             ):
+                from gitk.split_layout import (
+                    SPLIT_OFF,
+                )  # late import: avoids view<->screen cycle
+
                 other = (
                     self.app.git_log
                     if closing is self.app.git_diff
                     else self.app.git_diff
                 )
-                self.app.split.set_split_mode("off")
+                self.app.split.set_split_mode(SPLIT_OFF)
                 other.show()
                 return
             # Same as closing any top view: blank its footprint (damage-based
@@ -318,11 +347,13 @@ class Screen:
         """True if `view` is on screen and not fully hidden by a fullscreen view
         stacked above it. The panel deck handles pixel-level occlusion; this only
         decides whether keeping a window's content live is worth the work."""
+        from gitk.view import MODE_FULLSCREEN  # late import: avoids view<->screen cycle
+
         views = self.showed_views
         if view not in views:
             return False
         return not any(
-            v.view_mode == "fullscreen" for v in views[views.index(view) + 1 :]
+            v.view_mode == MODE_FULLSCREEN for v in views[views.index(view) + 1 :]
         )
 
     def show_flash(self, message: str):
@@ -361,7 +392,7 @@ class Screen:
                 return
             self.flash_message = ""  # expired: fall through and redraw the F-key bar
 
-        num_attr = Screen.color(1)  # key number: light text on default bg
+        num_attr = Screen.color(Screen.C_NORMAL)  # key number: light text on default bg
         label_attr = Screen.bar_color(
             Screen.BAR_LABEL_PAIR
         )  # black on cyan (reverse if monochrome)

@@ -25,11 +25,13 @@ class _RedMessageBoxPopup(ListView):
 
     def __init__(self, app, id, banner):
         super().__init__(app, id, "window")
-        self.set_header_item(TextListItem(banner, 31, expand=True))  # red banner
+        self.set_header_item(
+            TextListItem(banner, Screen.C_BANNER, expand=True)
+        )  # red banner
         self.is_popup = True
 
     def border_color(self):
-        return Screen.color(2)
+        return Screen.color(Screen.C_ERROR)
 
 
 class ConfirmDialogPopup(_RedMessageBoxPopup):
@@ -51,7 +53,7 @@ class ConfirmDialogPopup(_RedMessageBoxPopup):
         self._show_message_box(
             lines,
             button_row(
-                ButtonSegment(confirm_label, self._confirm, 2),
+                ButtonSegment(confirm_label, self._confirm, Screen.C_ERROR),
                 TextSegment("   "),
                 ButtonSegment(cancel_label, self.hide),
             ),
@@ -104,8 +106,8 @@ class ErrorDialogPopup(_RedMessageBoxPopup):
 
     def _render(self):
         self._show_message_box(
-            [(line, 2) for line in self._lines],
-            button_row(ButtonSegment("[Ok]", self.hide, 2)),
+            [(line, Screen.C_ERROR) for line in self._lines],
+            button_row(ButtonSegment("[Ok]", self.hide, Screen.C_ERROR)),
         )
 
     def handle_input(self, keyboard):

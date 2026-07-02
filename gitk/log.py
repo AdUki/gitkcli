@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 
 from gitk.items import TextListItem
+from gitk.screen import Screen
 from gitk.views import LogView
 
 
@@ -21,15 +22,15 @@ class Log:
 
     def debug(self, txt):
         if self.level > 4:
-            self.log(18, txt)
+            self.log(Screen.C_DIM, txt)
 
     def info(self, txt):
         if self.level > 3:
-            self.log(1, txt)
+            self.log(Screen.C_NORMAL, txt)
 
     def success(self, txt):
         if self.level > 2:
-            self.log(1, txt)
+            self.log(Screen.C_NORMAL, txt)
             # Flash the message green over the bottom bar (guarded: success can
             # fire during start-up before the screen exists).
             screen = getattr(self.app, "screen", None)
@@ -38,11 +39,11 @@ class Log:
 
     def warning(self, txt):
         if self.level > 1:
-            self.log(12, txt)
+            self.log(Screen.C_TAG, txt)
 
     def error(self, txt):
         if self.level > 0:
-            self.log(2, txt)
+            self.log(Screen.C_ERROR, txt)
             # Surface errors as a modal red dialog (the status bar is gone).
             # Guarded: errors can fire during start-up before the dialog exists.
             dialog = getattr(self.app, "error_dialog", None)

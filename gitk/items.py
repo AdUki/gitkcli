@@ -76,7 +76,9 @@ class SeparatorItem(Item):
 
 
 class TextListItem(Item):
-    def __init__(self, txt, color=1, expand=False, is_selectable=True, dim=False):
+    def __init__(
+        self, txt, color=Screen.C_NORMAL, expand=False, is_selectable=True, dim=False
+    ):
         super().__init__()
         self.txt = txt
         self.color = color
@@ -254,7 +256,7 @@ class ContextMenuItem(TextListItem):
 
 
 class UserInputListItem(Item):
-    def __init__(self, color=1):
+    def __init__(self, color=Screen.C_NORMAL):
         super().__init__()
         self.txt = ""
         self.offset = 0
@@ -373,7 +375,7 @@ class UserInputListItem(Item):
 
 
 class ResetModeItem(TextListItem):
-    def __init__(self, dialog, mode, txt, color=1):
+    def __init__(self, dialog, mode, txt, color=Screen.C_NORMAL):
         super().__init__(txt, color=color)
         self.dialog = dialog
         self.mode = mode

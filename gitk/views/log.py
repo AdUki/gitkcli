@@ -5,6 +5,7 @@ from __future__ import annotations
 from gitk.dialogs import SearchDialogPopup
 from gitk.ids import ID_LOG, ID_LOG_SEARCH
 from gitk.list_view import ListView
+from gitk.screen import Screen
 from gitk.segmented_items import WindowTopBarItem
 from gitk.segments import (
     ButtonSegment,
@@ -22,19 +23,23 @@ class LogView(ListView):
             WindowTopBarItem(
                 "Logs",
                 [
-                    ButtonSegment("[Clear]", lambda: self.clear(), 30),
+                    ButtonSegment("[Clear]", lambda: self.clear(), Screen.C_TITLE),
                     HighlightToggleSegment(
                         "[Autoscroll]",
                         lambda: self.autoscroll,
                         self.toggle_autoscroll,
-                        30,
+                        Screen.C_TITLE,
                     ),
-                    TextSegment("  Log level:", 30),
-                    DynamicTextSegment(lambda: self.app.log.level, 30),
-                    ButtonSegment("[+]", lambda: self.change_log_level(+1), 30),
-                    ButtonSegment("[-]", lambda: self.change_log_level(-1), 30),
+                    TextSegment("  Log level:", Screen.C_TITLE),
+                    DynamicTextSegment(lambda: self.app.log.level, Screen.C_TITLE),
+                    ButtonSegment(
+                        "[+]", lambda: self.change_log_level(+1), Screen.C_TITLE
+                    ),
+                    ButtonSegment(
+                        "[-]", lambda: self.change_log_level(-1), Screen.C_TITLE
+                    ),
                 ],
-                title_color=5,
+                title_color=Screen.C_DATA,
             )
         )
 

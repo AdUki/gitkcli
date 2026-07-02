@@ -15,9 +15,14 @@ import typing
 from gitk.screen import Screen
 from gitk.segmented_items import WindowTopBarItem
 
+# The two view_mode values a View can be in: a borderless main view filling the
+# whole screen, or a boxed, independently-sized/positioned floating window.
+MODE_FULLSCREEN = "fullscreen"
+MODE_WINDOW = "window"
+
 # Neutral grey for the divider between split panes — fixed so the line never
 # looks like it belongs to whichever pane happens to be focused.
-SPLIT_DIVIDER_COLOR = 18
+SPLIT_DIVIDER_COLOR = Screen.C_DIM
 
 
 class View:
@@ -25,7 +30,7 @@ class View:
         self,
         app,
         id: str,
-        view_mode: str = "fullscreen",
+        view_mode: str = MODE_FULLSCREEN,
         x: typing.Optional[int] = None,
         y: typing.Optional[int] = None,
         height: typing.Optional[int] = None,
@@ -73,12 +78,16 @@ class View:
         (right) pane is borderless. Stacked: both panes are borderless and the
         bottom pane's title bar doubles as the draggable divider.
         """
+        from gitk.split_layout import (
+            SPLIT_SIDE,
+        )  # late import: avoids view<->split_layout cycle
+
         if not (
             self.app.split.split_active()
             and self in (self.app.git_log, self.app.git_diff)
         ):
             return None
-        if self.app.split.split_mode == "side" and self is self.app.git_log:
+        if self.app.split.split_mode == SPLIT_SIDE and self is self.app.git_log:
             return {"right"}
         return set()
 
@@ -92,7 +101,7 @@ class View:
         win_y = 0
         win_x = 0
 
-        if self.view_mode == "window":
+        if self.view_mode == MODE_WINDOW:
             win_height = min(
                 lines,
                 self.fixed_height if self.fixed_height is not None else int(lines / 2),
@@ -131,7 +140,7 @@ class View:
 
         # Window-mode views (floating popups and floated main views) draw a full
         # box. Fullscreen main views are borderless apart from their title line.
-        box = self.view_mode == "window"
+        box = self.view_mode == MODE_WINDOW
 
         if self.header_item or box:
             # subtract header line or box top
@@ -184,22 +193,28 @@ class View:
 
     def set_tiled(self, x, y, height, width):
         """Place this view as a non-overlapping pane (used by split view)."""
-        self.view_mode = "window"
+        self.view_mode = MODE_WINDOW
         self.set_dimensions(x, y, height, width)
 
     def set_fullscreen(self):
-        self.set_view_mode("fullscreen")
+        self.set_view_mode(MODE_FULLSCREEN)
 
     def toggle_window_mode(self):
+        from gitk.split_layout import (
+            SPLIT_OFF,
+        )  # late import: avoids view<->split_layout cycle
+
         # In split view the log/diff panes are managed by the split layout;
         # toggling a pane "maximizes" it by leaving split view altogether.
         if self.app.split.split_active() and self in (
             self.app.git_log,
             self.app.git_diff,
         ):
-            self.app.split.set_split_mode("off")
+            self.app.split.set_split_mode(SPLIT_OFF)
             return
-        self.set_view_mode("fullscreen" if self.view_mode == "window" else "window")
+        self.set_view_mode(
+            MODE_FULLSCREEN if self.view_mode == MODE_WINDOW else MODE_WINDOW
+        )
 
     def set_dimensions(self, x, y, height, width):
         self.fixed_x = x
@@ -211,10 +226,14 @@ class View:
 
     def _start_split_resize(self, x: int, y: int) -> bool:
         """Arm a drag of the split divider when the grab is on the shared edge."""
+        from gitk.split_layout import (
+            SPLIT_SIDE,
+        )  # late import: avoids view<->split_layout cycle
+
         win_y, win_x = self.win.getbegyx()
         win_height, win_width = self.win.getmaxyx()
         is_log = self is self.app.git_log
-        if self.app.split.split_mode == "side":
+        if self.app.split.split_mode == SPLIT_SIDE:
             # divider is the right edge of the log pane / left edge of the diff pane
             on_divider = (x >= win_x + win_width - 1) if is_log else (x <= win_x)
         else:  # stacked: there is no line, so the bottom pane's title bar is the grip
@@ -225,6 +244,9 @@ class View:
         return False
 
     def start_resize(self, x: int, y: int) -> bool:
+        # resize_mode encodes the drag in progress: "m" (move), "split" (the
+        # split divider), or any concatenation of "e"/"w"/"s" edge letters for a
+        # corner/edge resize (checked with `in`, e.g. "ew" is a corner drag).
         self.resize_mode = ""
         # Split panes are fixed in place; only the shared divider can be dragged.
         if self.app.split.split_active() and self in (
@@ -232,7 +254,7 @@ class View:
             self.app.git_diff,
         ):
             return self._start_split_resize(x, y)
-        if self.view_mode != "window":
+        if self.view_mode != MODE_WINDOW:
             return False
         win_y, win_x = self.win.getbegyx()
         if y <= win_y:
@@ -256,9 +278,13 @@ class View:
         return False
 
     def handle_resize(self):
+        from gitk.split_layout import (
+            SPLIT_SIDE,
+        )  # late import: avoids view<->split_layout cycle
+
         if self.resize_mode == "split":
             lines, cols = self.app.screen.getmaxyx()
-            if self.app.split.split_mode == "side":
+            if self.app.split.split_mode == SPLIT_SIDE:
                 ratio = self.app.mouse.screen_x / max(1, cols)
             else:
                 ratio = self.app.mouse.screen_y / max(1, lines)
@@ -322,7 +348,7 @@ class View:
             self.draw_header(self.split_border_sides())
 
     def border_color(self):
-        return Screen.color(5 if self.is_active() else 18)
+        return Screen.color(Screen.C_DATA if self.is_active() else SPLIT_DIVIDER_COLOR)
 
     def draw(self):
         sides = self.split_border_sides()
@@ -340,7 +366,7 @@ class View:
                 self.win.vline(0, w - 1, curses.ACS_VLINE, h)
             if "bottom" in sides:
                 self.win.hline(h - 1, 0, curses.ACS_HLINE, w)
-        elif self.view_mode == "window":
+        elif self.view_mode == MODE_WINDOW:
             self.win.attrset(self.border_color())
             self.win.box()
 
@@ -388,7 +414,7 @@ class View:
                     left = 1
                 if "right" in sides:
                     right = cols - 1
-            elif self.view_mode == "window":
+            elif self.view_mode == MODE_WINDOW:
                 left, right = 1, cols - 1
             self.win.move(0, left)
             self.header_item.draw_line(
@@ -414,8 +440,8 @@ class View:
                 and self.header_item.handle_mouse_input(mouse)
             ):
                 if (
-                    "left-click" == mouse.event_type
-                    or "double-click" == mouse.event_type
+                    mouse.event_type == "left-click"
+                    or mouse.event_type == "double-click"
                 ):
                     self.app.mouse.clicked_item = self.header_item
                 return True

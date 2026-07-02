@@ -12,17 +12,20 @@ from gitk.dialogs import GitSearchDialogPopup, ResetDialogPopup
 from gitk.ids import ID_GIT_LOG
 from gitk.jobs import GitLogJob, GitRefreshHeadJob, GitSearchJob, Job
 from gitk.list_view import ListView, _raise_split_sibling
+from gitk.screen import Screen
 from gitk.segmented_items import (
     CommitListItem,
     UncommittedChangesListItem,
     WindowTopBarItem,
 )
 from gitk.segments import ButtonSegment, SplitButtonSegment
+from gitk.split_layout import SPLIT_OFF
+from gitk.view import MODE_FULLSCREEN
 
 
 class GitLogView(ListView):
     def __init__(self, app, git_args: typing.List, cmd_args: typing.List):
-        super().__init__(app, ID_GIT_LOG, "fullscreen")
+        super().__init__(app, ID_GIT_LOG, MODE_FULLSCREEN)
         self.commits = {}  # map: git_id --> { parents, date, author, title }
 
         self.marked_commit_id = ""
@@ -39,12 +42,12 @@ class GitLogView(ListView):
         # trigger a full reload instead. Recomputed in set_pref_flags.
         self._graph_mode = "--graph" in git_args
         # Commit to re-select once it streams back in after a reload (keeps the
-        # cursor where the user left it). One-shot, like _focus_head_pending.
+        # cursor where the user left it). One-shot, like _pending_focus_head.
         self._pending_select_id = ""
         # One-shot: scroll to HEAD the first time it can be located after launch,
         # so it is visible even when it is not at the top (uncommitted rows above
         # it, an unrelated revision arg, or a detached/old HEAD deep in the list).
-        self._focus_head_pending = True
+        self._pending_focus_head = True
 
         self.show_commit_id = True
         self.show_commit_date = True
@@ -53,9 +56,9 @@ class GitLogView(ListView):
         self._cli_args = git_args + cmd_args
         self.pref_flags = ""
         self.job = GitLogJob(self.app, ID_GIT_LOG, list(self._cli_args))
-        self.job_git_refresh_head = GitRefreshHeadJob(self.app)
-        self.job_git_search = GitSearchJob(self.app, cmd_args)
-        self.view_reset = ResetDialogPopup(app)
+        self.job_refresh_head = GitRefreshHeadJob(self.app)
+        self.job_search = GitSearchJob(self.app, cmd_args)
+        self.reset_dialog = ResetDialogPopup(app)
 
     def set_pref_flags(self, flags: str):
         self.pref_flags = flags
@@ -82,11 +85,15 @@ class GitLogView(ListView):
             WindowTopBarItem(
                 repo_name,
                 [
-                    SplitButtonSegment(30),
-                    ButtonSegment("[<-]", lambda: self.move_in_jump_list(+1), 30),
-                    ButtonSegment("[->]", lambda: self.move_in_jump_list(-1), 30),
+                    SplitButtonSegment(Screen.C_TITLE),
+                    ButtonSegment(
+                        "[<-]", lambda: self.move_in_jump_list(+1), Screen.C_TITLE
+                    ),
+                    ButtonSegment(
+                        "[->]", lambda: self.move_in_jump_list(-1), Screen.C_TITLE
+                    ),
                 ],
-                title_color=5,
+                title_color=Screen.C_DATA,
             )
         )
 
@@ -111,7 +118,7 @@ class GitLogView(ListView):
         if self.head_id:
             # The job's in-view guard needs the OLD head, so start it before
             # advancing head_id below.
-            self.job_git_refresh_head.start_job(["--reverse", f"{self.head_id}..HEAD"])
+            self.job_refresh_head.start_job(["--reverse", f"{self.head_id}..HEAD"])
         self.head_id = new_head
         self.check_uncommitted_changes()
 
@@ -236,11 +243,11 @@ class GitLogView(ListView):
         job) arrive asynchronously, so this is called from both sides; whichever
         completes the pair wins, then the one-shot flag disables it."""
         if (
-            self._focus_head_pending
+            self._pending_focus_head
             and self.head_id
             and self.select_commit(self.head_id)
         ):
-            self._focus_head_pending = False
+            self._pending_focus_head = False
             # At this instant HEAD is the last row streamed in, so select_commit's
             # center clamp (min(sel - h/2, len - h)) pins it to the bottom of the
             # screen. Re-place it half a screen from the top WITHOUT clamping to
@@ -379,7 +386,7 @@ class GitLogView(ListView):
         )
         if not commit_id:
             return
-        self.view_reset.open(commit_id)
+        self.reset_dialog.open(commit_id)
 
     def reset(self, mode, commit_id=None):
         commit_id = commit_id or self.get_selected_commit_id()
@@ -425,12 +432,12 @@ class GitLogView(ListView):
         elif key == curses.KEY_EXIT:
             if self.app.split.split_active():
                 self.app.split.set_split_mode(
-                    "off"
+                    SPLIT_OFF
                 )  # Esc on the log pane leaves split view
             else:
                 self.app.exit_program()
         elif key == ord("b"):
-            self.app.git_refs.view_new_ref.create_ref(self.get_selected_commit_id())
+            self.app.git_refs.new_ref_dialog.create_ref(self.get_selected_commit_id())
         elif key in (ord("r"), ord("R")):
             self.confirm_reset()
         elif key == ord("c"):

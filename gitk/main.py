@@ -27,6 +27,7 @@ from gitk.jobs import Job
 from gitk.log import Log
 from gitk.message_box import ConfirmDialogPopup, ErrorDialogPopup
 from gitk.screen import Screen
+from gitk.split_layout import SPLIT_OFF, SPLIT_SIDE, SPLIT_STACKED
 from gitk.views import ContextMenu, GitDiffView, GitLogView, GitRefsView
 
 
@@ -63,7 +64,7 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
     app.git_log.job.start_job()
     app.git_log.check_uncommitted_changes()
 
-    if app.split.default_view_mode in ("side", "stacked"):
+    if app.split.default_view_mode in (SPLIT_SIDE, SPLIT_STACKED):
         app.split.set_split_mode(app.split.default_view_mode)
     else:
         app.git_log.show()
@@ -124,7 +125,7 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
                 lines, cols = app.screen.getmaxyx()
                 for view in app.screen.views.values():
                     view.screen_size_changed(lines, cols)
-                if app.split.split_mode != "off":
+                if app.split.split_mode != SPLIT_OFF:
                     app.split.apply_split_layout()
 
             elif active_view.handle_input(app.keyboard):

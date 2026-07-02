@@ -31,7 +31,10 @@ from gitk.items import (
 )
 from gitk.jobs import Job
 from gitk.list_view import ListView
+from gitk.screen import Screen
 from gitk.segmented_items import PreferenceRow, SegmentedListItem, button_row
+from gitk.split_layout import SPLIT_OFF, SPLIT_SIDE, SPLIT_STACKED
+from gitk.view import MODE_FULLSCREEN
 from gitk.segments import (
     ButtonSegment,
     ChoiceSegment,
@@ -48,14 +51,19 @@ class ResetDialogPopup(ListView):
         self.is_popup = True
         self.commit_id = ""
         self.selected_mode = "--mixed"
-        self.set_header_item(TextListItem(" Reset current branch", 30, expand=True))
+        self.set_header_item(
+            TextListItem(" Reset current branch", Screen.C_TITLE, expand=True)
+        )
 
-        self.target_item = TextListItem("", 4, is_selectable=False)
+        self.target_item = TextListItem("", Screen.C_GIT_ID, is_selectable=False)
         self.append(self.target_item)
         self.append(SeparatorItem())
         self.append(
             ResetModeItem(
-                self, "--soft", "  Soft    keep index + working tree (move HEAD)", 3
+                self,
+                "--soft",
+                "  Soft    keep index + working tree (move HEAD)",
+                Screen.C_STATUS,
             )
         )
         self.append(
@@ -65,12 +73,15 @@ class ResetDialogPopup(ListView):
         )
         self.append(
             ResetModeItem(
-                self, "--hard", "  Hard    discard index + working tree changes", 2
+                self,
+                "--hard",
+                "  Hard    discard index + working tree changes",
+                Screen.C_ERROR,
             )
         )
         self.append(SeparatorItem())
         self._button_row = button_row(
-            ButtonSegment("[Ok]", self._confirm, 3),
+            ButtonSegment("[Ok]", self._confirm, Screen.C_STATUS),
             TextSegment("   "),
             ButtonSegment("[Cancel]", self.hide),
         )
@@ -115,7 +126,7 @@ class RefPushDialogPopup(ListView):
         # Fixed width (like the other input dialogs) instead of half the
         # terminal, so the box stays tight on wide screens.
         super().__init__(app, ID_GIT_REF_PUSH, "window", height=5, width=60)
-        self.set_header_item(TextListItem("", 30, expand=True))
+        self.set_header_item(TextListItem("", Screen.C_TITLE, expand=True))
         self.is_popup = True
 
         # `git remote` prints one name per line (none in a repo with no
@@ -190,9 +201,9 @@ class RefPushDialogPopup(ListView):
             retry=lambda: self._do_push(remote, ref_name, True),
             title=" Push rejected",
             lines=[
-                (f"Push of '{ref_name}' to '{remote}' was rejected.", 4),
+                (f"Push of '{ref_name}' to '{remote}' was rejected.", Screen.C_GIT_ID),
                 "The remote has changes you don't have locally.",
-                ("Force push? This may overwrite remote commits.", 2),
+                ("Force push? This may overwrite remote commits.", Screen.C_ERROR),
             ],
             label="[Force push]",
         )
@@ -230,7 +241,7 @@ class UserInputDialogPopup(ListView):
         # input field right below it, and the buttons. A fixed width keeps the
         # box from ballooning to half the terminal on wide screens.
         super().__init__(app, id, "window", height=5, width=width)
-        self.set_header_item(TextListItem(title, 30, expand=True))
+        self.set_header_item(TextListItem(title, Screen.C_TITLE, expand=True))
         self.input = UserInputListItem()
         self.is_popup = True
         self.history_queries = []
@@ -313,7 +324,7 @@ class PreferencesDialogPopup(ListView):
     def __init__(self, app):
         super().__init__(app, ID_PREFERENCES, "window", height=15, width=50)
         self.is_popup = True
-        self.set_header_item(TextListItem(" Preferences", 30, expand=True))
+        self.set_header_item(TextListItem(" Preferences", Screen.C_TITLE, expand=True))
 
         self.t_show_id = OnOffToggleSegment()
         self.t_show_date = OnOffToggleSegment()
@@ -322,11 +333,11 @@ class PreferencesDialogPopup(ListView):
         self.t_autoscroll = OnOffToggleSegment()
         self.c_view_mode = ChoiceSegment(
             [
-                ("fullscreen", "Fullscreen"),
-                ("side", "Horizontal split"),
-                ("stacked", "Vertical split"),
+                (MODE_FULLSCREEN, "Fullscreen"),
+                (SPLIT_SIDE, "Horizontal split"),
+                (SPLIT_STACKED, "Vertical split"),
             ],
-            "fullscreen",
+            MODE_FULLSCREEN,
         )
         self.input_flags = UserInputListItem()
 
@@ -387,8 +398,8 @@ class PreferencesDialogPopup(ListView):
         # log/diff panes, so re-show this dialog to keep it on top.
         self.app.split.set_split_mode(
             self.c_view_mode.value
-            if self.c_view_mode.value in ("side", "stacked")
-            else "off"
+            if self.c_view_mode.value in (SPLIT_SIDE, SPLIT_STACKED)
+            else SPLIT_OFF
         )
         self.show()
 
@@ -504,7 +515,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
             retry=lambda: self._rename_branch(old_name, new_name, True),
             title=" Branch already exists",
             lines=[
-                (f"A branch named '{new_name}' already exists.", 4),
+                (f"A branch named '{new_name}' already exists.", Screen.C_GIT_ID),
                 "Overwrite it? (uses git branch -M)",
             ],
             label="[Overwrite]",
@@ -522,7 +533,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
             retry=lambda: self._create_ref(ref_type, name, commit_id, True),
             title=f" {ref_type.capitalize()} already exists",
             lines=[
-                (f"A {ref_type} named '{name}' already exists.", 4),
+                (f"A {ref_type} named '{name}' already exists.", Screen.C_GIT_ID),
                 f"Overwrite it? (uses git {ref_type} --force)",
             ],
             label="[Overwrite]",
@@ -650,7 +661,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
         if self.search_type == "txt":
             return super().matches(item)
         elif hasattr(item, "id"):
-            return item.id in self.app.git_log.job_git_search.found_ids
+            return item.id in self.app.git_log.job_search.found_ids
         return False
 
     def handle_input(self, keyboard):
@@ -688,7 +699,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
                 args.append(f"*{self.input.txt}*")
 
             self.add_query_to_history()
-            self.app.git_log.job_git_search.start_job(args)
+            self.app.git_log.job_search.start_job(args)
 
         elif key == KEY_TAB:  # cycle through search types
             self.parent_list_view.dirty = True
