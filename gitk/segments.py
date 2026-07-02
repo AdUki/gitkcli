@@ -108,7 +108,7 @@ class RefSegment(TextSegment):
                 *self.get_context_menu()
             )
         elif mouse.event_type == "double-click" and "tag_id" in self.ref:
-            self.get_app().git_diff.job.show_tag_annotation(self.ref["tag_id"])
+            self.get_app().git_diff.show_tag_annotation(self.ref["tag_id"])
             return True
         else:
             return super().handle_mouse_input(mouse)

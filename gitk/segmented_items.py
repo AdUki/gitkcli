@@ -10,6 +10,12 @@ from __future__ import annotations
 
 import curses
 
+from gitk.diff_target import (
+    LOCAL_STAGED_ID,
+    LOCAL_WORKING_ID,
+    STAGED_TITLE,
+    WORKING_TITLE,
+)
 from gitk.ids import ID_GIT_LOG
 from gitk.input import ENTER_KEYS
 from gitk.items import Item
@@ -320,17 +326,14 @@ class UncommittedChangesListItem(SegmentedListItem):
     def __init__(self, staged: bool = False):
         super().__init__()
         self._staged = staged
-        self.id = "local-staged" if staged else "local-working"
+        self.id = LOCAL_STAGED_ID if staged else LOCAL_WORKING_ID
         # Graph art mirrored from the HEAD row when in --graph mode; set by
         # GitLogView._place_uncommitted_rows, empty otherwise.
         self.graph_prefix = ""
         if self._staged:
-            self.txt, self.color = "Uncommitted changes (staged)", Screen.C_STATUS
+            self.txt, self.color = STAGED_TITLE, Screen.C_STATUS
         else:
-            self.txt, self.color = (
-                "Uncommitted changes (working directory)",
-                Screen.C_ERROR,
-            )
+            self.txt, self.color = WORKING_TITLE, Screen.C_ERROR
 
     def get_row_context_menu(self):
         return (self, ID_GIT_LOG)
@@ -344,15 +347,9 @@ class UncommittedChangesListItem(SegmentedListItem):
 
     def load_to_view(self):
         diff = self.get_app().git_diff
-        if diff.commit_id == self.id:
+        if diff.shows(self.id):
             return
-        diff.job.show_diff(
-            "HEAD",
-            cached=self._staged,
-            title=self.txt,
-            view_id=self.id,
-            add_to_jump_list=True,
-        )
+        diff.show_worktree(self._staged, add_to_jump_list=True)
 
     def activate(self) -> bool:
         self.load_to_view()
@@ -414,8 +411,8 @@ class CommitListItem(SegmentedListItem):
 
     def load_to_view(self):
         diff = self.get_app().git_diff
-        if diff.commit_id != self.id or diff.is_diff:
-            diff.job.show_commit(self.id)
+        if not diff.shows(self.id):
+            diff.show_commit(self.id)
 
     def activate(self) -> bool:
         self.load_to_view()

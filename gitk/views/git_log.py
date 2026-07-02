@@ -323,11 +323,9 @@ class GitLogView(ListView):
             return True
 
         if line is not None:
-            self.app.git_diff.job.selected_line_map[commit_id] = (line, offset_y)
+            self.app.git_diff.remember_position(commit_id, line, offset_y)
 
-        was_same_commit = self.app.git_diff.commit_id == commit_id and (
-            not self.app.git_diff.is_diff or is_local
-        )
+        was_same_commit = self.app.git_diff.shows(commit_id)
 
         # Move the git_log cursor without going through GitLogView.set_selected →
         # *ListItem.load_to_view → show_commit/show_diff, which would re-push to
@@ -339,15 +337,9 @@ class GitLogView(ListView):
                 self.app.git_diff.restore_view_position(line, offset_y)
         elif is_local:
             item = self.items[idx]
-            self.app.git_diff.job.show_diff(
-                "HEAD",
-                cached=item._staged,
-                title=item.txt,
-                view_id=item.id,
-                add_to_jump_list=False,
-            )
+            self.app.git_diff.show_worktree(item._staged)
         else:
-            self.app.git_diff.job.show_commit(commit_id, add_to_jump_list=False)
+            self.app.git_diff.show_commit(commit_id, add_to_jump_list=False)
         return True
 
     def get_selected_commit_id(self):
@@ -434,7 +426,7 @@ class GitLogView(ListView):
         self.dirty = True
 
     def diff_commits(self, old_commit_id, new_commit_id):
-        self.app.git_diff.job.show_diff(old_commit_id, new_commit_id)
+        self.app.git_diff.show_diff(old_commit_id, new_commit_id)
         self.app.git_diff.show()
 
     def handle_input(self, keyboard):

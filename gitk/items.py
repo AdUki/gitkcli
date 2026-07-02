@@ -184,7 +184,7 @@ class DiffListItem(TextListItem):
         )  # late import: jobs imports items, so avoid a load-time cycle
 
         app = self.get_app()
-        blame_revision = app.git_diff.job.get_old_revision()
+        blame_revision = app.git_diff.blame_revision()
         if self.old_file_path and self.old_file_line and blame_revision:
             args = [
                 "git",
@@ -219,7 +219,7 @@ class DiffListItem(TextListItem):
                     if commit:
                         diff = app.git_diff
                         app.git_log.add_to_jump_list(
-                            diff.commit_id, diff._selected, diff._offset_y
+                            diff.view_key, diff._selected, diff._offset_y
                         )
 
                         def on_finished():
@@ -228,7 +228,7 @@ class DiffListItem(TextListItem):
                                 commit.id, diff._selected, diff._offset_y
                             )
 
-                        diff.job.show_commit(
+                        diff.show_commit(
                             commit.id, on_finished=on_finished, add_to_jump_list=False
                         )
 

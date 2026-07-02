@@ -273,7 +273,7 @@ class ContextMenu(ListView):
             self.append(
                 ContextMenuItem(
                     "Show tag annotation",
-                    self.app.git_diff.job.show_tag_annotation,
+                    self.app.git_diff.show_tag_annotation,
                     [item.data.get("tag_id")],
                     "tag_id" in item.data,
                 )

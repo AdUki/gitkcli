@@ -302,6 +302,11 @@ class GitRefreshHeadJob(GitLogJob):
 
 
 class GitDiffJob(Job):
+    """Streams one 'git show'/'git diff'/'git cat-file' run (args supplied by
+    GitDiffView) and parses each line into Text/Stat/DiffListItem rows. Knows
+    nothing about diff modes, titles, jump lists, or scroll positions - that
+    is GitDiffView's job (see gitk.diff_target)."""
+
     def __init__(self, app):
         super().__init__(app, ID_GIT_DIFF)
         self.cmd = "git"
@@ -313,133 +318,20 @@ class GitDiffJob(Job):
         # jump-to-file is reconstructed separately by _stat_file_path.
         self.stat_pattern = re.compile(r" (?:\.\.\.)?(?:.* => )?(.*?)}? +\| +\d+ \+*-*")
 
-        self.commit_id: typing.Optional[str] = None
-        self.tag_id: typing.Optional[str] = None
-        self.cached: bool = False
-        self.old_commit_id: typing.Optional[str] = None
-        self.new_commit_id: typing.Optional[str] = None
+        self._reset_parser()
+
+    def _reset_parser(self):
+        """Per-run hunk-tracking state, written only by process_line (reader
+        thread)."""
         self.old_file_path: typing.Optional[str] = None
         self.old_file_line: int = -1
         self.new_file_path: typing.Optional[str] = None
         self.new_file_line: int = -1
         self.line_count = -1
-        self.selected_line_map = {}
 
-    def _get_args(self):
-        self.old_file_path = None
-        self.old_file_line = -1
-        self.new_file_path = None
-        self.new_file_line = -1
-        self.line_count = -1
-
-        if self.tag_id:
-            return ["cat-file", "-p", self.tag_id]
-
-        if self.commit_id:
-            args = ["show", "-m", self.commit_id]
-        else:
-            args = ["diff", self.old_commit_id]
-            if self.new_commit_id:
-                args.append(self.new_commit_id)
-
-        if self.cached:
-            args.insert(1, "--cached")
-
-        args.extend(
-            [
-                f"-U{self.app.git_diff.context_size}",
-                f"--stat={self.app.git_diff.width}",
-                "--no-color",
-                f"-l{self.app.git_diff.rename_limit}",
-            ]
-        )
-
-        if self.app.git_diff.ignore_whitespace:
-            args.append("-w")
-
-        return args
-
-    def restart_job(self):
-        self.start_job(self._get_args())
-
-    def get_old_revision(self):
-        """Git revision for the 'old' (---) side of the current diff"""
-        if self.commit_id:
-            return f"{self.commit_id}^"
-        return self.old_commit_id
-
-    def _restore_on_finished(self, key):
-        """Callback that restores the saved cursor/scroll for `key`, or None."""
-        entry = self.selected_line_map.get(key)
-        return (
-            (lambda: self.app.git_diff.restore_view_position(*entry)) if entry else None
-        )
-
-    def _prepare(
-        self,
-        title,
-        *,
-        is_diff,
-        view_commit_id,
-        commit_id=None,
-        tag_id=None,
-        old_commit_id=None,
-        new_commit_id=None,
-        cached=False,
-    ):
-        """Reset the job target and the diff view before starting a show_* job."""
-        self.commit_id = commit_id
-        self.tag_id = tag_id
-        self.cached = cached
-        self.old_commit_id = old_commit_id
-        self.new_commit_id = new_commit_id
-        self.app.git_diff.clear()
-        self.app.git_diff.commit_id = view_commit_id
-        self.app.git_diff.is_diff = is_diff
-        self.app.git_diff.header_item.set_title(title)
-
-    def show_diff(
-        self,
-        old_commit_id,
-        new_commit_id=None,
-        cached=False,
-        title=None,
-        view_id=None,
-        add_to_jump_list=False,
-    ):
-        if not title:
-            title = f"Diff {old_commit_id[:7]} {new_commit_id[:7]}"
-        self._prepare(
-            title,
-            is_diff=True,
-            view_commit_id=view_id or old_commit_id,
-            old_commit_id=old_commit_id,
-            new_commit_id=new_commit_id,
-            cached=cached,
-        )
-        self.start_job(self._get_args(), on_finished=self._restore_on_finished(view_id))
-        if add_to_jump_list and view_id:
-            self.app.git_log.add_to_jump_list(view_id)
-
-    def show_commit(self, commit_id, on_finished=None, add_to_jump_list=True):
-        self._prepare(
-            f"Commit {commit_id[:7]}",
-            is_diff=False,
-            view_commit_id=commit_id,
-            commit_id=commit_id,
-        )
-        if on_finished is None:
-            on_finished = self._restore_on_finished(commit_id)
-        self.start_job(self._get_args(), on_finished=on_finished)
-        if add_to_jump_list:
-            self.app.git_log.add_to_jump_list(commit_id)
-
-    def show_tag_annotation(self, tag_id):
-        self._prepare(
-            f"Tag {tag_id}", is_diff=True, view_commit_id=tag_id, tag_id=tag_id
-        )
-        self.start_job(self._get_args())
-        self.app.git_diff.show()
+    def start_job(self, args=[], on_finished=None):
+        self._reset_parser()
+        super().start_job(args, on_finished)
 
     @staticmethod
     def _stat_file_path(stat_line):

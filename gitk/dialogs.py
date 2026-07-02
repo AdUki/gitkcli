@@ -382,11 +382,7 @@ class PreferencesDialogPopup(ListView):
         self.app.git_log.dirty = True
         self.app.log.view.dirty = True
         if self.app.git_diff.ignore_whitespace != self.t_ign_ws.toggled:
-            job = self.app.git_diff.job
-            if job.commit_id or job.tag_id or job.old_commit_id:
-                self.app.git_diff.change_ignore_whitespace(self.t_ign_ws.toggled)
-            else:
-                self.app.git_diff.ignore_whitespace = self.t_ign_ws.toggled
+            self.app.git_diff.change_ignore_whitespace(self.t_ign_ws.toggled)
 
         new_flags = self.input_flags.txt.strip()
         if new_flags != self.app.git_log.pref_flags:
