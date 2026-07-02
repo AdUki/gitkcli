@@ -21,7 +21,7 @@ from gitk.ids import (
     ID_NEW_GIT_REF,
     ID_PREFERENCES,
 )
-from gitk.input import KEY_ENTER, KEY_RETURN, KEY_TAB, KeyboardState
+from gitk.input import ENTER_KEYS, KEY_TAB, KeyboardState
 from gitk.items import (
     ResetModeItem,
     SeparatorItem,
@@ -50,7 +50,7 @@ class ResetDialogPopup(ListView):
         self.selected_mode = "--mixed"
         self.set_header_item(TextListItem(" Reset current branch", 30, expand=True))
 
-        self.target_item = TextListItem("", 4, selectable=False)
+        self.target_item = TextListItem("", 4, is_selectable=False)
         self.append(self.target_item)
         self.append(SeparatorItem())
         self.append(
@@ -277,7 +277,7 @@ class UserInputDialogPopup(ListView):
 
     def handle_input(self, keyboard):
         key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
+        if key in ENTER_KEYS:
             self.hide()
             self.execute()
 
@@ -340,7 +340,7 @@ class PreferencesDialogPopup(ListView):
         self.append(SeparatorItem())
         self.append(PreferenceRow("Default view mode", self.c_view_mode))
         self.append(SeparatorItem())
-        self.append(TextListItem("  Git log default flags:", selectable=False))
+        self.append(TextListItem("  Git log default flags:", is_selectable=False))
         self.append(self.input_flags)
 
         self._button_row = button_row(
@@ -655,7 +655,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
 
     def handle_input(self, keyboard):
         key = keyboard.key
-        if key == curses.KEY_ENTER or key == KEY_ENTER or key == KEY_RETURN:
+        if key in ENTER_KEYS:
             if self.search_type == "txt":
                 return super().handle_input(keyboard)
 

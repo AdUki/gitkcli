@@ -47,9 +47,6 @@ class Segment:
     def get_text(self) -> str:
         return ""
 
-    def set_text(self, txt: str):
-        pass
-
     def get_context_menu(self):
         """The context menu this segment opens, as a (menu_item, view_id) pair,
         or None if it has none. Used both by a right-click on the segment and by

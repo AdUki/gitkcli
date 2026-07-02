@@ -24,7 +24,7 @@ class _RedMessageBoxPopup(ListView):
     sized to its content. Base for the confirm and error dialogs."""
 
     def __init__(self, app, id, banner):
-        super().__init__(app, id, "window", height=7)
+        super().__init__(app, id, "window")
         self.set_header_item(TextListItem(banner, 31, expand=True))  # red banner
         self.is_popup = True
 

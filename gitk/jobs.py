@@ -15,6 +15,7 @@ import queue
 import re
 import subprocess
 import threading
+import typing
 
 from gitk.ids import ID_GIT_DIFF, ID_GIT_REFRESH_HEAD, ID_GIT_REFS, ID_GIT_SEARCH
 from gitk.items import DiffListItem, RefListItem, StatListItem, TextListItem
@@ -29,6 +30,12 @@ from gitk.segmented_items import CommitListItem
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
 
+def _git_env():
+    """Pin LC_ALL=C so git speaks English: callers parse stdout/stderr to
+    detect conditions like "already exists" / "non-fast-forward"."""
+    return {**os.environ, "LC_ALL": "C"}
+
+
 class Job:
     jobs = {}
 
@@ -41,11 +48,7 @@ class Job:
     @classmethod
     def run_job(cls, app, args):
         app.log.info("Run job: " + " ".join(args))
-        # Pin LC_ALL=C so git speaks English: callers parse stderr to detect
-        # conditions like "already exists" / "non-fast-forward".
-        return subprocess.run(
-            args, capture_output=True, text=True, env={**os.environ, "LC_ALL": "C"}
-        )
+        return subprocess.run(args, capture_output=True, text=True, env=_git_env())
 
     @classmethod
     def process_all_jobs(cls) -> bool:
@@ -161,14 +164,11 @@ class Job:
             " ".join(["Job started", self.id + ":", self.cmd] + args + self.args)
         )
 
-        # Pin LC_ALL=C (same convention as run_job) so git speaks English: the
-        # commit --format output is locale-independent, but stderr conditions
-        # (e.g. an unborn branch) are parsed by callers.
         self.job = subprocess.Popen(
             self.cmd.split(" ") + args + self.args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env={**os.environ, "LC_ALL": "C"},
+            env=_git_env(),
         )
 
         stdout_thread = threading.Thread(
@@ -263,7 +263,7 @@ class GitLogJob(Job):
 
     def process_item(self, item):
         if isinstance(item, str):
-            self.app.git_log.append(TextListItem(item, selectable=False))
+            self.app.git_log.append(TextListItem(item, is_selectable=False))
         else:
             id, commit = item
             if self.app.git_log.add_commit(id, commit):

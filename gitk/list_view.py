@@ -13,7 +13,7 @@ import typing
 from gitk.config import KEY_CTRL, copy_to_clipboard
 from gitk.items import SpacerListItem, TextListItem
 from gitk.screen import Screen
-from gitk.view import HORIZONTAL_OFFSET_JUMP, SPLIT_DIVIDER_COLOR, View
+from gitk.view import SPLIT_DIVIDER_COLOR, View
 
 
 class ListView(View):
@@ -40,11 +40,6 @@ class ListView(View):
         self._search_dialog = search_dialog
         self._search_dialog.parent_list_view = self
 
-    def _resize_centered(self, height, width):
-        """Resize to height x width and re-centre on screen. Used by popups that
-        size themselves to their content; fixed_x/y = None centres it."""
-        self.set_dimensions(None, None, height, width)
-
     def _focus_button_row(self, focus="first"):
         """Make only self._button_row navigable (Left/Right pick a button, Enter
         activates it) and select it. focus='last' defaults to the final button -
@@ -69,7 +64,7 @@ class ListView(View):
         content = len(self.header_item.get_text())
         for line in lines:
             text, color = line if isinstance(line, tuple) else (line, 1)
-            self.append(TextListItem("  " + text, color, selectable=False))
+            self.append(TextListItem("  " + text, color, is_selectable=False))
             content = max(content, len(text) + 2)  # + 2 for the left indent
         self.append(SpacerListItem())
         self._button_row = button_row_item
@@ -77,7 +72,8 @@ class ListView(View):
         content = max(content, len(button_row_item.get_text()))
         self._focus_button_row(focus)
         # content + 2 (right margin so text doesn't touch the border) + 2 (box sides)
-        self._resize_centered(len(self.items) + 2, max(40, content + 4))
+        # fixed_x/y = None centres the popup on screen.
+        self.set_dimensions(None, None, len(self.items) + 2, max(40, content + 4))
         self.show()
 
     def copy_text_to_clipboard(self):
@@ -164,13 +160,13 @@ class ListView(View):
                     and not self.items[new_index].is_selectable
                 ):
                     target = new_index
-                    for dir in [direction, -direction]:
-                        i = target + dir
+                    for step in [direction, -direction]:
+                        i = target + step
                         while 0 <= i < len(self.items) and i != self._selected:
                             if self.items[i].is_selectable:
                                 new_index = i
                                 break
-                            i += dir
+                            i += step
                         if new_index != target:
                             break
                     if not self.items[new_index].is_selectable:
@@ -293,10 +289,7 @@ class ListView(View):
         elif key == curses.KEY_DOWN or key == ord("j"):
             self.set_selected(self._selected + 1, visible_mode="bottom")
         elif key == curses.KEY_LEFT or key == ord("h"):
-            if self._offset_x - HORIZONTAL_OFFSET_JUMP >= 0:
-                self._offset_x -= HORIZONTAL_OFFSET_JUMP
-            else:
-                self._offset_x = 0
+            self._offset_x = max(0, self._offset_x - 1)
         elif key == curses.KEY_RIGHT or key == ord("l"):
             max_length = 0
             for i in range(
@@ -306,7 +299,7 @@ class ListView(View):
                 if length > max_length:
                     max_length = length
             if self._offset_x + self.width < max_length:
-                self._offset_x += HORIZONTAL_OFFSET_JUMP
+                self._offset_x += 1
         elif key == curses.KEY_PPAGE or key == KEY_CTRL("b"):
             self._offset_y = max(0, self._offset_y - self.height)
             self.set_selected(max(0, self._selected - self.height))

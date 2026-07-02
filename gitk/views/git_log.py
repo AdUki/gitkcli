@@ -339,10 +339,18 @@ class GitLogView(ListView):
             return selected_item.id
         return ""
 
-    def cherry_pick(self, commit_id=None):
+    def _resolve_commit(self, commit_id, action_msg, reject_local=False):
+        """`commit_id` or the current selection; None (after warning the user)
+        if neither yields a usable commit for `action_msg`."""
         commit_id = commit_id or self.get_selected_commit_id()
+        if not commit_id or (reject_local and commit_id.startswith("local")):
+            self.app.log.warning(f"Select a commit to {action_msg}")
+            return None
+        return commit_id
+
+    def cherry_pick(self, commit_id=None):
+        commit_id = self._resolve_commit(commit_id, "cherry-pick")
         if not commit_id:
-            self.app.log.warning("Select a commit to cherry-pick")
             return
         Job.run_job(self.app, ["git", "cherry-pick", "--abort"])
         self.app.run_git(
@@ -354,9 +362,8 @@ class GitLogView(ListView):
         )
 
     def revert(self, commit_id=None):
-        commit_id = commit_id or self.get_selected_commit_id()
+        commit_id = self._resolve_commit(commit_id, "revert")
         if not commit_id:
-            self.app.log.warning("Select a commit to revert")
             return
         self.app.run_git(
             ["git", "revert", "--no-edit", "-m", "1", commit_id],
@@ -367,9 +374,10 @@ class GitLogView(ListView):
         )
 
     def confirm_reset(self, commit_id=None):
-        commit_id = commit_id or self.get_selected_commit_id()
-        if not commit_id or commit_id.startswith("local"):
-            self.app.log.warning("Select a commit to reset the current branch to")
+        commit_id = self._resolve_commit(
+            commit_id, "reset the current branch to", reject_local=True
+        )
+        if not commit_id:
             return
         self.view_reset.open(commit_id)
 
@@ -391,16 +399,15 @@ class GitLogView(ListView):
             # replaces a stash --keep-index / reset --hard / stash pop dance that
             # was exactly equivalent but carried a reset --hard data-loss window
             # (and a stash-pop conflict risk) between its steps.
-            result = Job.run_job(self.app, ["git", "reset"])
+            args = ["git", "reset"]
         else:
-            result = Job.run_job(self.app, ["git", "restore", "."])
-        if result.returncode == 0:
-            self.app.git_refs.reload_refs()
-            self.app.git_log.check_uncommitted_changes()
-        else:
-            self.app.log.error(
-                f"Error cleaning {'staged' if staged else 'unstaged'} changes: {result.stderr}"
-            )
+            args = ["git", "restore", "."]
+        self.app.run_git(
+            args,
+            err=f"Error cleaning {'staged' if staged else 'unstaged'} changes",
+            reload_refs=True,
+            check_uncommitted=True,
+        )
 
     def mark_commit(self, commit_id=None):
         commit_id = commit_id or self.get_selected_commit_id()

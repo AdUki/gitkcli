@@ -104,12 +104,12 @@ class RefListItem(Item):
 
 
 class TextListItem(Item):
-    def __init__(self, txt, color=1, expand=False, selectable=True, dim=False):
+    def __init__(self, txt, color=1, expand=False, is_selectable=True, dim=False):
         super().__init__()
         self.txt = txt
         self.color = color
         self.expand = expand
-        self.is_selectable = selectable
+        self.is_selectable = is_selectable
         self.dim = dim
 
     def get_text(self):
@@ -243,7 +243,7 @@ class DiffListItem(TextListItem):
 
 class ContextMenuItem(TextListItem):
     def __init__(self, text, action, args=[], is_selectable=True):
-        super().__init__(text, selectable=is_selectable, dim=not is_selectable)
+        super().__init__(text, is_selectable=is_selectable, dim=not is_selectable)
         self.action = action
         self.args = args if args else []
 

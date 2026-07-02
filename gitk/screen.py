@@ -276,7 +276,7 @@ class Screen:
 
     def getmaxyx(self) -> tuple[int, int]:
         y, x = self.stdscr.getmaxyx()
-        return y - 1, x  # substrack status bar
+        return y - 1, x  # subtract status bar
 
     def add_view(self, id, view):
         self.views[id] = view

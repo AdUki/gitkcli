@@ -15,8 +15,6 @@ import typing
 from gitk.screen import Screen
 from gitk.segmented_items import WindowTopBarItem
 
-HORIZONTAL_OFFSET_JUMP = 1
-
 # Neutral grey for the divider between split panes — fixed so the line never
 # looks like it belongs to whichever pane happens to be focused.
 SPLIT_DIVIDER_COLOR = 18
@@ -136,16 +134,16 @@ class View:
         box = self.view_mode == "window"
 
         if self.header_item or box:
-            # substract header line or box top
+            # subtract header line or box top
             self.height -= 1
             self.y += 1
 
         if box:
-            # substract box bottom
+            # subtract box bottom
             self.height -= 1
 
         if box:
-            # substract box sides
+            # subtract box sides
             self.x += 1
             self.width -= 2
 
