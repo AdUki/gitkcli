@@ -75,6 +75,13 @@ class GitDiffView(ListView):
             not self.is_diff or self.commit_id.startswith("local-")
         )
 
+    def add_jump_point(self):
+        """Record the current commit + scroll position so g/G-style jumps and
+        file navigation within the diff can be undone with the jump list."""
+        self.app.git_log.add_to_jump_list(
+            self.commit_id, self._selected, self._offset_y
+        )
+
     def set_selected(self, what: int | str | re.Pattern, visible_mode="center") -> bool:
         ret = super().set_selected(what, visible_mode)
         if self._tracks_position():
@@ -139,14 +146,10 @@ class GitDiffView(ListView):
         elif key in (ord("g"), ord("G"), curses.KEY_HOME, curses.KEY_END):
             track = self._tracks_position()
             if track:
-                self.app.git_log.add_to_jump_list(
-                    self.commit_id, self._selected, self._offset_y
-                )
+                self.add_jump_point()
             ret = super().handle_input(keyboard)
             if track:
-                self.app.git_log.add_to_jump_list(
-                    self.commit_id, self._selected, self._offset_y
-                )
+                self.add_jump_point()
             return ret
         else:
             return super().handle_input(keyboard)

@@ -75,34 +75,6 @@ class SeparatorItem(Item):
         self.is_separator = True
 
 
-class RefListItem(Item):
-    def __init__(self, data):
-        super().__init__()
-        self.data = data
-
-    def get_text(self):
-        return self.data["name"]
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        line = self.get_text()[offset:]
-        color, _ = ref_color_and_title(self.data, self.get_app().git_log.head_branch)
-        if selected or marked:
-            line += " " * (width - len(line))
-        if len(line) > width:
-            line = line[:width]
-
-        win.addstr(line, Screen.color(color, selected, marked, matched))
-        win.clrtoeol()
-
-    def activate(self) -> bool:
-        app = self.get_app()
-        if app.git_log.select_commit(self.data["id"]):
-            app.git_log.show()
-        else:
-            app.log.warning(f"Commit with hash {self.data['id']} not found")
-        return True
-
-
 class TextListItem(Item):
     def __init__(self, txt, color=1, expand=False, is_selectable=True, dim=False):
         super().__init__()
@@ -135,6 +107,29 @@ class TextListItem(Item):
             win.clrtoeol()
 
 
+class RefListItem(TextListItem):
+    def __init__(self, data):
+        super().__init__("")
+        self.data = data
+
+    def get_text(self):
+        return self.data["name"]
+
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        self.color, _ = ref_color_and_title(
+            self.data, self.get_app().git_log.head_branch
+        )
+        super().draw_line(win, offset, width, selected, matched, marked)
+
+    def activate(self) -> bool:
+        app = self.get_app()
+        if app.git_log.select_commit(self.data["id"]):
+            app.git_log.show()
+        else:
+            app.log.warning(f"Commit with hash {self.data['id']} not found")
+        return True
+
+
 class SpacerListItem(Item):
     def __init__(self):
         super().__init__()
@@ -150,14 +145,13 @@ class StatListItem(TextListItem):
         super().__init__(txt, color)
 
     def jump_to_file(self):
-        app = self.get_app()
-        diff = app.git_diff
-        app.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
+        diff = self.get_app().git_diff
+        diff.add_jump_point()
         # Escape the path: filenames can legally contain regex metacharacters
         # ('[', '(', '+', '.', ...); without re.escape a name like "test[1].txt"
         # makes re.compile raise (crash) and benign metachars mis-match the line.
         diff.set_selected(re.compile(f"diff.*{re.escape(self.stat_file_path)}"), "top")
-        app.git_log.add_to_jump_list(diff.commit_id, diff._selected, diff._offset_y)
+        diff.add_jump_point()
 
     def activate(self) -> bool:
         self.jump_to_file()

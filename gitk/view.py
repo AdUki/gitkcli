@@ -139,11 +139,8 @@ class View:
             self.y += 1
 
         if box:
-            # subtract box bottom
+            # subtract box bottom, then box sides
             self.height -= 1
-
-        if box:
-            # subtract box sides
             self.x += 1
             self.width -= 2
 
@@ -349,7 +346,14 @@ class View:
 
         self.draw_header(sides)
 
-        if self != self.app.log.view and self.get_parent() != self.app.log.view:
+        parent = None
+        try:
+            index = self.app.screen.showed_views.index(self)
+            if index > 0:
+                parent = self.app.screen.showed_views[index - 1]
+        except ValueError:
+            pass
+        if self != self.app.log.view and parent != self.app.log.view:
             self.app.log.debug(f"Draw view {self.id}")
 
     def draw_header(self, sides):
@@ -426,15 +430,6 @@ class View:
 
     def handle_input(self, keyboard) -> bool:
         return False
-
-    def get_parent(self):
-        try:
-            index = self.app.screen.showed_views.index(self)
-            if index > 0:
-                return self.app.screen.showed_views[index - 1]
-        except ValueError:
-            pass
-        return None
 
     def is_active(self) -> bool:
         return (

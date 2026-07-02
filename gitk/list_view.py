@@ -360,26 +360,24 @@ class ListView(View):
             # Joins onto the neutral split divider use its colour, not the pane's.
             join = Screen.color(SPLIT_DIVIDER_COLOR)
             sides = self.split_border_sides()
+            if sides is not None:
+                # split pane: join only the borders that are actually drawn
+                left = join if "left" in sides else None
+                right = join if "right" in sides else None
+            elif self.view_mode == "window":
+                left = right = Screen.color(color)
+            else:
+                left = right = None
             for pair in separator_items:
                 i, width = pair
-                if sides is not None:
-                    # split pane: join only the borders that are actually drawn
-                    if "left" in sides:
-                        self.win.move(self.y + i, self.x - 1)
-                        self.win.addstr("├", join)
-                    else:
-                        self.win.move(self.y + i, self.x)
-                    self.win.addstr("─" * width, Screen.color(color))
-                    if "right" in sides:
-                        self.win.addstr("┤", join)
-                elif self.view_mode == "window":
+                if left is not None:
                     self.win.move(self.y + i, self.x - 1)
-                    self.win.addstr("├", Screen.color(color))
-                    self.win.addstr("─" * width, Screen.color(color))
-                    self.win.addstr("┤", Screen.color(color))
+                    self.win.addstr("├", left)
                 else:
                     self.win.move(self.y + i, self.x)
-                    self.win.addstr("─" * width, Screen.color(color))
+                self.win.addstr("─" * width, Screen.color(color))
+                if right is not None:
+                    self.win.addstr("┤", right)
 
 
 def _raise_split_sibling(view, sibling):

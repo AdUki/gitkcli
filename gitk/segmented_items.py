@@ -186,23 +186,24 @@ class ButtonRowItem(SegmentedListItem):
     def __init__(self, segments=[], bg_color=1):
         super().__init__(segments, bg_color)
         self.is_selectable = True
-        indices = self._button_indices()
-        self.focused = indices[0] if indices else 0
+        self.reset_focus()
 
     def _button_indices(self):
         return [i for i, s in enumerate(self.segments) if hasattr(s, "activate")]
 
+    def _focus_button(self, pos):
+        indices = self._button_indices()
+        self.focused = indices[pos] if indices else 0
+
     def reset_focus(self):
         # Back to the default (first/primary) button. Reused dialogs call this on
         # open so focus doesn't linger on whatever was picked last time.
-        indices = self._button_indices()
-        self.focused = indices[0] if indices else 0
+        self._focus_button(0)
 
     def focus_last(self):
         # Focus the last (rightmost) button. Destructive confirm dialogs default
         # here so a stray Enter hits the safe (cancel) button.
-        indices = self._button_indices()
-        self.focused = indices[-1] if indices else 0
+        self._focus_button(-1)
 
     def _move_focus(self, direction):
         indices = self._button_indices()
