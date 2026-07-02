@@ -232,7 +232,7 @@ def parse_spec(text: str):
             if not rest:
                 raise SpecError(f"line {lineno}: capture needs a name")
             directives.append(Directive("capture", lineno, name=rest))
-        elif op in ("expect-exit", "expect_exit"):
+        elif op == "expect-exit":
             directives.append(Directive("expect-exit", lineno))
         else:
             raise SpecError(f"line {lineno}: unknown directive {head!r}")

@@ -5,7 +5,7 @@ child starts, so curses initialises at exactly the resolution a test asks for.
 All output bytes are fed to a `pyte` VT100 emulator; `capture_ansi()` then renders
 the emulated screen back to raw terminal format (text + inline ANSI colour) -- the
 thing goldens are compared against (so colour, e.g. the selection highlight, is
-asserted). `capture()` is the plain-text variant.
+asserted).
 
 Determinism hinges on `settle()`: it waits until the pty has produced no output
 for a quiet window, which is how we know the async commit stream has finished,
@@ -248,17 +248,6 @@ class Harness:
 
     # -- screen ------------------------------------------------------------
 
-    def capture(self):
-        """Return the emulated screen as a list of plain-text rows.
-
-        Each row is right-trimmed; trailing all-blank rows are dropped so goldens
-        stay compact and a change at the bottom still shows up as added lines.
-        """
-        lines = [row.rstrip() for row in self.screen.display]
-        while lines and lines[-1] == "":
-            lines.pop()
-        return lines
-
     def capture_ansi(self):
         """The settled screen in raw terminal format: text with inline ANSI SGR
         colour codes, reconstructed from pyte's per-cell attributes. Open a
@@ -266,9 +255,9 @@ class Harness:
         colour-only state (selection background, ref/diff colours, ...) is
         asserted. Deterministic given the pinned pyte/terminfo palette.
 
-        Trailing cells that are a plain default-coloured space are trimmed (like
-        capture() trims trailing spaces); a selection highlighted to the screen
-        edge keeps its coloured trailing cells.
+        Trailing cells that are a plain default-coloured space are trimmed;
+        a selection highlighted to the screen edge keeps its coloured trailing
+        cells.
         """
         buf = self.screen.buffer
         default = ("default", "default", False, False, False, False)
