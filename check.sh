@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 
 # The project's own Python: package, entry shim, packaging, tests.
 # build/ is gitignored (ruff skips it automatically).
-SOURCES=(gitk gitkcli.py setup.py __init__.py test)
+SOURCES=(gitk gitkcli.py setup.py test)
 
 usage() {
     cat <<'EOF'

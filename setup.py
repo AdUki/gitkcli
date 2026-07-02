@@ -12,7 +12,7 @@ setup(
     name="gitkcli",
     version="0.1.0",
     author="Simon Mikuda",
-    author_email="simon.mikuda@example.com",
+    author_email="simon.mikuda@gmail.com",
     description="A terminal-based Git repository viewer",
     long_description=long_description,
     long_description_content_type="text/markdown",

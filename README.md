@@ -4,10 +4,6 @@
 
 GitkCLI brings the beloved [gitk](https://git-scm.com/docs/gitk) history-browsing experience to the terminal — no X11, no display server, no GUI. Just `git log --graph` rendered into a fast, mouse-aware, keyboard-driven curses interface that runs anywhere a shell does.
 
-<!-- TODO: replace with a real demo GIF -->
-<!-- ![GitkCLI demo](docs/demo.gif) -->
-> 📽️ *Demo GIF coming soon.*
-
 ## Why GitkCLI?
 
 gitk is fantastic — it's part of git itself, rock-solid, and so feature-complete it barely needs changing. There's just one thing it can't do: **run without a graphical display.**
