@@ -371,16 +371,22 @@ class ContextMenu(ListView):
         remotes = Job.run_job(self.app, ["git", "remote"]).stdout.splitlines()
         removed_from_remotes = []
 
-        result = Job.run_job(self.app, ["git", "tag", "-d", tag_name])
-        if result.returncode == 0:
-            removed_from_remotes.append("<local>")
-
-        for remote in remotes:
-            result = Job.run_job(
-                self.app, ["git", "push", "--delete", remote, tag_name]
-            )
+        # Pushing the deletion to each remote hits the network, and this runs
+        # on the UI thread - keep the in-progress bar up for the whole batch.
+        self.app.screen.show_working(f"Working: deleting tag {tag_name} ...")
+        try:
+            result = Job.run_job(self.app, ["git", "tag", "-d", tag_name])
             if result.returncode == 0:
-                removed_from_remotes.append(remote)
+                removed_from_remotes.append("<local>")
+
+            for remote in remotes:
+                result = Job.run_job(
+                    self.app, ["git", "push", "--delete", remote, tag_name]
+                )
+                if result.returncode == 0:
+                    removed_from_remotes.append(remote)
+        finally:
+            self.app.screen.clear_working()
 
         if removed_from_remotes:
             self.app.git_refs.reload_refs()

@@ -34,6 +34,7 @@ class Screen:
     # 256-tier variant (50/100/150 + number) ranges.
     BAR_FLASH_PAIR = 40  # success flash: black on green
     BAR_LABEL_PAIR = 41  # bottom-bar F-key label cells: black on cyan
+    BAR_WORK_PAIR = 42  # in-progress bar: white on blue
 
     # Base colour-pair numbers, initialised in __init__ and used throughout
     # gitk/ wherever a Screen.color()/bar_color() call needs a palette index.
@@ -246,6 +247,12 @@ class Screen:
             curses.init_pair(
                 Screen.BAR_FLASH_PAIR, curses.COLOR_BLACK, curses.COLOR_GREEN
             )  # Success flash over the bottom bar
+            curses.init_pair(
+                Screen.BAR_WORK_PAIR,
+                curses.COLOR_WHITE,
+                # The marked-row blue (the 256-tier highlight bg in _init_color).
+                20 if Screen.color_depth >= 256 else curses.COLOR_BLUE,
+            )  # In-progress bar during a blocking git command
 
         try:
             curses.curs_set(0)  # Hide cursor (some minimal terminals lack civis)
@@ -295,6 +302,7 @@ class Screen:
         # reverts to the function-key panel. Empty when no flash is showing.
         self.flash_message = ""
         self.flash_time = 0.0
+        self.working_message = ""
 
         stdscr.clear()
         stdscr.refresh()
@@ -361,6 +369,22 @@ class Screen:
         self.flash_message = message.splitlines()[0] if message else ""
         self.flash_time = time.time()
 
+    def show_working(self, message: str):
+        """Replace the bottom bar with `message` on yellow and repaint NOW.
+        The caller is about to run a blocking git command on the UI thread, so
+        this forced draw is the only chance to show the bar before the event
+        loop freezes. Cleared with clear_working() once the command returns."""
+        self.working_message = message
+        try:
+            self.draw_visible_views()
+        except curses.error:
+            pass  # a failed paint must not abort the git command it announces
+
+    def clear_working(self):
+        """Drop the in-progress bar. No forced repaint: control returns to the
+        event loop, which redraws on its next iteration."""
+        self.working_message = ""
+
     def flash_active(self) -> bool:
         """True while a flash should keep the main loop redrawing the bottom bar
         (either still showing, or set-but-expired and awaiting one clearing draw)."""
@@ -373,11 +397,23 @@ class Screen:
         width (e.g. `` 1Log        2Refs       …``). Written to stdscr (the bottom
         of the panel deck); composited under the panels by update_panels().
 
-        While a success flash is active the whole row is drawn green instead."""
+        While a success flash is active the whole row is drawn green instead;
+        while a blocking git command runs it is drawn yellow (show_working)."""
         lines, cols = stdscr.getmaxyx()
         if cols < 2 or lines < 1:
             return
         y = lines - 1
+
+        if self.working_message:
+            # cols - 1: the bottom-right cell raises addwstr() ERR (see below).
+            stdscr.addstr(
+                y,
+                0,
+                self.working_message[: cols - 1].ljust(cols - 1),
+                Screen.bar_color(Screen.BAR_WORK_PAIR) | curses.A_BOLD,
+            )
+            self.bar_hitmap = []  # the F-key cells are hidden, so swallow clicks
+            return
 
         if self.flash_message:
             if time.time() - self.flash_time < self.FLASH_DURATION:

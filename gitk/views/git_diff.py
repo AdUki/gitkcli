@@ -5,9 +5,16 @@ from __future__ import annotations
 import curses
 import re
 import typing
+from functools import partial
 
 from gitk.config import KEY_CTRL
-from gitk.diff_target import CommitTarget, DiffOptions, RangeTarget, TagTarget, WorktreeTarget
+from gitk.diff_target import (
+    CommitTarget,
+    DiffOptions,
+    RangeTarget,
+    TagTarget,
+    WorktreeTarget,
+)
 from gitk.dialogs import SearchDialogPopup
 from gitk.ids import ID_GIT_DIFF, ID_GIT_DIFF_SEARCH
 from gitk.input import KeyboardState
@@ -152,7 +159,7 @@ class GitDiffView(ListView):
             entry = self.position_map.get(target.view_key)
             if entry:
                 line, offset_y = entry
-                on_finished = lambda: self.restore_view_position(line, offset_y)
+                on_finished = partial(self.restore_view_position, line, offset_y)
         self.job.start_job(target.git_args(self._diff_options()), on_finished)
 
     def clear(self):
@@ -169,9 +176,7 @@ class GitDiffView(ListView):
     def add_jump_point(self):
         """Record the current commit + scroll position so g/G-style jumps and
         file navigation within the diff can be undone with the jump list."""
-        self.app.git_log.add_to_jump_list(
-            self.view_key, self._selected, self._offset_y
-        )
+        self.app.git_log.add_to_jump_list(self.view_key, self._selected, self._offset_y)
 
     def set_selected(self, what: int | str | re.Pattern, visible_mode="center") -> bool:
         ret = super().set_selected(what, visible_mode)

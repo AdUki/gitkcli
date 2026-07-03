@@ -59,7 +59,13 @@ class App:
         requested refreshes and log `ok`. On a forceable rejection (`retry` set,
         not already forcing, and a `reasons` substring in stderr): pop a confirm
         dialog. Otherwise log `err` + stderr. Returns the CompletedProcess."""
-        result = Job.run_job(self, args)
+        # Paint the in-progress bar before the call: run_job blocks the event
+        # loop, so nothing can repaint until the command returns.
+        self.screen.show_working("Working: " + " ".join(args) + " ...")
+        try:
+            result = Job.run_job(self, args)
+        finally:
+            self.screen.clear_working()
         if result.returncode == 0:
             if refresh_head:
                 self.git_log.refresh_head()
