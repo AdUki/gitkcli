@@ -27,6 +27,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from concurrent.futures import ProcessPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -321,6 +322,17 @@ def discover_cases(flt=None):
     return names
 
 
+def run_case_job(name, opts):
+    """Pool worker: run one case; never let exceptions cross the pickle boundary."""
+    runner = Runner(**opts)
+    try:
+        return runner.run_case(name)
+    except (dsl.SpecError, CaseError) as e:
+        return False, [f"  ERROR: {e}"]
+    except Exception as e:
+        return False, [f"  ERROR: {type(e).__name__}: {e}"]
+
+
 def main():
     ap = argparse.ArgumentParser(
         prog="run.py",
@@ -334,6 +346,7 @@ def main():
               python3 test/run.py --list           list case names
               python3 test/run.py --filter refs    only cases matching 'refs'
               python3 test/run.py -u               (re)generate goldens
+              python3 test/run.py -j1              run serially (default: auto-parallel)
               python3 test/run.py --live diff_view replay a case, then drop you into it
               pytest test/                         same suite as per-case nodes
 
@@ -384,6 +397,14 @@ def main():
         action="store_true",
         help="measure gitk/ coverage while running, then print a report",
     )
+    ap.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=0,
+        metavar="N",
+        help="parallel cases; 0 = auto (cpu count), 1 = serial (default: 0)",
+    )
     args = ap.parse_args()
 
     if args.list:
@@ -422,14 +443,16 @@ def main():
             "no cases found" + (f" matching {args.filter!r}" if args.filter else "")
         )
 
+    jobs = args.jobs or (os.cpu_count() or 1)
+    jobs = min(jobs, len(names))
+    opts = dict(
+        update=args.update, verbose=args.verbose, keep=args.keep, coverage=args.coverage
+    )
+
     n_pass = n_fail = 0
-    for name in names:
-        try:
-            ok, messages = runner.run_case(name)
-        except (dsl.SpecError, CaseError) as e:
-            ok, messages = False, [f"  ERROR: {e}"]
-        except Exception as e:  # surface harness/runtime errors per-case
-            ok, messages = False, [f"  ERROR: {type(e).__name__}: {e}"]
+
+    def report(name, ok, messages):
+        nonlocal n_pass, n_fail
         status = ("UPDATED" if args.update else "PASS") if ok else "FAIL"
         print(f"[{status}] {name}")
         for m in messages:
@@ -438,6 +461,21 @@ def main():
             n_pass += 1
         else:
             n_fail += 1
+
+    if jobs == 1:
+        for name in names:
+            ok, messages = run_case_job(name, opts)
+            report(name, ok, messages)
+    else:
+        with ProcessPoolExecutor(max_workers=jobs) as ex:
+            futures = [ex.submit(run_case_job, name, opts) for name in names]
+            try:
+                for name, fut in zip(names, futures):
+                    ok, messages = fut.result()
+                    report(name, ok, messages)
+            except KeyboardInterrupt:
+                ex.shutdown(wait=False, cancel_futures=True)
+                raise
 
     print(f"\n{n_pass} passed, {n_fail} failed")
 
