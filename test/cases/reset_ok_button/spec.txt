@@ -1,0 +1,20 @@
+# Drive the reset dialog through its [Ok] button (not the mode row's Enter) and
+# its q-to-close path. Select a commit (Down*3), 'r' opens the dialog; 'q' closes
+# it. Reopen with 'r', End moves selection to the button row ([Ok] focused), Enter
+# applies the default Mixed reset. HEAD moves; the flash clears after 2s.
+size      120x40
+config    default
+launch
+key       <Down>*3
+key       r
+wait      stable
+key       q
+wait      stable
+key       r
+wait      stable
+key       <End>
+key       <Enter>
+wait      2.5
+key       g
+wait      stable
+capture   reset_done

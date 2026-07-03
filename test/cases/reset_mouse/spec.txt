@@ -1,0 +1,18 @@
+# Mouse-driven reset dialog: click the "Hard" mode row (ResetDialogPopup.
+# set_selected tracks the highlighted mode via the mouse), then click [Ok] to
+# apply it (ButtonSegment). Down*3 first picks the target commit. HEAD resets;
+# the flash clears after 2s and 'g' reveals the moved HEAD.
+size      120x40
+config    default
+launch
+key       <Down>*3
+key       r
+wait      stable
+mouse     click 33 21
+wait      stable
+capture   hard_selected
+mouse     click 54 23
+wait      2.5
+key       g
+wait      stable
+capture   reset_done

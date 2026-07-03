@@ -1,0 +1,14 @@
+# Enter on a ref whose commit is not in the loaded log is a no-op + warning.
+# Launched on master, the log only holds master's ancestry, so the side branch
+# "ahead/experimental" (j*1) points at a commit that never streamed in;
+# RefListItem.activate's select_commit fails and logs "not found", leaving the
+# Refs view in place.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j
+key       <Enter>
+wait      stable
+capture   still_refs

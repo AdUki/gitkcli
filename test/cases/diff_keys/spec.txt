@@ -1,0 +1,16 @@
+# Diff-view keyboard shortcuts not covered elsewhere: '-' shrinks the context
+# size (counterpart to '+'), and Ctrl-n / Ctrl-p step the underlying log selection
+# (loading the next / previous commit's diff) without leaving the diff view. Open
+# HEAD's diff, press '-', then Ctrl-n and Ctrl-p.
+size      120x40
+config    default
+launch
+key       <Enter>
+wait      stable
+key       -
+wait      stable
+key       C-n
+wait      stable
+key       C-p
+wait      stable
+capture   diff_keys

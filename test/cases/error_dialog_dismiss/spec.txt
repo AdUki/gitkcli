@@ -1,0 +1,19 @@
+# Dismiss the modal error dialog. Reproduce the cherry-pick conflict (like
+# cherry_conflict) to pop the red Error popup, send a non-dismiss key (swallowed,
+# the dialog is modal), then Esc to close it - exercising ErrorDialogPopup's key
+# handling. git's hint wording is pinned to the ENVIRONMENT git version.
+size      120x40
+launch    --all
+key       <F2>
+wait      stable
+key       <Down>*16
+key       <Enter>
+wait      stable
+key       c
+wait      2.5
+capture   error
+key       j
+wait      stable
+key       <Esc>
+wait      stable
+capture   dismissed

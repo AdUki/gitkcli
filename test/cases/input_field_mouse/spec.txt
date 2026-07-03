@@ -1,0 +1,17 @@
+# Mouse + horizontal scroll in an input field (UserInputListItem). Open New Branch
+# ('b') and type a name longer than the field, which scrolls so the cursor stays
+# visible (draw_line's offset logic). Then click inside the field to move the
+# cursor to the clicked column (handle_mouse_input), and type a marker char.
+size      120x40
+config    default
+launch
+key       b
+wait      stable
+text      "this-is-a-very-long-branch-name-that-exceeds-the-field-width-by-a-lot-of-characters"
+wait      stable
+capture   long_typed
+mouse     click 45 20
+key       X
+wait      stable
+capture   clicked
+key       <Esc>

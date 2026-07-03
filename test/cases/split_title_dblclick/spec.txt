@@ -1,0 +1,11 @@
+# Double-clicking a split pane's title bar maximizes it by leaving split view
+# (View.toggle_window_mode's split branch). Enter side split (|), double-click the
+# log pane's title; the split collapses back to a single fullscreen log.
+size      120x40
+config    default
+launch
+key       |
+wait      stable
+mouse     dblclick 30 1
+wait      stable
+capture   unsplit

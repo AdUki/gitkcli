@@ -1,0 +1,11 @@
+# Ctrl-Left / Ctrl-Right with an empty jump list are no-ops (move_in_jump_list
+# returns early on the empty list). Press them right after launch, before any
+# diff has been opened to populate the list.
+size      120x40
+config    default
+launch
+wait      stable
+key       C-Left
+key       C-Right
+wait      stable
+capture   noop

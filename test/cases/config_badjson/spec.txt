@@ -1,0 +1,8 @@
+# A syntactically invalid config.json (not just a non-object) must not crash
+# startup: load_config catches json.JSONDecodeError and falls back to defaults.
+# Complements config_malformed (which feeds the valid-but-non-dict value `null`).
+size      120x40
+config    badjson
+launch
+wait      stable
+capture   startup

@@ -1,0 +1,19 @@
+# Rename a branch from the Git Refs context menu. Select "ahead/experimental"
+# (j*1), open its menu (F7), pick "Rename this branch" (Down*2), type the new
+# name and Enter. `git branch -m` renames it locally; the refs list reloads with
+# the new name and the green flash clears after 2s.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j
+key       <F7>
+wait      stable
+key       <Down>*2
+key       <Enter>
+wait      stable
+text      "renamed-branch"
+key       <Enter>
+wait      2.5
+capture   renamed

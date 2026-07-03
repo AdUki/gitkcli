@@ -1,0 +1,17 @@
+# Click the [<-] jump-back button in the git-log title bar. The header item
+# handles the click (View.handle_mouse_input's header branch sets clicked_item)
+# and runs move_in_jump_list. Build a jumplist entry first by opening HEAD's diff
+# and returning, so the click has somewhere to jump.
+size      120x40
+config    default
+launch
+key       <Enter>
+wait      stable
+key       q
+key       <Down>*6
+key       <Enter>
+wait      stable
+key       q
+mouse     click 108 1
+wait      stable
+capture   jumped

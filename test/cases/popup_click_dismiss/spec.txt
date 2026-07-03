@@ -1,0 +1,12 @@
+# A left-click outside an open popup dismisses it (View.handle_mouse_input's
+# is_popup branch). Right-click a commit row to open the context menu, then click
+# far away on empty space below it; the menu closes and the log is shown again.
+size      120x40
+config    default
+launch
+mouse     rclick 20 6
+wait      stable
+capture   menu_open
+mouse     click 100 35
+wait      stable
+capture   dismissed

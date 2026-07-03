@@ -1,0 +1,11 @@
+# Context menu for the HEAD pseudo-ref. HEAD is the first row in the Git Refs
+# view and its ref type is neither head/tag/remote, so the menu falls through to
+# the single "Copy ref name" entry. F7 on the startup selection opens it.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       <F7>
+wait      stable
+capture   head_menu

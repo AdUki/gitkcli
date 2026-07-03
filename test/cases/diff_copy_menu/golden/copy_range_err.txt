@@ -1,0 +1,40 @@
+[0;38;2;138;138;138;49m─ Commit bca19d7 [1/18] ────────────────────────────────────────── Context: 3 [+] [-] [Ignore whitespace] [<-] [->] [0;31;49m[X][0;38;2;138;138;138;49m─[0m
+[0;1;37;48;2;38;38;38mcommit bca19d72c4e16c06f8c0e6fd193f5f28c54fa528                                                                         [0m
+[0;37;49mAuthor: Alice Anderson <alice@example.com>[0m
+[0;37;49mDate:   Thu Jan 9 00:41:43 2025 +0000[0m
+
+[0;37;49m    Quick fix while stash sits around[0m
+[0;34;49m---[0m
+[0;36;49m src/main.py | 1 +[0m
+[0;36;49m 1 file changed, 1 insertion(+)[0m
+
+[0;34;49mdiff --git a/src/main.py b/src/main.py[0m
+[0;34;49mindex 9574149..a0c1a7c 100644[0m
+[0;34;49m--- a/src/main.py[0m
+[0;34;49m+++ b/src/main.py[0m
+[0;36;49m@@ -77,3 +77,4 @@ if __name__ == "__main__":[0m
+[0;31;49m┌─[0;1;31;49m Error [0;31;49m──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐[0m
+[0;31;49m│[0;39;49m                                                                                                                      [0;31;49m│[0m
+[0;31;49m│  Error copying to clipboard: [0;39;49m                                                                                        [0;31;49m│[0m
+[0;31;49m│      Pyperclip could not find a copy/paste mechanism for your system.[0;39;49m                                                [0;31;49m│[0m
+[0;31;49m│      For more information, please visit https://pyperclip.readthedocs.io/en/latest/index.html#not-implemented-error [0;39;49m [0;31;49m│[0m
+[0;31;49m│[0;39;49m                                                                                                                      [0;31;49m│[0m
+[0;31;49m│[0;37;49m                                                        [0;1;31;48;2;38;38;38m[Ok][0;37;49m                                                        [0;39;49m  [0;31;49m│[0m
+[0;31;49m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m

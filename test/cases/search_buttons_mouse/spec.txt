@@ -1,0 +1,23 @@
+# Mouse-driven search dialog. Open search (/), type a query, click the [ID] and
+# [Txt] type toggles (change_search_type), toggle <Case>/<Regexp>, then click
+# [Search Next] (do_search) and [Clear] (clear_input). Stays in txt mode for the
+# actual search so "Merge" (a valid regex) matches without shelling out to git.
+size      120x40
+config    default
+launch
+key       /
+text      "Merge"
+wait      stable
+mouse     click 36 19
+wait      stable
+mouse     click 30 19
+wait      stable
+mouse     click 90 19
+wait      stable
+capture   flags_set
+mouse     click 41 21
+wait      stable
+capture   searched
+mouse     click 73 21
+wait      stable
+capture   cleared

@@ -1,0 +1,7 @@
+# Esc on the fullscreen git-log view (no split active) quits the app via
+# GitLogView.handle_input -> exit_program.
+size      120x40
+config    default
+launch
+key       <Esc>
+expect-exit

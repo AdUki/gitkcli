@@ -1,0 +1,25 @@
+# The clipboard trio (Copy line / range / all) at the bottom of the Git Diff
+# context menu. Open HEAD's diff, F7, then End selects the last entry "Copy all
+# to clipboard" and Enter runs it; with no clipboard backend the helper raises and
+# the red error dialog appears. Dismiss it, reopen the menu and End+Up activates
+# "Copy range to clipboard" the same way. Exercises the list copy helpers.
+size      120x40
+config    default
+launch
+key       <Enter>
+wait      stable
+key       <F7>
+wait      stable
+key       <End>
+key       <Enter>
+wait      stable
+capture   copy_all_err
+key       <Esc>
+wait      stable
+key       <F7>
+wait      stable
+key       <End>
+key       <Up>
+key       <Enter>
+wait      stable
+capture   copy_range_err

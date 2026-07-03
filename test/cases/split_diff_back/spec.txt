@@ -1,0 +1,13 @@
+# In split view, q (or Esc) on the diff pane steps focus back to the log pane
+# while staying split, instead of collapsing the split. Enter side split (|),
+# Ctrl-w focuses the diff pane, then q returns focus to the log pane (still split).
+size      120x40
+config    default
+launch
+key       |
+wait      stable
+key       C-w
+wait      stable
+key       q
+wait      stable
+capture   back_to_log

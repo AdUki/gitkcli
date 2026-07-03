@@ -1,0 +1,40 @@
+[0;38;2;138;138;138;49m─ Git references [42/70] ────────────────────────────────────────────────────────────────────────────────────────── [0;31;49m[X][0;38;2;138;138;138;49m─[0m
+[0;31;49morigin/ahead/experimental[0m
+[0;31;49morigin/behind/old-master[0m
+[0;31;49morigin/bugfix/leaking-fd[0m
+[0;31;49morigin/feature/admin-dashboard[0m
+[0;31;49morigin/feature/api-pagination[0m
+[0;31;49morigin/feature/caching-layer[0m
+[0;31;49morigin/feature/csv-export[0m
+[0;31;49morigin/feature/dark-mode[0m
+[0;31;49morigin/feature/login-flow[0m
+[0;31;49morigin/feature/profile-page[0m
+[0;31;49morigin/feature/webhook-support[0m
+[0;31;49morigin/master[0m
+[0;31;49morigin/release/0.8.x-maintenance[0m
+[0;31;49morigin/release/0.9[0m
+[0;31;49morigin/review/pr-1234[0m
+[0;31;49morigin/w┌─[0;1;31;49m Error [0;31;49m──────────────────────────────────────────────────────────────────────────────────────────────┐[0m
+[0;31;49morigin/w│[0;39;49m                                                                                                      [0;31;49m│[0m
+[0;31;49morigin/w│  Error deleting remote branch: error: unable to delete 'zzz-fake-branch': remote ref does not exist[0;39;49m  [0;31;49m│[0m
+[0;31;49morigin/w│  error: failed to push some refs to '/home/simonmikuda/projects/gitkcli/test/remotes/origin.git'[0;39;49m     [0;31;49m│[0m
+[0;1;31;48;2;38;38;38morigin/z[0;31;49m│[0;39;49m                                                                                                      [0;31;49m│[0;1;31;48;2;38;38;38m        [0m
+[0;31;49mupstream│[0;37;49m                                                [0;1;31;48;2;38;38;38m[Ok][0;37;49m                                                [0;39;49m  [0;31;49m│[0m
+[0;31;49mupstream└──────────────────────────────────────────────────────────────────────────────────────────────────────┘[0m
+[0;31;49mupstream/feature/csv-export[0m
+[0;31;49mupstream/feature/dark-mode[0m
+[0;31;49mupstream/feature/login-flow[0m
+[0;31;49mupstream/legacy-import[0m
+[0;31;49mupstream/master[0m
+[0;36;49mstash[0m
+[0;33;49mbroken-build[0m
+[0;33;49mdemo-friday[0m
+[0;33;49mgood-baseline[0m
+[0;33;49mgreen-ci[0m
+[0;33;49mhandover-2024[0m
+[0;33;49mlatest-stable[0m
+[0;33;49mperf-bench[0m
+[0;33;49mpost-refactor[0m
+[0;33;49mpre-refactor[0m
+[0;33;49mv0.1.0[0m
+[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m

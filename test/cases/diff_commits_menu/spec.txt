@@ -1,0 +1,18 @@
+# "Diff this --> selected" from the commit context menu builds a two-commit diff
+# (git diff A B) via GitLogView.diff_commits / GitDiffJob.show_diff. Mark HEAD (m),
+# move down to an older commit (Down*5), F7 opens that commit's menu, navigate to
+# "Diff this --> marked commit" and Enter. The diff of the two distinct commits
+# opens; 'g' reveals it from the top.
+size      120x40
+config    default
+launch
+key       m
+key       <Down>*5
+key       <F7>
+wait      stable
+key       <Down>*8
+key       <Enter>
+wait      stable
+key       g
+wait      stable
+capture   two_commit_diff

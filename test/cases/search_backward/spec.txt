@@ -1,0 +1,16 @@
+# Backward search ('N') and its wrap-around. From the top, a txt search for a
+# common word selects the first hit; 'N' then walks backward and, having started
+# near the top, wraps past the first match to the last (repeat=True) - exercising
+# the backward range + wrap branch of ListView.search.
+size      120x40
+config    default
+launch
+key       /
+text      "Merge"
+key       <Enter>
+wait      stable
+key       N
+wait      stable
+key       N
+wait      stable
+capture   backward

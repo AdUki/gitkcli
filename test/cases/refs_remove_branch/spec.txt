@@ -1,0 +1,16 @@
+# Delete a fully-merged branch from the Git Refs context menu. "behind/old-master"
+# (j*2) is an ancestor of master (HEAD), so `git branch -d` deletes it with no
+# force prompt. F7, "Remove this branch" (Down*5), the refs list reloads without
+# it and the green flash clears after 2s.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j*2
+key       <F7>
+wait      stable
+key       <Down>*5
+key       <Enter>
+wait      2.5
+capture   removed

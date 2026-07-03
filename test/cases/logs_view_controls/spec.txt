@@ -1,0 +1,18 @@
+# The F4 Logs view header controls. [Clear] empties the (timestamped) log; we
+# capture that deterministic empty state. Then [+]/[-] (change_log_level) and
+# [Autoscroll] (toggle_autoscroll) are clicked for coverage - not captured,
+# because raising the level re-enables debug logging which stamps datetime.now().
+size      120x40
+config    default
+launch
+key       <F4>
+wait      stable
+mouse     click 75 1
+wait      stable
+capture   cleared
+mouse     click 110 1
+wait      stable
+mouse     click 114 1
+wait      stable
+mouse     click 83 1
+wait      stable

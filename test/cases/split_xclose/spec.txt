@@ -1,0 +1,12 @@
+# Closing a split pane via its [X] button leaves split view and brings the other
+# pane up fullscreen (screen.hide_active_view's split branch), rather than popping
+# one pane and leaving a gap. Enter side split (|), then click the [X] at the
+# top-right of the diff pane; the split collapses to a single fullscreen view.
+size      120x40
+config    default
+launch
+key       |
+wait      stable
+mouse     click 56 1
+wait      stable
+capture   collapsed

@@ -1,0 +1,16 @@
+# Check out a branch from the Git Refs view context menu. Select the merged
+# "behind/old-master" branch (j*2), open its menu (F7), and activate the first
+# entry "Check out this branch". HEAD moves to that branch (a clean checkout on
+# the pristine tree), the green success flash clears after 2s.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j*2
+key       <F7>
+wait      stable
+key       <Down>
+key       <Enter>
+wait      2.5
+capture   checked_out

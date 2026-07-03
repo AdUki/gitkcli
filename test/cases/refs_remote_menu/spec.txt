@@ -1,0 +1,13 @@
+# Right-context menu for a remote-tracking ref. From the Git Refs view jump to
+# the first remote branch "fork/contributor-patch" (j*17) and press F7. The menu
+# offers "Copy remote branch name" and "Remove this remote branch". Nothing is
+# activated, so the shared bare remotes are never touched.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j*17
+key       <F7>
+wait      stable
+capture   remote_menu

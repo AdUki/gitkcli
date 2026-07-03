@@ -1,0 +1,15 @@
+# Mouse on the inline ref decorations in a log row (RefSegment.handle_mouse_input).
+# Right-click the [master] branch tag to open its ref context menu; dismiss it by
+# clicking away; then double-click the annotated <v1.0.0> tag, which opens its tag
+# annotation in the diff view.
+size      120x40
+config    default
+launch
+mouse     rclick 88 2
+wait      stable
+capture   ref_menu
+mouse     click 30 36
+wait      stable
+mouse     dblclick 73 3
+wait      stable
+capture   tag_annotation

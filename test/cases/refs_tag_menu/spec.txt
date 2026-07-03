@@ -1,0 +1,13 @@
+# Right-context menu for a tag ref. From the Git Refs view jump to the first tag
+# "broken-build" (it sits below the branches, remotes and stash) and press F7.
+# The tag menu lists Copy tag name / Show tag annotation / Push tag / Remove tag.
+# No entry is activated, so the shared bare remotes are never touched.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j*49
+key       <F7>
+wait      stable
+capture   tag_menu

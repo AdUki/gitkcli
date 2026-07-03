@@ -1,0 +1,40 @@
+[0;34;49m─ Diff 678e55b bca19d7 [1/25] ──────────────────────────────────── [0;37;49mContext:[0;34;49m [0;37;49m3[0;34;49m [0;37;49m[+][0;34;49m [0;37;49m[-][0;34;49m [0;37;49m[Ignore whitespace][0;34;49m [0;37;49m[<-][0;34;49m [0;37;49m[->][0;34;49m [0;31;49m[X][0;34;49m─[0m
+[0;1;36;48;2;38;38;38m src/common/utils.py | 2 ++                                                                                             [0m
+[0;36;49m src/main.py         | 3 +++[0m
+[0;36;49m 2 files changed, 5 insertions(+)[0m
+
+[0;34;49mdiff --git a/src/common/utils.py b/src/common/utils.py[0m
+[0;34;49mindex c338fa7..7c57439 100644[0m
+[0;34;49m--- a/src/common/utils.py[0m
+[0;34;49m+++ b/src/common/utils.py[0m
+[0;36;49m@@ -91,3 +91,5 @@ def sub(a, b):[0m
+[0;37;49m     return value_310 + 2170  # iteration 310[0m
+[0;37;49m     return value_312 + 2184  # iteration 312[0m
+[0;37;49m     return value_314 + 2198  # iteration 314[0m
+[0;32;49m+    return value_316 + 2212  # iteration 316[0m
+[0;32;49m+    return value_318 + 2226  # iteration 318[0m
+[0;34;49mdiff --git a/src/main.py b/src/main.py[0m
+[0;34;49mindex 561430f..a0c1a7c 100644[0m
+[0;34;49m--- a/src/main.py[0m
+[0;34;49m+++ b/src/main.py[0m
+[0;36;49m@@ -75,3 +75,6 @@ if __name__ == "__main__":[0m
+[0;37;49m     return value_311 + 2177  # iteration 311[0m
+[0;37;49m     return value_313 + 2191  # iteration 313[0m
+[0;37;49m     return value_315 + 2205  # iteration 315[0m
+[0;32;49m+    return value_317 + 2219  # iteration 317[0m
+[0;32;49m+    return value_319 + 2233  # iteration 319[0m
+[0;32;49m+    return value_330 + 2310  # iteration 330[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m

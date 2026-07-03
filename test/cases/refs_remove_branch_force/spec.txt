@@ -1,0 +1,20 @@
+# Force-delete an UNMERGED branch. "ahead/experimental" (j*1) has commits not in
+# master, so `git branch -d` fails "not fully merged" and run_git pops the red
+# confirm dialog (focus defaults to [Cancel]). Left-arrow to [Force delete] and
+# Enter runs `git branch -D`; the branch disappears and the flash clears after 2s.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j
+key       <F7>
+wait      stable
+key       <Down>*5
+key       <Enter>
+wait      stable
+capture   confirm
+key       <Left>
+key       <Enter>
+wait      2.5
+capture   force_deleted

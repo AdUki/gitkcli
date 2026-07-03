@@ -1,0 +1,17 @@
+# Robustness: an unbalanced quote in the "Git log default flags" preference must
+# not crash the reload. F9 Preferences, Down*6 reaches the flags input (the last
+# selectable field before the buttons), type a flag with a dangling single quote,
+# then Down moves selection onto the button row ([Save] focused) and Enter saves.
+# shlex.split raises ValueError, so the app logs a warning and falls back to a
+# plain split, then reloads the log.
+size      120x40
+config    default
+launch
+key       <F9>
+wait      stable
+key       <Down>*6
+text      "--author='Bob"
+key       <Down>
+key       <Enter>
+wait      2.5
+capture   saved

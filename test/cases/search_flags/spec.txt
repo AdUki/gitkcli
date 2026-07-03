@@ -1,0 +1,14 @@
+# Diff (pickaxe) search with both flags flipped: <Regexp> ON makes it `git log
+# -G <re>` (regex pickaxe) instead of -S, and <Case> OFF prepends -i. Cycle to
+# [Diff] (Tab*4), F2 enables regexp, F1 disables case, then search. Exercises the
+# -G and -i argument branches of the git search builder.
+size      120x40
+launch
+key       /
+key       <Tab>*4
+key       <F2>
+key       <F1>
+text      "value_3.9"
+key       <Enter>
+wait      2.5
+capture   diff_regexp_search

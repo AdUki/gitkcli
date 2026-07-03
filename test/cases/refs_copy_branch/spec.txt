@@ -1,0 +1,16 @@
+# "Copy branch name" from the Git Refs context menu. Select "ahead/experimental"
+# (j*1), F7, then "Copy branch name" (Down*3). With no clipboard backend
+# available the app logs a warning over the bottom bar; the menu closes either
+# way. Exercises the copy_to_clipboard helper.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j
+key       <F7>
+wait      stable
+key       <Down>*3
+key       <Enter>
+wait      stable
+capture   copied

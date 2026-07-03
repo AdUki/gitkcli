@@ -1,0 +1,19 @@
+# The Ctrl-o / Ctrl-i aliases for the jump list (same actions as Ctrl-Left /
+# Ctrl-Right). Build two jumplist entries by opening HEAD's diff and a lower
+# commit's diff, then step back with Ctrl-o and forward with Ctrl-i.
+size      120x40
+config    default
+launch
+key       <Enter>
+wait      stable
+key       q
+key       <Down>*6
+key       <Enter>
+wait      stable
+key       q
+key       C-o
+wait      stable
+capture   jumped_back
+key       C-i
+wait      stable
+capture   jumped_forward

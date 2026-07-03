@@ -1,0 +1,18 @@
+# Commit-only actions are no-ops on the "uncommitted changes" pseudo-row, which
+# has no real sha. Detached HEAD + a dirty README puts the working-dir pseudo-row
+# at the top; with it selected (g), cherry-pick (c), revert (v), reset (r) and new
+# branch (b) each just log a warning and leave the screen unchanged - exercising
+# the empty-commit-id guards.
+size      120x40
+config    default
+run       git checkout --detach master && printf 'junk\n' >> README.md
+launch
+wait      stable
+key       g
+wait      stable
+key       c
+key       v
+key       r
+key       b
+wait      stable
+capture   noop

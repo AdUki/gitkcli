@@ -1,0 +1,21 @@
+# Toggling "Ignore whitespace (diff)" in Preferences while a diff is open reloads
+# that diff with -w. Open HEAD's diff, F9 Preferences, Down*3 to the "Ignore
+# whitespace" toggle, Enter to turn it on, End to the button row and Enter to Save.
+# Because a diff is loaded, on_save calls change_ignore_whitespace, restarting the
+# diff job; close the dialog to reveal the reloaded diff.
+size      120x40
+config    default
+launch
+key       <Enter>
+wait      stable
+key       <F9>
+wait      stable
+key       <Down>*3
+key       <Enter>
+key       <End>
+key       <Enter>
+wait      2.5
+key       <Right>
+key       <Enter>
+wait      stable
+capture   diff_ws

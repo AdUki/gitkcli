@@ -1,0 +1,17 @@
+# Mouse-driven Preferences: click the "Show commit ID" ON/off toggle (a
+# ToggleSegment), then click [Save] and [Close] (ButtonSegments). Exercises the
+# segment mouse handlers and the popup list-view click routing. After saving with
+# the toggle off, the commit-ID column is gone from the log.
+size      120x40
+config    default
+launch
+key       <F9>
+wait      stable
+mouse     click 77 14
+wait      stable
+capture   toggled
+mouse     click 54 26
+wait      2.5
+mouse     click 64 26
+wait      stable
+capture   closed

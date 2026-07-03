@@ -1,0 +1,40 @@
+[0;34;49m─ Tag ac2d8e9633ff01afe09b51c375d8c3353d53899c [1/13] ──────────── [0;37;49mContext:[0;34;49m [0;37;49m3[0;34;49m [0;37;49m[+][0;34;49m [0;37;49m[-][0;34;49m [0;37;49m[Ignore whitespace][0;34;49m [0;37;49m[<-][0;34;49m [0;37;49m[->][0;34;49m [0;31;49m[X][0;34;49m─[0m
+[0;1;37;48;2;38;38;38mobject a77abfaea5eb0f6086db03df476147af080f74d7                                                                         [0m
+[0;37;49mtype commit[0m
+[0;37;49mtag v1.0.0[0m
+[0;37;49mtagger Default Dev <dev@example.com> 1736082591 +0000[0m
+
+[0;37;49mv1.0.0[0m
+
+[0;37;49mThe first stable release.[0m
+
+[0;37;49mHighlights:[0m
+[0;31;49m- Stable public API[0m
+[0;31;49m- Documentation[0m
+[0;31;49m- Full test coverage[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m

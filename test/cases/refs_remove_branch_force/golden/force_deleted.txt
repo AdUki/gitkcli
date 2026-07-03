@@ -1,0 +1,40 @@
+[0;34;49m─ Git references [1/68] ─────────────────────────────────────────────────────────────────────────────────────────── [0;31;49m[X][0;34;49m─[0m
+[0;1;34;48;2;38;38;38mHEAD                                                                                                                    [0m
+[0;32;49mbehind/old-master[0m
+[0;32;49mbugfix/leaking-fd[0m
+[0;32;49mfeature/admin-dashboard[0m
+[0;32;49mfeature/api-pagination[0m
+[0;32;49mfeature/caching-layer[0m
+[0;32;49mfeature/csv-export[0m
+[0;32;49mfeature/dark-mode[0m
+[0;32;49mfeature/login-flow[0m
+[0;32;49mfeature/profile-page[0m
+[0;32;49mfeature/webhook-support[0m
+[0;32;49mmaster[0m
+[0;32;49mrelease/0.9[0m
+[0;32;49mwip/experiment-redis[0m
+[0;32;49mwip/migrate-to-postgres[0m
+[0;32;49mwip/refactor-auth[0m
+[0;31;49mfork/contributor-patch[0m
+[0;31;49mfork/wip/experiment-redis[0m
+[0;31;49mfork/wip/migrate-to-postgres[0m
+[0;31;49mfork/wip/refactor-auth[0m
+[0;31;49morigin/abandoned/old-api[0m
+[0;31;49morigin/ahead/experimental[0m
+[0;31;49morigin/behind/old-master[0m
+[0;31;49morigin/bugfix/leaking-fd[0m
+[0;31;49morigin/feature/admin-dashboard[0m
+[0;31;49morigin/feature/api-pagination[0m
+[0;31;49morigin/feature/caching-layer[0m
+[0;31;49morigin/feature/csv-export[0m
+[0;31;49morigin/feature/dark-mode[0m
+[0;31;49morigin/feature/login-flow[0m
+[0;31;49morigin/feature/profile-page[0m
+[0;31;49morigin/feature/webhook-support[0m
+[0;31;49morigin/master[0m
+[0;31;49morigin/release/0.8.x-maintenance[0m
+[0;31;49morigin/release/0.9[0m
+[0;31;49morigin/review/pr-1234[0m
+[0;31;49morigin/wip/experiment-redis[0m
+[0;31;49morigin/wip/migrate-to-postgres[0m
+[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m

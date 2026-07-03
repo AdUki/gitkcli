@@ -1,0 +1,23 @@
+# Open the "Push branch to remote" dialog from the Git Refs context menu, then
+# cancel it (Esc) without pushing - so the test never mutates the shared bare
+# remotes. Select "ahead/experimental" (j*1), F7, "Push branch to remote"
+# (Down*4). The dialog shows the remote toggles and a <Force> flag.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j
+key       <F7>
+wait      stable
+key       <Down>*4
+key       <Enter>
+wait      stable
+capture   push_dialog
+key       <F1>
+key       <Tab>
+wait      stable
+capture   force_and_next_remote
+key       <Esc>
+wait      stable
+capture   cancelled

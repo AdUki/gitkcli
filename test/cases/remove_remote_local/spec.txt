@@ -1,0 +1,21 @@
+# "Remove this remote branch" from the Refs context menu. A fake remote-tracking
+# ref (created locally, not present on the real remote) is targeted: the
+# `git push --delete origin ...` fails because the ref doesn't exist on origin, so
+# the app surfaces the error and the shared bare remote is untouched. Find the ref
+# via refs search, F7, End selects "Remove this remote branch".
+size      120x40
+config    default
+run       git update-ref refs/remotes/origin/zzz-fake-branch HEAD
+launch
+key       <F2>
+wait      stable
+key       /
+text      "zzz-fake-branch"
+key       <Enter>
+wait      stable
+key       <F7>
+wait      stable
+key       <End>
+key       <Enter>
+wait      2.5
+capture   removed

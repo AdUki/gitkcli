@@ -1,0 +1,18 @@
+# Clicking the shared split divider arms a divider drag (View.start_resize ->
+# _start_split_resize sets resize_mode='split'). Side split first: the divider is
+# the log pane's right edge (~col 60); a stacked split next: the divider is the
+# bottom (diff) pane's title row. The drag itself needs mouse motion (unavailable
+# in a pty), but the divider-detection branches run.
+size      120x40
+config    default
+launch
+key       |
+wait      stable
+mouse     click 60 5
+wait      stable
+capture   side_divider
+key       |
+wait      stable
+mouse     click 30 21
+wait      stable
+capture   stacked_divider

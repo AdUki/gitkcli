@@ -1,0 +1,11 @@
+# Context menu inside the Git Diff view. Open HEAD's diff (Enter), then F7 on the
+# selected diff row. The diff menu lists "Jump to file" / "Show origin of this
+# line" (greyed unless applicable) plus the copy line/range/all trio.
+size      120x40
+config    default
+launch
+key       <Enter>
+wait      stable
+key       <F7>
+wait      stable
+capture   diff_menu

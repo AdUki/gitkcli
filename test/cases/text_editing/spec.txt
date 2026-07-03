@@ -1,0 +1,33 @@
+# Exercise the line editor in an input field (UserInputListItem). Open the New
+# Branch dialog ('b', a plain input popup), type a phrase, then drive every
+# editing key: Home/End, Left/Right, Backspace, Delete, then the app-parsed
+# control sequences Ctrl+Left/Right (word hops), Ctrl+Backspace (^H = C-h, delete
+# previous word) and Ctrl+Del (clear). The app's own ESC parser restarts on each
+# ESC, so consecutive Ctrl sequences need a settle between them or they coalesce
+# and only the last survives - hence the `wait stable` spacers. End with a known
+# word so the golden is stable, then Esc to cancel.
+size      120x40
+config    default
+launch
+key       b
+wait      stable
+text      "alpha beta gamma delta"
+key       <Home>
+key       <Right>*2
+key       <End>
+key       <Left>*3
+key       <Backspace>
+key       <Del>
+wait      stable
+key       C-Left
+wait      stable
+key       C-Right
+wait      stable
+key       C-h
+wait      stable
+key       C-Del
+wait      stable
+text      "done"
+wait      stable
+capture   edited
+key       <Esc>

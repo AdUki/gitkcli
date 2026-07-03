@@ -1,0 +1,11 @@
+# F7 (context menu) in an empty repo is a no-op: the log has no selectable item,
+# so open_context_menu returns early (no view/item guard). Also exercise F6
+# (search) and F7 on the empty view without crashing.
+size      120x40
+config    default
+run       rm -rf .git && git init -q && git config user.email t@example.com && git config user.name Tester
+launch
+wait      stable
+key       <F7>
+wait      stable
+capture   empty_f7

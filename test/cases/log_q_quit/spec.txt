@@ -1,0 +1,7 @@
+# Plain "q" on the git-log view quits via GitLogView.handle_input -> exit_program
+# (distinct from F10, the [X] button, and Esc).
+size      120x40
+config    default
+launch
+key       q
+expect-exit

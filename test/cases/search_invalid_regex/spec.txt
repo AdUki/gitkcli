@@ -1,0 +1,12 @@
+# A half-typed / invalid regex in txt-mode <Regexp> search must not crash:
+# matches() runs on every keystroke to highlight hits, so re.error is caught and
+# treated as "no match". Open search, F2 enables regexp, type a lone "[" (an
+# invalid pattern) - the dialog stays open and nothing matches.
+size      120x40
+config    default
+launch
+key       /
+key       <F2>
+text      "[invalid"
+wait      stable
+capture   invalid_regex

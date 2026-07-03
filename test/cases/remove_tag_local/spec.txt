@@ -1,0 +1,21 @@
+# "Remove this tag" from the Refs context menu. A local-only scratch tag (created
+# in the work repo, never pushed) is deleted: the local `git tag -d` succeeds and
+# the per-remote `git push --delete` calls all fail harmlessly (the tag isn't on
+# any remote), so the shared bare remotes are never mutated. Find the tag via refs
+# search, F7, End selects the last menu entry "Remove this tag".
+size      120x40
+config    default
+run       git tag zzz-scratch-tag HEAD
+launch
+key       <F2>
+wait      stable
+key       /
+text      "zzz-scratch-tag"
+key       <Enter>
+wait      stable
+key       <F7>
+wait      stable
+key       <End>
+key       <Enter>
+wait      2.5
+capture   removed

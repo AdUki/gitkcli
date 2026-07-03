@@ -1,0 +1,29 @@
+# Jump-list entry for an uncommitted (local-*) diff. Detached HEAD + dirty README
+# gives a working-dir pseudo-row; open its diff (adds a local-* jumplist entry),
+# then open two commit diffs. Walking back with Ctrl-Left eventually lands on the
+# local entry, which re-shows the uncommitted diff via show_diff(HEAD, cached=...)
+# (the is_local branch of move_in_jump_list).
+size      120x40
+config    default
+run       git checkout --detach master && printf 'junk\n' >> README.md
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+key       q
+key       <Down>*3
+key       <Enter>
+wait      stable
+key       q
+key       <Down>*3
+key       <Enter>
+wait      stable
+key       q
+key       C-Left
+wait      stable
+key       C-Left
+wait      stable
+key       C-Left
+wait      stable
+capture   back_to_local
