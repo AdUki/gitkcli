@@ -230,9 +230,14 @@ class GitLogJob(Job):
         super().__init__(app, id)
         self.cmd = "git log --format=#%H#%P#%aI#%an#%s"
         self.args = args
+        # One-shot: clear the "loading commits" bar once the first row streams
+        # in. False here so GitRefreshHeadJob (which shows no bar and skips
+        # this class's start_job) never consumes it.
+        self._first_item_pending = False
 
     def start_job(self, args=[], on_finished=None):
         self.app.git_log.commits.clear()
+        self._first_item_pending = True
         super().start_job(args, on_finished)
 
     def process_message(self, message):
@@ -263,6 +268,12 @@ class GitLogJob(Job):
             return str(line)
 
     def process_item(self, item):
+        if self._first_item_pending:
+            # Rows are flowing: the silent up-front phase (--graph implies
+            # --topo-order, computed over the whole set before the first line)
+            # is over, so drop the "loading commits" bar.
+            self._first_item_pending = False
+            self.app.screen.clear_working()
         if isinstance(item, str):
             self.app.git_log.append(TextListItem(item, is_selectable=False))
         else:

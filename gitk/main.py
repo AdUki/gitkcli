@@ -61,8 +61,9 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
     app.log.info("Application started")
 
     app.git_refs.job.start_job()
-    app.git_log.job.start_job()
-    app.git_log.check_uncommitted_changes()
+    # Initial load via reload_commits so it shows the same Working bar as a
+    # refresh (and probes the uncommitted pseudo-rows).
+    app.git_log.reload_commits()
 
     if app.split.default_view_mode in (SPLIT_SIDE, SPLIT_STACKED):
         app.split.set_split_mode(app.split.default_view_mode)

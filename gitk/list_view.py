@@ -123,6 +123,12 @@ class ListView(View):
 
     def clear(self):
         self.app.log.debug(f"Clear view {self.id}")
+        # The rows cease to exist: drop a held mouse-drag reference to one of
+        # them, so a queued release/move event can't be routed to a stale item
+        # (e.g. a CommitListItem whose commit data a reload just discarded).
+        mouse = self.app.mouse
+        if mouse is not None and getattr(mouse.clicked_item, "_view", None) is self:
+            mouse.clicked_item = None
         self.items = []
         self.set_selected(0)
         self._offset_y = 0

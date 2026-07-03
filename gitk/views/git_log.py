@@ -106,11 +106,19 @@ class GitLogView(ListView):
         return True
 
     def refresh_head(self):
-        """Pull in commits made since the view last saw HEAD. In --graph mode the
-        lane art is computed by git over the whole commit set, so a single new
-        commit cannot be appended with correct art - reload the full log instead.
-        Otherwise fetch just the new commits cheaply with `old..HEAD`."""
+        """Pull in commits made since the view last saw HEAD. When HEAD merely
+        moved to a commit that is already loaded (checkout, reset to an existing
+        commit) there is nothing to fetch - and in --graph mode the lane art is
+        unchanged because the commit set is unchanged - so just move the HEAD
+        marker and re-place the uncommitted pseudo-rows. In --graph mode a
+        genuinely new commit cannot be appended with correct art, so reload the
+        full log instead. Otherwise fetch just the new commits cheaply with
+        `old..HEAD`."""
         new_head = Job.run_job(self.app, ["git", "rev-parse", "HEAD"]).stdout.strip()
+        if new_head and new_head in self.commits:
+            self.head_id = new_head
+            self.check_uncommitted_changes()
+            return
         if self._graph_mode:
             self.head_id = new_head
             self.reload_commits()
@@ -124,10 +132,18 @@ class GitLogView(ListView):
 
     def reload_commits(self):
         # Re-select the same commit once it streams back in, so a reload (prefs
-        # change, F5 in --graph mode, Shift+F5) does not dump the cursor at the top.
+        # change, a new commit in --graph mode, Shift+F5) does not dump the
+        # cursor at the top.
         self._pending_select_id = self.get_selected_commit_id()
         self.clear()
-        self.job.start_job()
+        # The silent up-front phase can take a long time on a big repo
+        # (--graph implies --topo-order, computed over the whole set before
+        # git emits the first line): show the in-progress bar until the first
+        # row streams in (cleared in GitLogJob.process_item; on_finished is
+        # the fallback for an empty or failed load). Also covers the start-up
+        # path (launch_curses) - the initial load is the same job.
+        self.app.screen.show_working("Working: loading commits ...")
+        self.job.start_job(on_finished=self.app.screen.clear_working)
         self.check_uncommitted_changes()
 
     def show(self):

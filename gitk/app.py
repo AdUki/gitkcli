@@ -60,25 +60,39 @@ class App:
         not already forcing, and a `reasons` substring in stderr): pop a confirm
         dialog. Otherwise log `err` + stderr. Returns the CompletedProcess."""
         # Paint the in-progress bar before the call: run_job blocks the event
-        # loop, so nothing can repaint until the command returns.
-        self.screen.show_working("Working: " + " ".join(args) + " ...")
+        # loop, so nothing can repaint until the command returns. The refreshes
+        # run inside the same bar - they block too (e.g. the uncommitted-changes
+        # probes re-stat the whole tree right after a checkout).
+        previous_message = self.screen.working_message
+        message = "Working: " + " ".join(args) + " ..."
+        self.screen.show_working(message)
         try:
             result = Job.run_job(self, args)
+            if result.returncode == 0:
+                if refresh_head:
+                    self.git_log.refresh_head()
+                if reload_refs:
+                    self.git_refs.reload_refs()
+                if check_uncommitted:
+                    self.git_log.check_uncommitted_changes()
+                if ok:
+                    self.log.success(ok)
+            elif retry and not force and any(r in result.stderr for r in reasons):
+                self.confirm_dialog.confirm(
+                    title, list(lines), retry, confirm_label=label
+                )
+            else:
+                self.log.error(f"{err}: {result.stderr}")
         finally:
-            self.screen.clear_working()
-        if result.returncode == 0:
-            if refresh_head:
-                self.git_log.refresh_head()
-            if reload_refs:
-                self.git_refs.reload_refs()
-            if check_uncommitted:
-                self.git_log.check_uncommitted_changes()
-            if ok:
-                self.log.success(ok)
-        elif retry and not force and any(r in result.stderr for r in reasons):
-            self.confirm_dialog.confirm(title, list(lines), retry, confirm_label=label)
-        else:
-            self.log.error(f"{err}: {result.stderr}")
+            # Only touch the bar if it still shows OUR message: a refresh above
+            # may have started a streaming reload (reload_commits) that owns the
+            # bar until its first rows arrive. Restore rather than clear so a
+            # command run during such a reload gives the bar back to it.
+            if self.screen.working_message == message:
+                if previous_message:
+                    self.screen.working_message = previous_message
+                else:
+                    self.screen.clear_working()
         return result
 
     def refresh_all(self):

@@ -313,13 +313,15 @@ class ContextMenu(ListView):
 
     def checkout_branch(self, branch_name, force=False):
         args = ["git", "checkout"] + (["-f"] if force else []) + [branch_name]
+        # refresh_head also re-probes the uncommitted changes on every path, so
+        # check_uncommitted is not needed (the probes re-stat the whole tree
+        # after a checkout - running them twice is noticeably slow on big repos).
         self.app.run_git(
             args,
             ok=f"Switched to branch {branch_name}",
             err="Error checking out branch",
             refresh_head=True,
             reload_refs=True,
-            check_uncommitted=True,
             force=force,
             reasons=("would be overwritten by checkout",),
             retry=lambda: self.checkout_branch(branch_name, True),

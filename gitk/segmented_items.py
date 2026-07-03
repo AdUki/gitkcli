@@ -367,7 +367,15 @@ class CommitListItem(SegmentedListItem):
 
     def get_segments(self):
         app = self.get_app()
-        commit = app.git_log.commits[self.id]
+        commit = app.git_log.commits.get(self.id)
+        if commit is None:
+            # A stale row can outlive the reload that discarded its commit data
+            # (a queued mouse event, a jump-list hop): degrade to the bare id
+            # instead of raising KeyError from whatever touches the row next.
+            segments = [TextSegment(self.id[:7], Screen.C_GIT_ID)]
+            for segment in segments:
+                segment._item = self
+            return segments
         segments = []
 
         if commit["prefix"]:
