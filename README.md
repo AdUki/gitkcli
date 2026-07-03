@@ -63,6 +63,8 @@ gitkcli origin/main..HEAD
 - `k` / `UP`: Move up
 - `h` / `LEFT`: Scroll left
 - `l` / `RIGHT`: Scroll right
+- `Shift+h` / `Shift+LEFT`: Scroll left by 10
+- `Shift+l` / `Shift+RIGHT`: Scroll right by 10
 - `g`: Go to top
 - `G`: Go to bottom
 - `CTRL-B` / `Page Up`: Page up

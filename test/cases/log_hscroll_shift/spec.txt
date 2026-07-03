@@ -1,0 +1,37 @@
+# Shift+Right/Shift+Left scroll the Git Log horizontally by 10 columns per
+# press instead of 1, on the same NARROW pty as log_hscroll so scrolling
+# actually engages. Regression guard for ListView._scroll_x's big-step path
+# (KEY_SHIFT_LEFT/KEY_SHIFT_RIGHT decoding in input.py and the Shift+H/L /
+# Shift+Left/Right dispatch in list_view.py).
+#
+# One <S-Right> should land exactly where 10x <Right> would (compare against
+# log_hscroll's golden, captured after 12x <Right>: this spec's first capture
+# after 1x <S-Right> + 2x <Right> matches that same 12-column offset), and a
+# following <S-Left> should undo the whole jump in a single press.
+#
+# The app's own ESC parser restarts on each ESC (see text_editing/spec.txt),
+# so consecutive escape-prefixed keys (Shift+arrows AND plain arrows both are)
+# need a `wait stable` between them or they coalesce into one unrecognized
+# sequence and nothing moves.
+size      40x40
+config    default
+launch
+key       <S-Right>
+wait      stable
+key       <Right>*2
+capture   after_shift_right
+key       <S-Left>
+wait      stable
+key       <Right>*2
+wait      stable
+key       <S-Left>
+capture   after_shift_left
+
+# Shift+H / Shift+L (capital letters) exercise the ord("H")/ord("L") path
+# instead of the KEY_SHIFT_LEFT/RIGHT escape-decoding path; no ESC involved,
+# so no `wait stable` needed between them and the following <Right>*2.
+key       L
+key       <Right>*2
+capture   after_capital_l
+key       H
+capture   after_capital_h

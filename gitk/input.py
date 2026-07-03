@@ -20,6 +20,8 @@ KEY_CTRL_LEFT = -101
 KEY_CTRL_RIGHT = -102
 KEY_CTRL_BACKSPACE = -103
 KEY_CTRL_DEL = -104
+KEY_SHIFT_LEFT = -105
+KEY_SHIFT_RIGHT = -106
 KEY_ENTER = 10
 KEY_RETURN = 13
 KEY_TAB = 9
@@ -63,6 +65,10 @@ class KeyboardState:
                 key = KEY_CTRL_LEFT
             elif sequence == [27, 91, 49, 59, 53, 67]:
                 key = KEY_CTRL_RIGHT
+            elif sequence == [27, 91, 49, 59, 50, 68]:
+                key = KEY_SHIFT_LEFT
+            elif sequence == [27, 91, 49, 59, 50, 67]:
+                key = KEY_SHIFT_RIGHT
             elif sequence == [27, 91, 51, 59, 53, 126]:
                 key = KEY_CTRL_DEL
             else:

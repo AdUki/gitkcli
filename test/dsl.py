@@ -64,6 +64,8 @@ NAMED = {
     "f11": b"\x1b[23~",
     "f12": b"\x1b[24~",
     "s-f5": b"\x1b[15;2~",
+    "s-left": b"\x1b[1;2D",
+    "s-right": b"\x1b[1;2C",
     "c-left": b"\x1b[1;5D",
     "c-right": b"\x1b[1;5C",
     "c-del": b"\x1b[3;5~",

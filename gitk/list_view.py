@@ -11,9 +11,12 @@ import re
 import typing
 
 from gitk.config import KEY_CTRL, copy_to_clipboard
+from gitk.input import KEY_SHIFT_LEFT, KEY_SHIFT_RIGHT
 from gitk.items import SpacerListItem, TextListItem
 from gitk.screen import Screen
 from gitk.view import MODE_FULLSCREEN, MODE_WINDOW, SPLIT_DIVIDER_COLOR, View
+
+HSCROLL_BIG_STEP = 10
 
 
 class ListView(View):
@@ -201,6 +204,17 @@ class ListView(View):
 
         return False
 
+    def _scroll_x(self, delta: int):
+        max_length = 0
+        for i in range(
+            self._offset_y, min(self._offset_y + self.height, len(self.items))
+        ):
+            length = len(self.items[i].get_text())
+            if length > max_length:
+                max_length = length
+        max_offset_x = max(0, max_length - self.width)
+        self._offset_x = max(0, min(self._offset_x + delta, max_offset_x))
+
     def get_selected(self) -> typing.Any:
         if 0 <= self._selected < len(self.items):
             return self.items[self._selected]
@@ -295,17 +309,13 @@ class ListView(View):
         elif key == curses.KEY_DOWN or key == ord("j"):
             self.set_selected(self._selected + 1, visible_mode="bottom")
         elif key == curses.KEY_LEFT or key == ord("h"):
-            self._offset_x = max(0, self._offset_x - 1)
+            self._scroll_x(-1)
         elif key == curses.KEY_RIGHT or key == ord("l"):
-            max_length = 0
-            for i in range(
-                self._offset_y, min(self._offset_y + self.height, len(self.items))
-            ):
-                length = len(self.items[i].get_text())
-                if length > max_length:
-                    max_length = length
-            if self._offset_x + self.width < max_length:
-                self._offset_x += 1
+            self._scroll_x(1)
+        elif key == KEY_SHIFT_LEFT or key == ord("H"):
+            self._scroll_x(-HSCROLL_BIG_STEP)
+        elif key == KEY_SHIFT_RIGHT or key == ord("L"):
+            self._scroll_x(HSCROLL_BIG_STEP)
         elif key == curses.KEY_PPAGE or key == KEY_CTRL("b"):
             self._offset_y = max(0, self._offset_y - self.height)
             self.set_selected(max(0, self._selected - self.height))
