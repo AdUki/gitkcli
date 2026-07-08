@@ -37,4 +37,4 @@
 [0;37;40m564c6fd 2024-12-04 21:00 Alice Anderson Tighten input validation                                                        [0m
 [0;37;40m11b5b39 2024-12-03 21:46 Eve Evans Drop unused helper                                                                   [0m
 [0;37;40m3b16214 2024-12-03 07:50 David Davis Document the config schema                                                         [0m
-[0;37;40m 1[0;7;37;40mGit Log     [0;37;40m 2[0;7;37;40mGit Refs    [0;37;40m 3[0;7;37;40mGit Diff   [0;37;40m 4[0;7;37;40mLogs       [0;37;40m 5[0;7;37;40mRefresh    [0;37;40m 6[0;7;37;40mSearch     [0;37;40m 7[0;7;37;40mContext    [0;37;40m 9[0;7;37;40mConfig     [0;37;40m10[0;7;37;40mQuit       [0;37;40m [0m
+[0;37;40m 1[0;7;37;40mGit Log   [0;37;40m 2[0;7;37;40mGit Refs  [0;37;40m 3[0;7;37;40mGit Diff  [0;37;40m 4[0;7;37;40mLogs      [0;37;40m 5[0;7;37;40mRefresh   [0;37;40m 6[0;7;37;40mSearch    [0;37;40m 7[0;7;37;40mContext   [0;37;40m 8[0;7;37;40mCommand   [0;37;40m 9[0;7;37;40mConfig    [0;37;40m10[0;7;37;40mQuit     [0;37;40m [0m

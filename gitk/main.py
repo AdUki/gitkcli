@@ -15,7 +15,7 @@ import typing
 
 from gitk.app import App
 from gitk.config import KEY_CTRL, load_config
-from gitk.dialogs import PreferencesDialogPopup
+from gitk.dialogs import CommandDialogPopup, PreferencesDialogPopup
 from gitk.input import (
     KEY_CTRL_LEFT,
     KEY_CTRL_RIGHT,
@@ -46,6 +46,7 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
     app.git_refs = GitRefsView(app)
     app.context_menu = ContextMenu(app)
     app.preferences = PreferencesDialogPopup(app)
+    app.command_dialog = CommandDialogPopup(app)
     app.confirm_dialog = ConfirmDialogPopup(app)
     app.error_dialog = ErrorDialogPopup(app)
 

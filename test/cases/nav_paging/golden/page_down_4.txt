@@ -37,4 +37,4 @@
 [0;33;49mdb15f6c[0;37;49m [0;34;49m2024-08-18 14:03[0;37;49m [0;32;49mAlice Anderson[0;37;49m Add docstring to public API[0m
 [0;33;49m2994b9f[0;37;49m [0;34;49m2024-08-17 14:37[0;37;49m [0;32;49mEve Evans[0;37;49m Add docstring to public API[0m
 [0;33;49mae3b411[0;37;49m [0;34;49m2024-08-17 06:39[0;37;49m [0;32;49mDavid Davis[0;37;49m Clarify error path[0m
-[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m
+[0;37;49m 1[0;30;46mGit Log   [0;37;49m 2[0;30;46mGit Refs  [0;37;49m 3[0;30;46mGit Diff  [0;37;49m 4[0;30;46mLogs      [0;37;49m 5[0;30;46mRefresh   [0;37;49m 6[0;30;46mSearch    [0;37;49m 7[0;30;46mContext   [0;37;49m 8[0;30;46mCommand   [0;37;49m 9[0;30;46mConfig    [0;37;49m10[0;30;46mQuit     [0m

@@ -37,4 +37,4 @@
 [0;33;49m1fca8d6[0;37;49m [0;34;49m2024-08-21 16:37[0;37;49m [0;32;49mBob Brown[0;37;49m Use context manager for file handle[0m
 [0;33;49m6e919bc[0;37;49m [0;34;49m2024-08-21 08:49[0;37;49m [0;32;49mAlice Anderson[0;37;49m Fix typo in log message [0;33;49m<v0.3.0>[0m
 [0;33;49m369e946[0;37;49m [0;34;49m2024-08-20 09:09[0;37;49m [0;32;49mEve Evans[0;37;49m Improve error messages[0m
-[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m
+[0;37;49m 1[0;30;46mGit Log   [0;37;49m 2[0;30;46mGit Refs  [0;37;49m 3[0;30;46mGit Diff  [0;37;49m 4[0;30;46mLogs      [0;37;49m 5[0;30;46mRefresh   [0;37;49m 6[0;30;46mSearch    [0;37;49m 7[0;30;46mContext   [0;37;49m 8[0;30;46mCommand   [0;37;49m 9[0;30;46mConfig    [0;37;49m10[0;30;46mQuit     [0m

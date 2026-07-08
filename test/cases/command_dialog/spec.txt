@@ -1,0 +1,31 @@
+# F8 "Command" runs an arbitrary git command (the `git` prefix is implied). The
+# helper row lists the selected commit's insertable tokens - its 7-char id
+# first, then every ref on it (branch / tag / remote). Select a77abfa (tag
+# v1.0.0 + origin/master), open the dialog, and Tab through the tokens: id ->
+# remote -> tag, each pasted in place of the last. Then build and run
+# `branch f8-demo <id>` for real - a77abfa gains a [f8-demo] decoration.
+size      120x40
+config    default
+launch
+key       <Down>
+wait      stable
+key       <F8>
+wait      stable
+capture   dialog
+key       <Tab>
+wait      stable
+capture   tab_id
+key       <Tab>
+wait      stable
+capture   tab_remote
+key       <Tab>
+wait      stable
+capture   tab_tag
+key       <Esc>
+wait      stable
+key       <F8>
+text      "branch f8-demo "
+key       <Tab>
+key       <Enter>
+wait      2.5
+capture   after_run

@@ -37,4 +37,4 @@
 [0;33;49m0556e31[0;37;49m [0;34;49m2024-09-12 10:14[0;37;49m [0;32;49mDavid Davis[0;37;49m Switch to logging from prints[0m
 [0;33;49m0df44d5[0;37;49m [0;34;49m2024-09-12 03:49[0;37;49m [0;32;49mCarol Chen[0;37;49m Drop unused helper[0m
 [0;33;49m9212f2c[0;37;49m [0;34;49m2024-09-11 16:01[0;37;49m [0;32;49mBob Brown[0;37;49m Extract magic number into constant[0m
-[0;37;49m 1[0;30;46mGit Log     [0;37;49m 2[0;30;46mGit Refs    [0;37;49m 3[0;30;46mGit Diff   [0;37;49m 4[0;30;46mLogs       [0;37;49m 5[0;30;46mRefresh    [0;37;49m 6[0;30;46mSearch     [0;37;49m 7[0;30;46mContext    [0;37;49m 9[0;30;46mConfig     [0;37;49m10[0;30;46mQuit       [0m
+[0;37;49m 1[0;30;46mGit Log   [0;37;49m 2[0;30;46mGit Refs  [0;37;49m 3[0;30;46mGit Diff  [0;37;49m 4[0;30;46mLogs      [0;37;49m 5[0;30;46mRefresh   [0;37;49m 6[0;30;46mSearch    [0;37;49m 7[0;30;46mContext   [0;37;49m 8[0;30;46mCommand   [0;37;49m 9[0;30;46mConfig    [0;37;49m10[0;30;46mQuit     [0m

@@ -283,6 +283,7 @@ class Screen:
             ("F5", "Refresh", lambda: self.app.refresh_all()),
             ("F6", "Search", lambda: self.app.open_search()),
             ("F7", "Context", lambda: self.app.open_context_menu(at_selection=False)),
+            ("F8", "Command", lambda: self.app.command_dialog.show()),
             ("F9", "Config", lambda: self.app.preferences.show()),
             ("F10", "Quit", lambda: self.app.exit_program()),
         ]

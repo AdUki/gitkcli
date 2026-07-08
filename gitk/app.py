@@ -25,6 +25,7 @@ class App:
         self.git_refs: GitRefsView = None
         self.context_menu: ContextMenu = None
         self.preferences: "PreferencesDialogPopup" = None
+        self.command_dialog: "CommandDialogPopup" = None
         self.confirm_dialog: "ConfirmDialogPopup" = None
         self.error_dialog: "ErrorDialogPopup" = None
 

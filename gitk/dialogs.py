@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import curses
 import re
+import shlex
 import typing
 
 from gitk.config import KEY_CTRL, save_config
 from gitk.ids import (
+    ID_GIT_COMMAND,
     ID_GIT_LOG_SEARCH,
     ID_GIT_REF_PUSH,
     ID_GIT_RESET,
@@ -42,6 +44,7 @@ from gitk.segments import (
     OnOffToggleSegment,
     TextSegment,
     ToggleSegment,
+    ref_color_and_title,
 )
 
 
@@ -317,6 +320,162 @@ class UserInputDialogPopup(ListView):
             return super().handle_input(keyboard)
 
         return True
+
+
+class InsertChipSegment(ButtonSegment):
+    """A clickable chip in the command dialog's helper row: clicking it pastes
+    its token (the commit id or a ref name) at the input cursor. It is
+    highlighted while it is the current target of the Tab cycle."""
+
+    def __init__(self, dialog, index, label, color):
+        super().__init__(label, lambda: dialog.pick_chip(index), color)
+        self.dialog = dialog
+        self.index = index
+
+    def draw(self, win, offset, width, selected, matched, marked) -> int:
+        # `marked` (highlight background) tracks the Tab cycle, not the row.
+        return super().draw(
+            win, offset, width, selected, matched, self.dialog.cycle_index == self.index
+        )
+
+
+class CommandDialogPopup(UserInputDialogPopup):
+    """F8: run an arbitrary git command. The leading `git` is implied, so the
+    user types just the arguments (e.g. `checkout main`, `stash pop`).
+
+    The helper row offers the selected commit's insertable tokens: its 7-char
+    abbreviated id first, then every ref on it (branches, tags, remotes). Tab
+    cycles through them, pasting each in place of the last (like F7 cycling a
+    row's ref menus); clicking a chip pastes that one. Up/Down browse the
+    command history like the search dialogs."""
+
+    def __init__(self, app):
+        # Header: the `$ git ` prompt on the left, the insert chips on the right.
+        # The chips are rebuilt for the selected commit each time we open.
+        self.prompt = TextSegment("$ git ", Screen.C_GIT_ID)
+        self.chip_row = SegmentedListItem([self.prompt])
+        self.insert_tokens = []
+        self.cycle_index = -1  # index of the last chip pasted via Tab / click
+        self._tab_span = None  # (start, end) of that paste, for replace-in-place
+        super().__init__(app, ID_GIT_COMMAND, " Git command", self.chip_row, width=76)
+
+    def _build_chips(self):
+        """Rebuild the helper row from the selected commit's id + refs."""
+        commit_id = self.app.git_log.get_selected_commit_id()
+        self.insert_tokens = []
+        segments = [self.prompt, FillerSegment(), TextSegment("Insert (Tab): ")]
+        if commit_id:
+            self.insert_tokens.append(commit_id[:7])
+            segments.append(
+                InsertChipSegment(self, 0, f"[{commit_id[:7]}]", Screen.C_GIT_ID)
+            )
+            head_branch = self.app.git_log.head_branch
+            for ref in self.app.git_refs.refs.get(commit_id, []):
+                if ref["type"] == "head":
+                    continue  # the HEAD pseudo-ref duplicates the commit id chip
+                color, title = ref_color_and_title(ref, head_branch)
+                segments.append(TextSegment(" "))
+                segments.append(
+                    InsertChipSegment(self, len(self.insert_tokens), title, color)
+                )
+                self.insert_tokens.append(ref["name"])
+        else:
+            segments.append(TextSegment("(no commit selected)", Screen.C_DIM))
+        # Rewire the row's segments (segment -> item back-ref, so get_app works).
+        self.chip_row.segments = segments
+        for segment in segments:
+            segment._item = self.chip_row
+        self.cycle_index = -1
+        self._tab_span = None
+
+    def _insert_token(self, token, replace_span=None):
+        inp = self.input
+        if replace_span:  # replace the previous Tab-pasted token in place
+            start, end = replace_span
+            inp.txt = inp.txt[:start] + inp.txt[end:]
+            inp.cursor_pos = start
+        start = inp.cursor_pos
+        inp.txt = inp.txt[:start] + token + inp.txt[start:]
+        inp.cursor_pos = start + len(token)
+        self._tab_span = (start, inp.cursor_pos)
+        self.dirty = True
+
+    def _active_span(self):
+        """The previous paste's span if it is still intact right before the
+        cursor (so Tab / another chip can replace it), else None."""
+        if self._tab_span is None or not (
+            0 <= self.cycle_index < len(self.insert_tokens)
+        ):
+            return None
+        start, end = self._tab_span
+        if (
+            self.input.cursor_pos == end
+            and self.input.txt[start:end] == (self.insert_tokens[self.cycle_index])
+        ):
+            return self._tab_span
+        return None
+
+    def cycle_insert(self):
+        """Tab: paste the next insertable token, replacing the last one in place."""
+        if not self.insert_tokens:
+            self.app.log.warning("No commit selected to insert")
+            return True
+        replace = self._active_span()
+        self.cycle_index = (self.cycle_index + 1) % len(self.insert_tokens)
+        self._insert_token(self.insert_tokens[self.cycle_index], replace)
+        return True
+
+    def pick_chip(self, index):
+        """Mouse: paste the clicked chip (replacing the last paste if intact)."""
+        replace = self._active_span()
+        self.cycle_index = index
+        self._insert_token(self.insert_tokens[index], replace)
+        self._selected = 1  # keep keyboard focus on the input field
+        return True
+
+    def on_activated(self):
+        # Reused singleton: start each open with an empty field and fresh chips.
+        self.clear()
+        self._build_chips()
+        self._selected = 1
+        super().on_activated()
+
+    def handle_input(self, keyboard):
+        if keyboard.key == KEY_TAB:
+            return self.cycle_insert()
+        # Any edit / cursor move ends the in-place replace chain, so the next Tab
+        # pastes fresh at the cursor rather than clobbering unrelated text.
+        self._tab_span = None
+        return super().handle_input(keyboard)
+
+    def execute(self):
+        command = self.input.txt.strip()
+        if not command:
+            return  # bare Enter on an empty field is a no-op (dialog already hid)
+        try:
+            args = shlex.split(command)
+        except ValueError as e:
+            # Unbalanced quotes etc. — report instead of running a broken command.
+            self.app.log.error(f"Could not parse command: {e}")
+            return
+        super().execute()  # record the raw command in the history
+
+        # Same post-command refreshes the other git operations use: pick up a
+        # moved HEAD, changed refs, and a dirtied working tree. A command that
+        # rewrites history below HEAD (rebase, filter-branch) needs a manual
+        # Shift+F5 to fully reload.
+        result = self.app.run_git(
+            ["git"] + args,
+            ok=f"git {command}",
+            err=f"Error running: git {command}",
+            refresh_head=True,
+            reload_refs=True,
+            check_uncommitted=True,
+        )
+        # Surface any stdout (e.g. `git status`, `git show`) in the Log view (F4)
+        # so informational commands aren't silent.
+        if result.returncode == 0 and result.stdout.strip():
+            self.app.log.info(result.stdout.rstrip())
 
 
 class PreferencesDialogPopup(ListView):
