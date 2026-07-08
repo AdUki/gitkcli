@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from gitk.input import KeyboardState
 from gitk.jobs import Job
+from gitk.screen import Screen
 from gitk.split_layout import SplitLayout
 
 
@@ -56,6 +57,7 @@ class App:
         # run inside the same bar - they block too (e.g. the uncommitted-changes
         # probes re-stat the whole tree right after a checkout).
         previous_message = self.screen.working_message
+        previous_dim = Screen.dimmed
         message = "Working: " + " ".join(args) + " ..."
         self.screen.show_working(message)
         try:
@@ -83,6 +85,7 @@ class App:
             if self.screen.working_message == message:
                 if previous_message:
                     self.screen.working_message = previous_message
+                    Screen.dimmed = previous_dim
                 else:
                     self.screen.clear_working()
         return result

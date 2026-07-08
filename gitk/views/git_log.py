@@ -142,7 +142,7 @@ class GitLogView(ListView):
         # row streams in (cleared in GitLogJob.process_item; on_finished is
         # the fallback for an empty or failed load). Also covers the start-up
         # path (launch_curses) - the initial load is the same job.
-        self.app.screen.show_working("Working: loading commits ...")
+        self.app.screen.show_working("Working: loading commits ...", dim=False)
         self.job.start_job(on_finished=self.app.screen.clear_working)
         self.check_uncommitted_changes()
 

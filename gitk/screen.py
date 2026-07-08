@@ -26,6 +26,11 @@ class Screen:
     color_depth = 256
     # Set True (by --no-color / NO_COLOR) to force the monochrome tier.
     force_mono = False
+    # When True, every color() result gets A_DIM OR'd in, so the whole screen
+    # renders dimmed. Set while a *blocking* git command freezes the UI thread
+    # (show_working with dim=True) to signal "busy, input ignored"; the bottom
+    # bar is exempt because it is painted with bar_color(), not color().
+    dimmed = False
     # Background meaning "terminal default"; COLOR_BLACK if use_default_colors fails.
     _default_bg = -1
 
@@ -175,7 +180,7 @@ class Screen:
                 color = color | curses.A_UNDERLINE
         if bold or (selected and bold is None):
             color = color | curses.A_BOLD
-        if dim:
+        if dim or cls.dimmed:
             color = color | curses.A_DIM
         return color
 
@@ -368,21 +373,27 @@ class Screen:
         self.flash_message = message.splitlines()[0] if message else ""
         self.flash_time = time.time()
 
-    def show_working(self, message: str):
+    def show_working(self, message: str, dim: bool = True):
         """Replace the bottom bar with `message` on yellow and repaint NOW.
         The caller is about to run a blocking git command on the UI thread, so
         this forced draw is the only chance to show the bar before the event
-        loop freezes. Cleared with clear_working() once the command returns."""
+        loop freezes. Cleared with clear_working() once the command returns.
+
+        `dim` dims the rest of the screen while the bar is up, signalling that
+        the UI is frozen. The async commit loader passes dim=False: its bar is
+        cosmetic - the event loop keeps running and input still works."""
         self.working_message = message
+        Screen.dimmed = dim
         try:
             self.draw_visible_views()
         except curses.error:
             pass  # a failed paint must not abort the git command it announces
 
     def clear_working(self):
-        """Drop the in-progress bar. No forced repaint: control returns to the
-        event loop, which redraws on its next iteration."""
+        """Drop the in-progress bar and undim. No forced repaint: control
+        returns to the event loop, which redraws on its next iteration."""
         self.working_message = ""
+        Screen.dimmed = False
 
     def flash_active(self) -> bool:
         """True while a flash should keep the main loop redrawing the bottom bar
