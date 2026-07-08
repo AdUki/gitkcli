@@ -315,9 +315,7 @@ class Screen:
         self.views[id] = view
 
     def get_active_view(self) -> typing.Any:
-        if len(self.showed_views) > 0:
-            return self.showed_views[-1]
-        return None
+        return self.showed_views[-1] if self.showed_views else None
 
     def _restack(self):
         """Re-assert the panel deck order to match showed_views (bottom -> top),
@@ -326,7 +324,7 @@ class Screen:
             view.panel.top()
 
     def hide_active_view(self):
-        if len(self.showed_views) > 0:
+        if self.showed_views:
             # Closing a split pane (the [X] button) leaves split view and brings
             # the *other* pane up fullscreen, instead of popping a single pane
             # and leaving a gap with no backdrop.

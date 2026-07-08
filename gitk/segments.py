@@ -121,11 +121,7 @@ class ButtonSegment(TextSegment):
         self.is_pressed = False
 
     def handle_mouse_input(self, mouse) -> bool:
-        if (
-            mouse.event_type == "left-click"
-            or mouse.event_type == "double-click"
-            or mouse.event_type == "left-move-in"
-        ):
+        if mouse.event_type in ("left-click", "double-click", "left-move-in"):
             self.is_pressed = True
             return True
 
@@ -173,7 +169,7 @@ class ToggleSegment(TextSegment):
         return True
 
     def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == "left-click" or mouse.event_type == "double-click":
+        if mouse.event_type in ("left-click", "double-click"):
             self.toggle()
             self.callback(self)
             return True

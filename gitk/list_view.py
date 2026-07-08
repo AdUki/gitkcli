@@ -85,28 +85,20 @@ class ListView(View):
             copy_to_clipboard(text, self.app)
 
     def copy_text_range_to_clipboard(self, to_item):
-        lines = []
-        found = False
-        for i, item in enumerate(self.items):
-            if not found and item == to_item:
-                found = True
-            if found or i >= self._selected:
-                lines.append(item.get_text())
-            if found and i >= self._selected:
-                break
-        # join (not repeated "\n" + ...) so the clipboard has no leading blank
-        # line, matching copy_text_to_clipboard.
-        copy_to_clipboard("\n".join(lines), self.app)
+        # Copy the inclusive range between the selected row and to_item, in
+        # either order (to_item is always the right-clicked row, so it's present).
+        lo, hi = sorted((self._selected, self.items.index(to_item)))
+        text = "\n".join(item.get_text() for item in self.items[lo : hi + 1])
+        copy_to_clipboard(text, self.app)
 
     def append(self, item):
         """Add item to end of list"""
         item._view = self
         self.items.append(item)
         # The new row is at index len-1, i.e. screen row (len-1) - offset_y, so
-        # it is on-screen when (len - offset_y) <= height. Using '<' here left an
-        # item landing exactly on the last visible row marked off-screen, so the
-        # bottom row stayed blank (only a header redraw fired) until some later
-        # full redraw — an intermittent blank bottom line as rows streamed in.
+        # it is on-screen when (len - offset_y) <= height. The bound must be '<=',
+        # not '<': a row landing exactly on the last visible line would otherwise
+        # count as off-screen, leaving the bottom row blank until a later redraw.
         if len(self.items) - self._offset_y <= self.height:
             self.dirty = True
         else:
@@ -142,7 +134,7 @@ class ListView(View):
         new_index = None
 
         if isinstance(what, int):
-            if (0 <= what < len(self.items)) or (what <= 0 and len(self.items) == 0):
+            if (0 <= what < len(self.items)) or (what <= 0 and not self.items):
                 new_index = what
         elif isinstance(what, (str, re.Pattern)):
             test = (
@@ -205,14 +197,9 @@ class ListView(View):
         return False
 
     def _scroll_x(self, delta: int):
-        max_length = 0
-        for i in range(
-            self._offset_y, min(self._offset_y + self.height, len(self.items))
-        ):
-            length = len(self.items[i].get_text())
-            if length > max_length:
-                max_length = length
-        max_offset_x = max(0, max_length - self.width)
+        visible = self.items[self._offset_y : self._offset_y + self.height]
+        widest = max((len(item.get_text()) for item in visible), default=0)
+        max_offset_x = max(0, widest - self.width)
         self._offset_x = max(0, min(self._offset_x + delta, max_offset_x))
 
     def get_selected(self) -> typing.Any:
@@ -265,13 +252,9 @@ class ListView(View):
                 if "move" in mouse.event_type:
                     if self._selected == index:
                         return False  # do not redraw when hovering over same item
-                if (
-                    mouse.event_type == "left-click"
-                    or mouse.event_type == "double-click"
-                    or (
-                        "move" in mouse.event_type
-                        and self in self.app.mouse.movement_capture
-                    )
+                if mouse.event_type in ("left-click", "double-click") or (
+                    "move" in mouse.event_type
+                    and self in self.app.mouse.movement_capture
                 ):
                     if self.items[index].is_selectable:
                         self.set_selected(index)
@@ -283,10 +266,7 @@ class ListView(View):
                 mouse.x = view_x + self._offset_x
                 mouse.y = index
                 handled = item.handle_mouse_input(mouse)
-                if handled and (
-                    mouse.event_type == "left-click"
-                    or mouse.event_type == "double-click"
-                ):
+                if handled and mouse.event_type in ("left-click", "double-click"):
                     self.app.mouse.clicked_item = item
                 if selected or handled:
                     return True
@@ -304,31 +284,31 @@ class ListView(View):
             self.dirty = True
             return True
 
-        if key == curses.KEY_UP or key == ord("k"):
+        if key in (curses.KEY_UP, ord("k")):
             self.set_selected(self._selected - 1, visible_mode="top")
-        elif key == curses.KEY_DOWN or key == ord("j"):
+        elif key in (curses.KEY_DOWN, ord("j")):
             self.set_selected(self._selected + 1, visible_mode="bottom")
-        elif key == curses.KEY_LEFT or key == ord("h"):
+        elif key in (curses.KEY_LEFT, ord("h")):
             self._scroll_x(-1)
-        elif key == curses.KEY_RIGHT or key == ord("l"):
+        elif key in (curses.KEY_RIGHT, ord("l")):
             self._scroll_x(1)
-        elif key == KEY_SHIFT_LEFT or key == ord("H"):
+        elif key in (KEY_SHIFT_LEFT, ord("H")):
             self._scroll_x(-HSCROLL_BIG_STEP)
-        elif key == KEY_SHIFT_RIGHT or key == ord("L"):
+        elif key in (KEY_SHIFT_RIGHT, ord("L")):
             self._scroll_x(HSCROLL_BIG_STEP)
-        elif key == curses.KEY_PPAGE or key == KEY_CTRL("b"):
+        elif key in (curses.KEY_PPAGE, KEY_CTRL("b")):
             self._offset_y = max(0, self._offset_y - self.height)
             self.set_selected(max(0, self._selected - self.height))
-        elif key == curses.KEY_NPAGE or key == KEY_CTRL("f"):
+        elif key in (curses.KEY_NPAGE, KEY_CTRL("f")):
             self._offset_y = min(
                 self._offset_y + self.height, max(0, len(self.items) - self.height)
             )
             self.set_selected(
                 min(self._selected + self.height, max(0, len(self.items) - 1))
             )
-        elif key == curses.KEY_HOME or key == ord("g"):
+        elif key in (curses.KEY_HOME, ord("g")):
             self.set_selected(0)
-        elif key == curses.KEY_END or key == ord("G"):
+        elif key in (curses.KEY_END, ord("G")):
             self.set_selected(max(0, len(self.items) - 1))
         elif key == ord("/"):
             if self._search_dialog:

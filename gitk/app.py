@@ -1,9 +1,9 @@
-"""The App struct: the application's components and the service methods that
-coordinate them.
+"""The App struct: holds the app's components and the methods that coordinate
+them.
 
-Created once in launch_curses and injected into the components (Screen/views/
-jobs get `self.app`; items/segments reach it via get_app()). A plain instance,
-not a service-locator global.
+Created once in `launch_curses` and injected into the components: Screen, views,
+and jobs receive it at construction (`self.app`); items and segments reach it
+through the parent chain (`get_app()`). A plain instance, not a global.
 """
 
 from __future__ import annotations
@@ -14,15 +14,6 @@ from gitk.split_layout import SplitLayout
 
 
 class App:
-    """The application struct: holds the app's components and the service
-    methods that coordinate them.
-
-    Created once in `launch_curses` and handed to the components. Screen, views,
-    and jobs receive it at construction (`self.app`); items/segments reach it
-    through the parent chain (`get_app()`). It is a plain instance that is
-    passed/injected, not a service-locator global.
-    """
-
     def __init__(self):
         self.running = True
         self.screen: Screen = None

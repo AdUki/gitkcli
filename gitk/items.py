@@ -185,52 +185,46 @@ class DiffListItem(TextListItem):
 
         app = self.get_app()
         blame_revision = app.git_diff.blame_revision()
-        if self.old_file_path and self.old_file_line and blame_revision:
-            args = [
-                "git",
-                "blame",
-                "-lsfn",
-                "-L",
-                f"{self.old_file_line},{self.old_file_line}",
-                blame_revision,
-                "--",
-                self.old_file_path,
-            ]
+        if not (self.old_file_path and self.old_file_line and blame_revision):
+            return
 
-            result = Job.run_job(app, args)
-            if result.returncode == 0:
-                # Example output:
-                # a42cadebfe42d85cbf36f4887be166b34077b3e2 test test.txt 1 1) aaa
-                match = re.search(r"^(\S+) ([^)]+) ([0-9]+) ", result.stdout)
-                if match:
-                    id = str(match.group(1))
-                    file_path = str(match.group(2))
-                    file_line = int(match.group(3))
+        args = [
+            "git",
+            "blame",
+            "-lsfn",
+            "-L",
+            f"{self.old_file_line},{self.old_file_line}",
+            blame_revision,
+            "--",
+            self.old_file_path,
+        ]
+        result = Job.run_job(app, args)
+        if result.returncode != 0:
+            return
 
-                    # When commit id starts with '^' it means this is initial git-id and is 1 char shorer
-                    # ^1af87e6c2614c1aea4a81476df0deb8206d5489 451)         except Exception:
-                    if id.startswith("^"):
-                        id = (
-                            Job.run_job(app, ["git", "rev-parse", id])
-                            .stdout.lstrip("^")
-                            .rstrip()
-                        )
-                    commit = app.git_log.select_commit(id)
-                    if commit:
-                        diff = app.git_diff
-                        app.git_log.add_to_jump_list(
-                            diff.view_key, diff._selected, diff._offset_y
-                        )
+        # e.g. "a42cadebfe42d85cbf36f4887be166b34077b3e2 test test.txt 1 1) aaa"
+        match = re.search(r"^(\S+) ([^)]+) ([0-9]+) ", result.stdout)
+        if not match:
+            return
+        id, file_path, file_line = match.group(1), match.group(2), int(match.group(3))
 
-                        def on_finished():
-                            diff.select_line(file_path, file_line)
-                            app.git_log.add_to_jump_list(
-                                commit.id, diff._selected, diff._offset_y
-                            )
+        # A '^' prefix marks git blame's boundary (initial) commit; its id is one
+        # char short, so resolve it back to a full sha.
+        if id.startswith("^"):
+            id = Job.run_job(app, ["git", "rev-parse", id]).stdout.lstrip("^").rstrip()
 
-                        diff.show_commit(
-                            commit.id, on_finished=on_finished, add_to_jump_list=False
-                        )
+        commit = app.git_log.select_commit(id)
+        if not commit:
+            return
+
+        diff = app.git_diff
+        app.git_log.add_to_jump_list(diff.view_key, diff._selected, diff._offset_y)
+
+        def on_finished():
+            diff.select_line(file_path, file_line)
+            app.git_log.add_to_jump_list(commit.id, diff._selected, diff._offset_y)
+
+        diff.show_commit(commit.id, on_finished=on_finished, add_to_jump_list=False)
 
     def activate(self) -> bool:
         self.jump_to_origin()
@@ -295,7 +289,7 @@ class UserInputListItem(Item):
 
     def handle_input(self, keyboard):
         key = keyboard.key
-        if key == curses.KEY_BACKSPACE or key == 127:  # Backspace
+        if key in (curses.KEY_BACKSPACE, 127):  # Backspace
             if self.cursor_pos > 0:
                 self.txt = self.txt[: self.cursor_pos - 1] + self.txt[self.cursor_pos :]
                 self.cursor_pos -= 1
@@ -346,7 +340,7 @@ class UserInputListItem(Item):
         return True
 
     def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == "left-click" or mouse.event_type == "double-click":
+        if mouse.event_type in ("left-click", "double-click"):
             # mouse.x is a column within the (possibly scrolled) field.
             self.cursor_pos = min(self.offset + mouse.x, len(self.txt))
             return True
@@ -357,7 +351,6 @@ class UserInputListItem(Item):
         # Scroll the field horizontally so the cursor stays visible and we never
         # addstr past `width`. The cursor is a 1-col block between the text to
         # its left and right, so the text occupies `field` = width-1 columns.
-        # (At offset 0 with the cursor in view this matches the old rendering.)
         field = max(1, width - 1)
         if self.cursor_pos < self.offset:
             self.offset = self.cursor_pos

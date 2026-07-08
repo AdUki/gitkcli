@@ -133,12 +133,11 @@ class RefPushDialogPopup(ListView):
         # remotes). split() drops the trailing/empty lines so a remote-less repo
         # yields [] rather than [''] (which would make a blank toggle and push
         # to an empty remote name).
-        self.remotes = []
         self.remote = ""
-        for remote in Job.run_job(self.app, ["git", "remote"]).stdout.split():
-            self.remotes.append(
-                ToggleSegment(remote, callback=lambda val: self.change_remote(val.txt))
-            )
+        self.remotes = [
+            ToggleSegment(name, callback=lambda val: self.change_remote(val.txt))
+            for name in Job.run_job(self.app, ["git", "remote"]).stdout.split()
+        ]
         if self.remotes:
             self.change_remote(self.remotes[0].txt)
 
@@ -274,7 +273,7 @@ class UserInputDialogPopup(ListView):
 
     def add_query_to_history(self):
         if self.input.txt and (
-            len(self.history_queries) == 0 or self.history_queries[0] != self.input.txt
+            not self.history_queries or self.history_queries[0] != self.input.txt
         ):
             self.history_queries.insert(0, self.input.txt)
 
@@ -295,7 +294,7 @@ class UserInputDialogPopup(ListView):
         elif key == curses.KEY_EXIT:
             self.hide()
 
-        elif key == curses.KEY_DOWN or key == KEY_CTRL("n"):
+        elif key in (curses.KEY_DOWN, KEY_CTRL("n")):
             # Walk toward newer entries; stepping below index 0 returns to the
             # live input the user was typing before they entered history.
             if self.history_index >= 0:
@@ -306,7 +305,7 @@ class UserInputDialogPopup(ListView):
                     else self.history_queries[self.history_index]
                 )
 
-        elif key == curses.KEY_UP or key == KEY_CTRL("p") or key == KEY_CTRL("o"):
+        elif key in (curses.KEY_UP, KEY_CTRL("p"), KEY_CTRL("o")):
             if self.history_index + 1 < len(self.history_queries):
                 if self.history_index < 0:
                     # Entering history: stash the live input so DOWN can restore it.
@@ -457,9 +456,8 @@ class NewRefDialogPopup(UserInputDialogPopup):
         self.show()
 
     def rename_branch(self, old_name):
-        # Actually rename (`git branch -m`). This used to be wired to create_ref,
-        # which ran `git branch <new> <old>` -> a COPY that left the original
-        # branch in place, not a rename.
+        # Rename with `git branch -m`, not `git branch <new> <old>` (which copies
+        # and leaves the original branch in place).
         if not old_name:
             self.app.log.warning("Select a branch to rename")
             return
@@ -599,12 +597,7 @@ class SearchDialogPopup(UserInputDialogPopup):
 
     def handle_input(self, keyboard):
         key = keyboard.key
-        if (
-            key == curses.KEY_DC
-            or key == curses.KEY_BACKSPACE
-            or key == 127
-            or 32 <= key <= 126
-        ):
+        if key in (curses.KEY_DC, curses.KEY_BACKSPACE, 127) or 32 <= key <= 126:
             self.parent_list_view.dirty = True
 
         if key == curses.KEY_F1:

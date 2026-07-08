@@ -114,7 +114,7 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
                     app.mouse.process_mouse_event(active_view, "right-release")
 
                 if (
-                    event_type == "left-click" or event_type == "double-click"
+                    event_type in ("left-click", "double-click")
                 ) and app.mouse.right_pressed:
                     app.mouse.right_pressed = False
                     app.mouse.process_mouse_event(active_view, "left-release")
@@ -133,11 +133,11 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
                 active_view.dirty = True
 
             else:
-                if key == ord("q") or key == curses.KEY_EXIT:
+                if key in (ord("q"), curses.KEY_EXIT):
                     app.screen.hide_active_view()
-                elif key == KEY_CTRL_LEFT or key == KEY_CTRL("o"):
+                elif key in (KEY_CTRL_LEFT, KEY_CTRL("o")):
                     app.git_log.move_in_jump_list(+1)
-                elif key == KEY_CTRL_RIGHT or key == KEY_CTRL("i"):
+                elif key in (KEY_CTRL_RIGHT, KEY_CTRL("i")):
                     app.git_log.move_in_jump_list(-1)
                 elif key == ord("|"):
                     app.split.cycle_split_view()

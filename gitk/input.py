@@ -112,17 +112,15 @@ class MouseState:
     app = None
 
     def capture_mouse_movement(self, enable: bool, id=None):
-        enabled = len(self.movement_capture) > 0
+        was_capturing = bool(self.movement_capture)
         if enable:
             self.movement_capture.add(id)
-            if not enabled:
-                print(
-                    "\033[?1003h", end="", flush=True
-                )  # start capturing mouse movement
+            if not was_capturing:
+                print("\033[?1003h", end="", flush=True)  # start movement reports
         elif id in self.movement_capture:
             self.movement_capture.remove(id)
-            if enabled and len(self.movement_capture) == 0:
-                print("\033[?1000h", end="", flush=True)  # end capturing mouse movement
+            if was_capturing and not self.movement_capture:
+                print("\033[?1000h", end="", flush=True)  # stop movement reports
 
     def read_curses_event(self, stdscr) -> bool:
         """Decode a curses mouse event into this state. Returns False when the

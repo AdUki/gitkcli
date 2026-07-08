@@ -80,8 +80,7 @@ class Job:
         return line
 
     def process_item(self, item):
-        # This should be implemented by derived classes
-        pass
+        pass  # subclasses override
 
     def process_message(self, message):
         if message["type"] == "error":
@@ -291,17 +290,13 @@ class GitRefreshHeadJob(GitLogJob):
         super().__init__(app, ID_GIT_REFRESH_HEAD, [])
 
     def start_job(self, args=[], on_finished=None):
-        # check if HEAD commit is actually in view
-        head_found = False
-        for item in self.app.git_log.items:
-            if hasattr(item, "id") and item.id == self.app.git_log.head_id:
-                head_found = True
-                break
-        if not head_found:
-            # no HEAD commit found, don't do anything
-            return
-
-        # skip calling self.app.git_log.commits.clear()
+        log = self.app.git_log
+        head_in_view = any(
+            hasattr(item, "id") and item.id == log.head_id for item in log.items
+        )
+        if not head_in_view:
+            return  # nothing to refresh onto
+        # Skip GitLogJob.start_job (which clears commits): this appends to the view.
         Job.start_job(self, args, on_finished)
 
     def process_item(self, item):
@@ -466,7 +461,7 @@ class GitRefsJob(Job):
         super().start_job(args, on_finished)
 
     def process_line(self, line) -> typing.Any:
-        id, value = tuple(line.split(" "))
+        id, value = line.split(" ")
         if value == "HEAD":
             return {"id": id, "name": value, "type": "head"}
         parts = value.split("/", 2)

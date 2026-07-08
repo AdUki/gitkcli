@@ -381,13 +381,9 @@ class View:
 
         self.draw_header(sides)
 
-        parent = None
-        try:
-            index = self.app.screen.showed_views.index(self)
-            if index > 0:
-                parent = self.app.screen.showed_views[index - 1]
-        except ValueError:
-            pass
+        views = self.app.screen.showed_views
+        index = views.index(self) if self in views else -1
+        parent = views[index - 1] if index > 0 else None
         if self != self.app.log.view and parent != self.app.log.view:
             self.app.log.debug(f"Draw view {self.id}")
 
@@ -399,9 +395,9 @@ class View:
             return
         _, cols = self.win.getmaxyx()
         if self.is_popup:
-            # New style: the title sits inset in the box's top border
-            # (┌─ Title ───────┐), no banner and no [X]. Drawn in the box's
-            # own colour (red for warning/error dialogs).
+            # The title sits inset in the box's top border (┌─ Title ───────┐),
+            # no banner and no [X], drawn in the box's own colour (red for
+            # warning/error dialogs).
             title = self.header_item.get_text().strip()
             if title:
                 label = f" {title} "[: max(0, cols - 4)]
@@ -467,10 +463,8 @@ class View:
         return False
 
     def is_active(self) -> bool:
-        return (
-            len(self.app.screen.showed_views) > 0
-            and self.app.screen.showed_views[-1] == self
-        )
+        views = self.app.screen.showed_views
+        return bool(views) and views[-1] == self
 
     def show(self):
         if self.is_active():
@@ -490,7 +484,7 @@ class View:
         self.on_activated()
 
     def hide(self):
-        if len(self.app.screen.showed_views) > 0:
+        if self.app.screen.showed_views:
             if self not in self.app.screen.showed_views:
                 return
             deactivated = self.app.screen.showed_views[-1] == self

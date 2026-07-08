@@ -326,14 +326,15 @@ class GitLogView(ListView):
         is_local = commit_id.startswith("local-")
 
         # Locate the item in git_log; skip the entry if not found
-        idx = None
-        for i, item in enumerate(self.items):
-            if (
-                isinstance(item, (CommitListItem, UncommittedChangesListItem))
+        idx = next(
+            (
+                i
+                for i, item in enumerate(self.items)
+                if isinstance(item, (CommitListItem, UncommittedChangesListItem))
                 and item.id == commit_id
-            ):
-                idx = i
-                break
+            ),
+            None,
+        )
         if idx is None:
             self.move_in_jump_list(jump)
             return True

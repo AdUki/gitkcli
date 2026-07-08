@@ -89,8 +89,6 @@ class GitDiffView(ListView):
 
         self.set_search_dialog(SearchDialogPopup(app, ID_GIT_DIFF_SEARCH))
 
-    # ---------- public facade: what to show ----------
-
     def show_commit(self, commit_id: str, on_finished=None, add_to_jump_list=True):
         """Load 'git show -m COMMIT'. Jump-listed by default."""
         self._show_target(CommitTarget(commit_id), on_finished)
@@ -112,8 +110,6 @@ class GitDiffView(ListView):
         """Load an annotated tag's body via 'git cat-file -p' and raise this pane."""
         self._show_target(TagTarget(tag_id))
         self.show()
-
-    # ---------- identity queries (replace commit_id/is_diff reads) ----------
 
     def shows(self, view_key: str) -> bool:
         """True iff the pane currently shows `view_key` as revisitable,
@@ -142,8 +138,6 @@ class GitDiffView(ListView):
         """Seed/overwrite the saved scroll position for `view_key` (used by
         the jump list to pre-seed a target before triggering its load)."""
         self.position_map[view_key] = (line, offset_y)
-
-    # ---------- internals ----------
 
     def _diff_options(self) -> DiffOptions:
         return DiffOptions(
@@ -198,21 +192,24 @@ class GitDiffView(ListView):
                 )
 
     def select_line(self, file: str, line: int):
-        for item in self.items:
-            if (
-                isinstance(item, DiffListItem)
+        match = next(
+            (
+                item
+                for item in self.items
+                if isinstance(item, DiffListItem)
                 and item.new_file_path == file
                 and item.new_file_line == line
-            ):
-                self.set_selected(item.line)
-                return  # first match is the target; stop (avoids extra position writes)
+            ),
+            None,
+        )
+        if match is not None:
+            self.set_selected(match.line)
 
     def _reload_diff(self):
         """Re-run the last shown target with fresh options (context size,
         ignore-whitespace). The view forgets its identity in the process (no
         position tracking until the reload finishes and a fresh target is
-        shown), matching the pre-refactor behaviour; a no-op if nothing has
-        ever been shown."""
+        shown); a no-op if nothing has ever been shown."""
         self.clear()
         self.position_map.clear()
         if self._last_target is not None:
@@ -228,16 +225,14 @@ class GitDiffView(ListView):
 
     def handle_input(self, keyboard) -> bool:
         key = keyboard.key
-        if self.app.split.split_active() and (
-            key == ord("q") or key == curses.KEY_EXIT
-        ):
+        if self.app.split.split_active() and key in (ord("q"), curses.KEY_EXIT):
             # Esc/q in split view steps back to the log pane and stays split,
             # rather than collapsing the split.
             self.app.git_log.show()
             return True
         if key == ord("+"):
-            # Documented diff keys (README); previously only the [+]/[-] header
-            # buttons changed the context size.
+            # +/- adjust the context size from the keyboard (README), like the
+            # [+]/[-] header buttons.
             self.change_context(+1)
         elif key == ord("-"):
             self.change_context(-1)

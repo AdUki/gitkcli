@@ -1,5 +1,5 @@
 """Modal red message-box popups: the shared base plus the confirm and error
-dialogs. Split out of dialogs.py to keep each module cohesive and ≤ ~600 lines.
+dialogs.
 
 Like the other dialogs these are small ListViews reached through the App struct
 at runtime (`self.app`); they depend only on the base view, items, segments and

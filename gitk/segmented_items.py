@@ -85,7 +85,7 @@ class SegmentedListItem(Item):
 
     def handle_mouse_input(self, mouse) -> bool:
         segment = self.clicked_segment or self.get_segment_on_offset(mouse.x)
-        if mouse.event_type == "left-click" or mouse.event_type == "double-click":
+        if mouse.event_type in ("left-click", "double-click"):
             self.clicked_segment = segment
         elif self.clicked_segment:
             if "release" in mouse.event_type:
@@ -100,10 +100,7 @@ class SegmentedListItem(Item):
         return super().handle_mouse_input(mouse)
 
     def get_fill_txt(self, width):
-        fillers_count = 0
-        for segment in self.get_segments():
-            if isinstance(segment, FillerSegment):
-                fillers_count += 1
+        fillers_count = sum(isinstance(s, FillerSegment) for s in self.get_segments())
         if fillers_count:
             # Clamp to 0: a negative width (content wider than the window) would
             # otherwise rewind segment_pos in get_segment_on_offset and misroute
@@ -220,10 +217,10 @@ class ButtonRowItem(SegmentedListItem):
 
     def handle_input(self, keyboard):
         key = keyboard.key
-        if key == curses.KEY_LEFT or key == ord("h"):
+        if key in (curses.KEY_LEFT, ord("h")):
             self._move_focus(-1)
             return True
-        if key == curses.KEY_RIGHT or key == ord("l"):
+        if key in (curses.KEY_RIGHT, ord("l")):
             self._move_focus(1)
             return True
         if key in ENTER_KEYS:
