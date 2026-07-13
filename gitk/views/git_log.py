@@ -160,14 +160,15 @@ class GitLogView(ListView):
 
     def check_uncommitted_changes(self):
         """Probe the working tree / index and (re)place the pseudo-rows."""
-        self._has_staged = (
-            Job.run_job(self.app, ["git", "diff", "--cached", "--quiet"]).returncode
-            != 0
-        )
-        self._has_working = (
-            Job.run_job(self.app, ["git", "diff", "--quiet"]).returncode != 0
-        )
+        self._has_staged = self._diff_reports_changes(["--cached"])
+        self._has_working = self._diff_reports_changes([])
         self._place_uncommitted_rows()
+
+    def _diff_reports_changes(self, args):
+        """Whether `git diff --quiet` found differences. Exit 1 means "differs"
+        and 0 means clean; anything above that is git itself failing (128/129
+        outside a repository), which must not be read as a dirty tree."""
+        return Job.run_job(self.app, ["git", "diff", "--quiet"] + args).returncode == 1
 
     def _place_uncommitted_rows(self):
         """Single source of truth for the uncommitted pseudo-rows: drop any that

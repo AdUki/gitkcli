@@ -100,7 +100,10 @@ class ErrorDialogPopup(_RedMessageBoxPopup):
         if not self.is_active():
             self._lines = []
         for line in incoming:
-            if len(self._lines) < self.MAX_LINES:
+            # Independent jobs often hit the same failure and each report it (in
+            # a non-repo directory every git job emits the same "not a git
+            # repository" line), so a coalesced dialog shows each line once.
+            if line not in self._lines and len(self._lines) < self.MAX_LINES:
                 self._lines.append(line)
         self._render()
 

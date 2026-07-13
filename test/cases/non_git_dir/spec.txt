@@ -1,0 +1,12 @@
+# Launched outside a git repository (the fixture repo with its .git removed).
+# Every git job fails with the same "not a git repository" line, and the error
+# dialog coalesces them, so the line must appear exactly once. The uncommitted
+# probes (`git diff --quiet`) fail here with exit 128/129 rather than the 1 that
+# means "differs", so neither "Uncommitted changes" pseudo-row may be placed.
+size      120x40
+config    default
+run       rm -rf .git
+launch
+wait      stable
+wait      1
+capture   error_once
