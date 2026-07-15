@@ -347,7 +347,14 @@ class CommandDialogPopup(UserInputDialogPopup):
     abbreviated id first, then every ref on it (branches, tags, remotes). Tab
     cycles through them, pasting each in place of the last (like F7 cycling a
     row's ref menus); clicking a chip pastes that one. Up/Down browse the
-    command history like the search dialogs."""
+    command history like the search dialogs.
+
+    Every command runs with the curses UI suspended (Screen.run_interactive):
+    the child inherits the real terminal, so whatever it needs just works - an
+    editor (`rebase -i`, `commit`), an interactive prompt (`add -p`), or a
+    pager (git auto-pages `log`/`diff` since stdout is a real TTY). There is no
+    fragile "is this interactive?" guess; the user sees the raw output and
+    presses Enter to return."""
 
     def __init__(self, app):
         # Header: the `$ git ` prompt on the left, the insert chips on the right.
@@ -460,22 +467,26 @@ class CommandDialogPopup(UserInputDialogPopup):
             return
         super().execute()  # record the raw command in the history
 
-        # Same post-command refreshes the other git operations use: pick up a
-        # moved HEAD, changed refs, and a dirtied working tree. A command that
-        # rewrites history below HEAD (rebase, filter-branch) needs a manual
-        # Shift+F5 to fully reload.
-        result = self.app.run_git(
-            ["git"] + args,
-            ok=f"git {command}",
-            err=f"Error running: git {command}",
-            refresh_head=True,
-            reload_refs=True,
-            check_uncommitted=True,
-        )
-        # Surface any stdout (e.g. `git status`, `git show`) in the Log view (F4)
-        # so informational commands aren't silent.
-        if result.returncode == 0 and result.stdout.strip():
-            self.app.log.info(result.stdout.rstrip())
+        # Run every command with the UI suspended and the real terminal handed
+        # to the child (see the class docstring). No captured-output path and no
+        # interactivity guess: an editor (`rebase -i`), a prompt (`add -p`), or a
+        # pager all just work, and the user reads the raw output before Enter.
+        rc = self.app.screen.run_interactive(["git"] + args)
+        # Record the outcome in the Log view (F4) only - no green success flash
+        # and no red error dialog. The suspended console already showed the exit
+        # status (coloured green/red), so both would just be noise on return.
+        if rc == 0:
+            self.app.log.log(Screen.C_NORMAL, f"git {command}")
+        elif rc is not None:
+            self.app.log.log(
+                Screen.C_ERROR, f"Error running: git {command} (exit {rc})"
+            )
+
+        # A command can move HEAD, change refs, rewrite history (rebase), or
+        # dirty the working tree - fully reload refs + log rather than the
+        # incremental refresh, and re-probe the uncommitted pseudo-rows.
+        self.app.reload_refs_commits()
+        self.app.git_log.check_uncommitted_changes()
 
 
 class PreferencesDialogPopup(ListView):

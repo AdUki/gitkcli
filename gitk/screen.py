@@ -11,6 +11,8 @@ from __future__ import annotations
 import curses
 import curses.panel
 import os
+import subprocess
+import sys
 import time
 import typing
 
@@ -394,6 +396,68 @@ class Screen:
         returns to the event loop, which redraws on its next iteration."""
         self.working_message = ""
         Screen.dimmed = False
+
+    def run_interactive(self, args) -> typing.Optional[int]:
+        """Suspend curses, hand the real terminal to `args`, then resume.
+
+        The F8 command dialog runs *every* command this way rather than guessing
+        which ones are interactive. Leaving curses gives the child our real
+        stdin/stdout/stderr, so anything it wants just works: an editor
+        (`rebase -i`, `commit`), an interactive prompt (`add -p`), or a pager
+        (git auto-pages `log`/`diff` because stdout is now a real TTY). We run it
+        to completion attached to the terminal, wait for the user to press Enter
+        so they can read the output, and repaint on the way back.
+
+        Returns the child's exit code, or None if it could not be spawned.
+
+        Unlike run_job the environment is NOT pinned to LC_ALL=C: nothing here
+        parses the output, and forcing the C locale would cripple a UTF-8 editor
+        session. The child sees the user's real $EDITOR / git core.editor."""
+        # Drop out of curses: restores the shell's cooked-mode terminal (leaves
+        # the alt-screen, re-shows the cursor, stops mouse/keypad reporting) so
+        # the child program has a normal TTY to draw on.
+        curses.def_prog_mode()  # save curses' terminal modes for the resume below
+        curses.endwin()
+
+        printable = " ".join(args)
+        rc = None
+        spawn_error = None
+        try:
+            sys.stdout.write(f"\r\n$ {printable}\r\n")
+            sys.stdout.flush()
+            rc = subprocess.run(args).returncode
+            # Raw ANSI (curses is suspended): green for success, red for failure.
+            color = "\x1b[32m" if rc == 0 else "\x1b[31m"
+            sys.stdout.write(
+                f"\r\n{color}[gitkcli] `{printable}` exited with {rc}. "
+                "Press Enter to return...\x1b[0m"
+            )
+            sys.stdout.flush()
+            sys.stdin.readline()
+        except OSError as e:
+            spawn_error = str(e)
+
+        # Resume curses: restore the saved program modes, re-assert the settings
+        # endwin() dropped (cursor hidden, mouse + keypad reporting), discard any
+        # keystrokes typed during the shell-out, and force a full repaint.
+        curses.reset_prog_mode()
+        self.stdscr.keypad(True)
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
+        curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
+        curses.mouseinterval(0)
+        curses.flushinp()
+        self._full_redraw = True
+        try:
+            self.draw_visible_views()
+        except curses.error:
+            pass
+
+        if spawn_error:
+            self.app.log.error(f"Could not run: {printable}: {spawn_error}")
+        return rc
 
     def flash_active(self) -> bool:
         """True while a flash should keep the main loop redrawing the bottom bar

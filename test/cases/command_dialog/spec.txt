@@ -3,7 +3,10 @@
 # first, then every ref on it (branch / tag / remote). Select a77abfa (tag
 # v1.0.0 + origin/master), open the dialog, and Tab through the tokens: id ->
 # remote -> tag, each pasted in place of the last. Then build and run
-# `branch f8-demo <id>` for real - a77abfa gains a [f8-demo] decoration.
+# `branch f8-demo <id>` for real. Every F8 command runs with the curses UI
+# suspended and the real terminal handed to git (so an editor / prompt / pager
+# would just work); the console shows the command and an exit line, and Enter
+# returns to the TUI - where a77abfa now gains a [f8-demo] decoration.
 size      120x40
 config    default
 launch
@@ -26,6 +29,14 @@ wait      stable
 key       <F8>
 text      "branch f8-demo "
 key       <Tab>
+key       <Enter>
+wait      stable
+# The command now runs with curses suspended and git attached to the real
+# terminal (it prints the command + an exit line and waits). This Enter is the
+# "Press Enter to return" that hands control back to the TUI. The mid-shell-out
+# console frame isn't captured: pyte has no alternate-screen buffer, so it would
+# render the old TUI bleeding through rather than the clean screen a real
+# terminal shows.
 key       <Enter>
 wait      2.5
 capture   after_run
