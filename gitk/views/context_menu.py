@@ -367,6 +367,10 @@ class ContextMenu(ListView):
                 ("Delete anyway? Unmerged commits will be lost.", Screen.C_ERROR),
             ],
             label="[Force delete]",
+            # Local and instant; the branch just disappears from the refs list.
+            # The remote-side deletes (remove_remote_ref / remove_tag) hit the
+            # network and keep their bar.
+            quiet=True,
         )
 
     def remove_tag(self, tag_name):
@@ -375,7 +379,12 @@ class ContextMenu(ListView):
 
         # Pushing the deletion to each remote hits the network, and this runs
         # on the UI thread - keep the in-progress bar up for the whole batch.
-        self.app.screen.show_working(f"Working: deleting tag {tag_name} ...")
+        # With no remotes to push to this is just a local `git tag -d`: instant,
+        # and the tag vanishes from the refs list, so stay quiet about it like
+        # the other local-ref commands (run_git's `quiet`).
+        quiet = not remotes
+        if not quiet:
+            self.app.screen.show_working(f"Working: deleting tag {tag_name} ...")
         try:
             result = Job.run_job(self.app, ["git", "tag", "-d", tag_name])
             if result.returncode == 0:
@@ -388,14 +397,15 @@ class ContextMenu(ListView):
                 if result.returncode == 0:
                     removed_from_remotes.append(remote)
         finally:
-            self.app.screen.clear_working()
+            if not quiet:
+                self.app.screen.clear_working()
 
         if removed_from_remotes:
             self.app.git_refs.reload_refs()
-            self.app.log.success(
-                f"Deleted tag {tag_name} from remotes: "
-                + " ".join(removed_from_remotes)
+            message = f"Deleted tag {tag_name} from remotes: " + " ".join(
+                removed_from_remotes
             )
+            self.app.log.info(message) if quiet else self.app.log.success(message)
         else:
             self.app.log.error(f"Error deleting tag: {result.stderr}")
 

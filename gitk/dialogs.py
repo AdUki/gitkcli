@@ -683,6 +683,8 @@ class NewRefDialogPopup(UserInputDialogPopup):
                 "Overwrite it? (uses git branch -M)",
             ],
             label="[Overwrite]",
+            # Local and instant; the renamed branch shows up in the refs list.
+            quiet=True,
         )
 
     def _create_ref(self, ref_type, name, commit_id, force):
@@ -701,6 +703,8 @@ class NewRefDialogPopup(UserInputDialogPopup):
                 f"Overwrite it? (uses git {ref_type} --force)",
             ],
             label="[Overwrite]",
+            # Purely local and instant; the new ref shows up in the refs list.
+            quiet=True,
         )
 
 

@@ -47,11 +47,20 @@ class App:
         title="",
         lines=(),
         label="[Yes]",
+        quiet=False,
     ):
         """Run a git command and react to the result. On success: run the
         requested refreshes and log `ok`. On a forceable rejection (`retry` set,
         not already forcing, and a `reasons` substring in stderr): pop a confirm
-        dialog. Otherwise log `err` + stderr. Returns the CompletedProcess."""
+        dialog. Otherwise log `err` + stderr. Returns the CompletedProcess.
+
+        `quiet` drops both bits of bottom-bar ceremony - the in-progress bar
+        (with its screen dim) and the green success flash - for commands that
+        finish in a blink and show their own result: creating / deleting /
+        renaming a local ref repaints the refs list immediately, so the bar
+        would only flicker and the flash would sit on the bottom bar for two
+        seconds saying what the screen already shows. The log line still lands
+        in the log view, and failures still raise the error dialog."""
         # Paint the in-progress bar before the call: run_job blocks the event
         # loop, so nothing can repaint until the command returns. The refreshes
         # run inside the same bar - they block too (e.g. the uncommitted-changes
@@ -59,7 +68,8 @@ class App:
         previous_message = self.screen.working_message
         previous_dim = Screen.dimmed
         message = "Working: " + " ".join(args) + " ..."
-        self.screen.show_working(message)
+        if not quiet:
+            self.screen.show_working(message)
         try:
             result = Job.run_job(self, args)
             if result.returncode == 0:
@@ -70,7 +80,7 @@ class App:
                 if check_uncommitted:
                     self.git_log.check_uncommitted_changes()
                 if ok:
-                    self.log.success(ok)
+                    self.log.info(ok) if quiet else self.log.success(ok)
             elif retry and not force and any(r in result.stderr for r in reasons):
                 self.confirm_dialog.confirm(
                     title, list(lines), retry, confirm_label=label
@@ -82,7 +92,7 @@ class App:
             # may have started a streaming reload (reload_commits) that owns the
             # bar until its first rows arrive. Restore rather than clear so a
             # command run during such a reload gives the bar back to it.
-            if self.screen.working_message == message:
+            if not quiet and self.screen.working_message == message:
                 if previous_message:
                     self.screen.working_message = previous_message
                     Screen.dimmed = previous_dim
