@@ -208,9 +208,11 @@ class ListView(View):
         else:
             return None
 
-    def search(self, backward: bool = False, repeat: bool = False):
+    def search(self, backward: bool = False, repeat: bool = False) -> bool:
+        """Move the cursor to the next/previous match. True when one was
+        found, so the panes can jump-list a search that went somewhere."""
         if not self._search_dialog:
-            return
+            return False
 
         ranges = []
         if not backward:
@@ -226,7 +228,8 @@ class ListView(View):
             for i in search_range:
                 if self._search_dialog.matches(self.items[i]):
                     self.set_selected(i)
-                    return
+                    return True
+        return False
 
     def handle_mouse_input(self, mouse) -> bool:
         if mouse.event_type == "wheel-up":

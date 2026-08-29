@@ -1,0 +1,15 @@
+# A search match is a jump: the position it started from goes on the jump list,
+# so Ctrl-Left returns there. Search from HEAD to the off-by-one commit
+# (12add6e, [29/303]), then step back to HEAD ([1/303]).
+size      120x40
+config    default
+launch
+wait      stable
+key       /
+text      "off-by-one"
+key       <Enter>
+wait      stable
+capture   at_match
+key       C-Left
+wait      stable
+capture   back_to_start

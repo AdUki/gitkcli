@@ -12,6 +12,7 @@ from __future__ import annotations
 import curses
 import re
 import typing
+from functools import partial
 
 from gitk.config import copy_to_clipboard
 from gitk.input import (
@@ -125,7 +126,7 @@ class RefListItem(TextListItem):
 
     def activate(self) -> bool:
         app = self.get_app()
-        if app.git_log.select_commit(self.data["id"]):
+        if app.git_log.jump_to_commit(self.data["id"]):
             app.git_log.show()
         else:
             app.log.warning(f"Commit with hash {self.data['id']} not found")
@@ -147,13 +148,14 @@ class StatListItem(TextListItem):
         super().__init__(txt, color)
 
     def jump_to_file(self):
-        diff = self.get_app().git_diff
-        diff.add_jump_point()
+        app = self.get_app()
+        app.jump_list.record()
         # Escape the path: filenames can legally contain regex metacharacters
         # ('[', '(', '+', '.', ...); without re.escape a name like "test[1].txt"
         # makes re.compile raise (crash) and benign metachars mis-match the line.
-        diff.set_selected(re.compile(f"diff.*{re.escape(self.stat_file_path)}"), "top")
-        diff.add_jump_point()
+        app.git_diff.set_selected(
+            re.compile(f"diff.*{re.escape(self.stat_file_path)}"), "top"
+        )
 
     def activate(self) -> bool:
         self.jump_to_file()
@@ -187,6 +189,9 @@ class DiffListItem(TextListItem):
         blame_revision = app.git_diff.blame_revision()
         if not (self.old_file_path and self.old_file_line and blame_revision):
             return
+        # Capture the departure point up front: the blame below may not resolve,
+        # and by then the cursor has moved off the line it started on.
+        point = app.jump_list.capture()
 
         args = [
             "git",
@@ -213,18 +218,20 @@ class DiffListItem(TextListItem):
         if id.startswith("^"):
             id = Job.run_job(app, ["git", "rev-parse", id]).stdout.lstrip("^").rstrip()
 
-        commit = app.git_log.select_commit(id)
-        if not commit:
+        row = app.git_log.find_row(id)
+        if row is None:
             return
+        # Record the blamed line before the cursor moves off it, so the jump
+        # list comes back here and not to the origin commit.
+        app.jump_list.record(point)
+        # select_row, not select_commit: the log cursor must not load the origin
+        # commit into the diff pane behind the show_commit below.
+        app.git_log.select_row(row)
 
         diff = app.git_diff
-        app.git_log.add_to_jump_list(diff.view_key, diff._selected, diff._offset_y)
-
-        def on_finished():
-            diff.select_line(file_path, file_line)
-            app.git_log.add_to_jump_list(commit.id, diff._selected, diff._offset_y)
-
-        diff.show_commit(commit.id, on_finished=on_finished, add_to_jump_list=False)
+        diff.show_commit(
+            id, on_finished=partial(diff.select_line, file_path, file_line)
+        )
 
     def activate(self) -> bool:
         self.jump_to_origin()

@@ -1,4 +1,5 @@
 # Open Git Refs (F2), move to a buried branch, Enter -> log jumps there centered.
+# That is a jump, so Ctrl-Left returns the log to the row it was on before (HEAD).
 size      120x40
 launch
 key       <F2>
@@ -7,3 +8,6 @@ key       <Down>*2
 key       <Enter>
 wait      stable
 capture   jumped
+key       C-Left
+wait      stable
+capture   jumped_back

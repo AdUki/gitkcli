@@ -1,0 +1,19 @@
+# Walking the log cursor is not a jump, in split view either - even though every
+# step reloads the diff pane. Enter side split, open a commit's diff ([5/303],
+# the one recorded point), Ctrl-w back to the log pane, walk six rows down, then
+# Ctrl-Left: it returns to the row the diff was opened from, not one row up.
+size      120x40
+config    default
+launch
+key       |
+wait      stable
+key       <Down>*4
+key       <Enter>
+wait      stable
+key       C-w
+key       <Down>*6
+wait      stable
+capture   walked
+key       C-Left
+wait      stable
+capture   jumped_back

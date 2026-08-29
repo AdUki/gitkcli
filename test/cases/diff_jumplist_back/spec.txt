@@ -1,8 +1,8 @@
 # Return from a blame/origin jump via the jump list ([<-] / Ctrl-Left).
 # Open a3d1fd1's diff, blame the removed "version" line (Enter) which jumps to the
-# origin commit abc7af0, then walk back through the jump list with Ctrl-Left. The
-# blame pushes a few intermediate entries, so three steps land back on a3d1fd1's
-# diff at the exact line we blamed from ([16/24]).
+# origin commit abc7af0, then step back with Ctrl-Left. The blame records exactly
+# one point - the line it was fired from - so a single step lands back on
+# a3d1fd1's diff at that line ([16/24]), in the diff pane.
 size      120x40
 config    default
 run       git checkout --detach a3d1fd1
@@ -11,10 +11,6 @@ key       <Enter>
 wait      stable
 key       j*15
 key       <Enter>
-wait      stable
-key       <C-Left>
-wait      stable
-key       <C-Left>
 wait      stable
 key       <C-Left>
 wait      stable

@@ -345,13 +345,16 @@ class UncommittedChangesListItem(SegmentedListItem):
 
     def load_to_view(self):
         diff = self.get_app().git_diff
-        if diff.shows(self.id):
-            return
-        diff.show_worktree(self._staged, add_to_jump_list=True)
+        if not diff.shows(self.id):
+            diff.show_worktree(self._staged)
 
     def activate(self) -> bool:
+        app = self.get_app()
+        # Opening the diff is a jump, so the list can bring the cursor back to
+        # this row - and, from the diff pane, back to the log pane with it.
+        app.jump_list.record()
         self.load_to_view()
-        self.get_app().git_diff.show()
+        app.git_diff.show()
         return True
 
 
@@ -421,8 +424,12 @@ class CommitListItem(SegmentedListItem):
             diff.show_commit(self.id)
 
     def activate(self) -> bool:
+        app = self.get_app()
+        # Opening the diff is a jump, so the list can bring the cursor back to
+        # this row - and, from the diff pane, back to the log pane with it.
+        app.jump_list.record()
         self.load_to_view()
-        self.get_app().git_diff.show()
+        app.git_diff.show()
         return True
 
 

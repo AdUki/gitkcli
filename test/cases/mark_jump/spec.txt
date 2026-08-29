@@ -1,4 +1,5 @@
-# Mark a commit (m), go to top (g), then jump back to the mark (M).
+# Mark a commit (m), go to top (g), then jump back to the mark (M). Both g and M
+# are jumps, so Ctrl-Left undoes the M and returns to the top row.
 size      120x40
 launch
 key       <Down>*18
@@ -8,3 +9,6 @@ capture   at_top
 key       M
 wait      stable
 capture   back_to_mark
+key       C-Left
+wait      stable
+capture   jump_back_to_top

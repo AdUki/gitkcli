@@ -196,7 +196,7 @@ class ContextMenu(ListView):
             self.append(
                 ContextMenuItem(
                     "Return to mark",
-                    view.select_commit,
+                    view.jump_to_commit,
                     [view.marked_commit_id],
                     bool(view.marked_commit_id),
                 )

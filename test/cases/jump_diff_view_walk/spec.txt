@@ -1,8 +1,8 @@
-# Walk the jumplist while staying inside the diff view (active view is the
-# diff, not the log). Open three commit diffs to build the jumplist, then
-# Ctrl-Left / Ctrl-Right re-show the previous/next commit's diff in place.
-# Evidence is the diff-view title bar "Commit <sha>" (and its line counter),
-# which changes as the jumplist moves.
+# The jump list crosses panes. Open three commit diffs (each Enter records the
+# log row it was opened from), then scroll inside the last one. Ctrl-Left leaves
+# the diff pane for the log row that diff was opened from, and again for the
+# previous one; Ctrl-Right walks forward, the last step landing back in the diff
+# pane at the line it was left at (forward_to_diff == diff_third).
 size      120x40
 launch
 key       <Enter>
@@ -15,10 +15,17 @@ key       q
 key       <Down>*5
 key       <Enter>
 wait      stable
+key       j*8
+wait      stable
 capture   diff_third
 key       C-Left
 wait      stable
-capture   diff_back
+capture   back_to_log
+key       C-Left
+wait      stable
+capture   back_further
 key       C-Right
 wait      stable
-capture   diff_forward
+key       C-Right
+wait      stable
+capture   forward_to_diff

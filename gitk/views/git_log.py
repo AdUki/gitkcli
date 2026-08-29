@@ -29,8 +29,6 @@ class GitLogView(ListView):
         self.commits = {}  # map: git_id --> { parents, date, author, title }
 
         self.marked_commit_id = ""
-        self.jump_list = []
-        self.jump_index = 0
         self.head_branch = ""
         self.head_id = ""
         # Whether the working tree / index currently differ; recomputed by
@@ -87,10 +85,10 @@ class GitLogView(ListView):
                 [
                     SplitButtonSegment(Screen.C_TITLE),
                     ButtonSegment(
-                        "[<-]", lambda: self.move_in_jump_list(+1), Screen.C_TITLE
+                        "[<-]", lambda: self.app.jump_list.move(+1), Screen.C_TITLE
                     ),
                     ButtonSegment(
-                        "[->]", lambda: self.move_in_jump_list(-1), Screen.C_TITLE
+                        "[->]", lambda: self.app.jump_list.move(-1), Screen.C_TITLE
                     ),
                 ],
                 title_color=Screen.C_DATA,
@@ -299,65 +297,39 @@ class GitLogView(ListView):
         ):
             self._pending_select_id = ""
 
-    def add_to_jump_list(
-        self,
-        commit_id: str,
-        line: typing.Optional[int] = None,
-        offset_y: typing.Optional[int] = None,
-    ):
-        # Drop any forward history; the current position is now at index 0, so
-        # jump_index must be 0 regardless of which path we take below (resetting
-        # it only after the insert left it stale on the dedup early-return).
-        self.jump_list = self.jump_list[self.jump_index :]
-        self.jump_index = 0
-        entry = (commit_id, line, offset_y)
-        if self.jump_list and self.jump_list[0] == entry:
-            return
-        self.jump_list.insert(0, entry)
-
-    def move_in_jump_list(self, jump: int):
-        if not self.jump_list:
-            return True
-        new_index = self.jump_index + jump
-        if not (0 <= new_index < len(self.jump_list)):
-            return True
-
-        self.jump_index = new_index
-        commit_id, line, offset_y = self.jump_list[new_index]
-        is_local = commit_id.startswith("local-")
-
-        # Locate the item in git_log; skip the entry if not found
-        idx = next(
+    def find_row(self, view_key: str) -> typing.Optional[int]:
+        """Index of the row `view_key` names - a commit sha, or an uncommitted
+        pseudo-row id - or None when it is not (or no longer) loaded."""
+        return next(
             (
                 i
                 for i, item in enumerate(self.items)
                 if isinstance(item, (CommitListItem, UncommittedChangesListItem))
-                and item.id == commit_id
+                and item.id == view_key
             ),
             None,
         )
-        if idx is None:
-            self.move_in_jump_list(jump)
-            return True
 
-        if line is not None:
-            self.app.git_diff.remember_position(commit_id, line, offset_y)
+    def select_row(self, index: int):
+        """Move the cursor without loading the row into the diff pane, for the
+        jump list - which drives that pane itself."""
+        super().set_selected(index)
 
-        was_same_commit = self.app.git_diff.shows(commit_id)
+    def jump_to_commit(self, commit_id: str) -> bool:
+        """Select `commit_id` as an explicit jump (M, "Return to mark", a ref
+        activation), so the jump list can bring the cursor back here."""
+        point = self.app.jump_list.capture()
+        if not self.select_commit(commit_id):
+            return False
+        self.app.jump_list.record(point)
+        return True
 
-        # Move the git_log cursor without going through GitLogView.set_selected →
-        # *ListItem.load_to_view → show_commit/show_diff, which would re-push to
-        # the jumplist and clobber forward entries.
-        super().set_selected(idx)
-
-        if was_same_commit:
-            if line is not None:
-                self.app.git_diff.restore_view_position(line, offset_y)
-        elif is_local:
-            item = self.items[idx]
-            self.app.git_diff.show_worktree(item._staged)
-        else:
-            self.app.git_diff.show_commit(commit_id, add_to_jump_list=False)
+    def search(self, backward: bool = False, repeat: bool = False) -> bool:
+        """A search that lands on a match is a jump: record where it started."""
+        point = self.app.jump_list.capture()
+        if not super().search(backward, repeat):
+            return False
+        self.app.jump_list.record(point)
         return True
 
     def get_selected_commit_id(self):
@@ -469,7 +441,10 @@ class GitLogView(ListView):
         elif key == ord("m"):
             self.mark_commit()
         elif key == ord("M"):
-            self.select_commit(self.marked_commit_id)
+            self.jump_to_commit(self.marked_commit_id)
+        elif key in (ord("g"), ord("G"), curses.KEY_HOME, curses.KEY_END):
+            self.app.jump_list.record()
+            return super().handle_input(keyboard)
         else:
             return super().handle_input(keyboard)
         return True

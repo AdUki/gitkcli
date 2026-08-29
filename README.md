@@ -31,7 +31,7 @@ The hard part of any gitk clone is the commit graph layout. GitkCLI doesn't rein
 - **Blame integration** - trace line origins across commits with `ENTER` on diff lines
 - **Commit operations** - cherry-pick, revert, reset (soft/hard), create branches/tags
 - **Uncommitted changes** display with quick access to staged/unstaged modifications
-- **Jump history** - navigate back and forth through your exploration with `<---` / `--->` buttons
+- **Jump history** - step back and forth through your exploration with `<---` / `--->`, across both panes
 - **Context-sensitive menus** - right-click for operations on commits, branches, tags, and more
 - **Mouse support** - click to navigate, drag floating windows, scroll with wheel
 
@@ -102,8 +102,15 @@ gitkcli origin/main..HEAD
 - `[Ignore whitespace]`: title-bar button to toggle whitespace-insensitive diffing
 
 ### Navigation History
-- `CTRL+LEFT` / `<---`: Navigate back in jump history
-- `CTRL+RIGHT` / `--->`: Navigate forward in jump history
+- `CTRL+LEFT` / `CTRL-O` / `<---`: Navigate back in jump history
+- `CTRL+RIGHT` / `CTRL-I` / `--->`: Navigate forward in jump history
+
+The jump list works like Vim's: only real jumps go on it - opening a commit's
+diff, jump-to-file, blame-to-origin, `g`/`G`, a search match, `M`, or opening a
+ref - while walking the cursor and switching panes do not. Each entry remembers
+its pane, so stepping back out of a diff you opened from the log returns to the
+log row you opened it from, and stepping forward returns to the diff at the line
+you left.
 
 ### General
 - `q`: Quit current view or application

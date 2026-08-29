@@ -74,12 +74,12 @@ class GitDiffView(ListView):
                     ),
                     ButtonSegment(
                         "[<-]",
-                        lambda: self.app.git_log.move_in_jump_list(+1),
+                        lambda: self.app.jump_list.move(+1),
                         Screen.C_TITLE,
                     ),
                     ButtonSegment(
                         "[->]",
-                        lambda: self.app.git_log.move_in_jump_list(-1),
+                        lambda: self.app.jump_list.move(-1),
                         Screen.C_TITLE,
                     ),
                 ],
@@ -89,22 +89,18 @@ class GitDiffView(ListView):
 
         self.set_search_dialog(SearchDialogPopup(app, ID_GIT_DIFF_SEARCH))
 
-    def show_commit(self, commit_id: str, on_finished=None, add_to_jump_list=True):
-        """Load 'git show -m COMMIT'. Jump-listed by default."""
+    def show_commit(self, commit_id: str, on_finished=None):
+        """Load 'git show -m COMMIT'."""
         self._show_target(CommitTarget(commit_id), on_finished)
-        if add_to_jump_list:
-            self.app.git_log.add_to_jump_list(commit_id)
 
     def show_diff(self, old_commit_id: str, new_commit_id: str):
-        """Load a two-revision range diff. Never jump-listed or position-tracked."""
+        """Load a two-revision range diff. Never position-tracked, so it is not
+        a place the jump list can bring you back to."""
         self._show_target(RangeTarget(old_commit_id, new_commit_id))
 
-    def show_worktree(self, staged: bool, add_to_jump_list: bool = False):
+    def show_worktree(self, staged: bool):
         """Load uncommitted changes: the index if staged, else the working tree."""
-        target = WorktreeTarget(staged)
-        self._show_target(target)
-        if add_to_jump_list:
-            self.app.git_log.add_to_jump_list(target.view_key)
+        self._show_target(WorktreeTarget(staged))
 
     def show_tag_annotation(self, tag_id: str):
         """Load an annotated tag's body via 'git cat-file -p' and raise this pane."""
@@ -167,10 +163,13 @@ class GitDiffView(ListView):
     def _tracks_position(self) -> bool:
         return self.target is not None and self.target.tracks_position
 
-    def add_jump_point(self):
-        """Record the current commit + scroll position so g/G-style jumps and
-        file navigation within the diff can be undone with the jump list."""
-        self.app.git_log.add_to_jump_list(self.view_key, self._selected, self._offset_y)
+    def search(self, backward: bool = False, repeat: bool = False) -> bool:
+        """A search that lands on a match is a jump: record where it started."""
+        point = self.app.jump_list.capture()
+        if not super().search(backward, repeat):
+            return False
+        self.app.jump_list.record(point)
+        return True
 
     def set_selected(self, what: int | str | re.Pattern, visible_mode="center") -> bool:
         ret = super().set_selected(what, visible_mode)
@@ -241,13 +240,8 @@ class GitDiffView(ListView):
         elif key == KEY_CTRL("p"):
             self.app.git_log.handle_input(KeyboardState(curses.KEY_UP))
         elif key in (ord("g"), ord("G"), curses.KEY_HOME, curses.KEY_END):
-            track = self._tracks_position()
-            if track:
-                self.add_jump_point()
-            ret = super().handle_input(keyboard)
-            if track:
-                self.add_jump_point()
-            return ret
+            self.app.jump_list.record()
+            return super().handle_input(keyboard)
         else:
             return super().handle_input(keyboard)
         return True

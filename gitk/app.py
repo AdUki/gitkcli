@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from gitk.input import KeyboardState
 from gitk.jobs import Job
+from gitk.jump_list import JumpList
 from gitk.screen import Screen
 from gitk.split_layout import SplitLayout
 
@@ -32,6 +33,8 @@ class App:
 
         # Split-view state + tiling logic, reached as `app.split`.
         self.split = SplitLayout(self)
+        # Back/forward history shared by the log and diff panes, `app.jump_list`.
+        self.jump_list = JumpList(self)
 
     def run_git(
         self,
