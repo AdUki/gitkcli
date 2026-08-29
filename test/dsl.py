@@ -38,6 +38,7 @@ NAMED = {
     "enter": b"\r",
     "return": b"\r",
     "tab": b"\t",
+    "s-tab": b"\x1b[Z",
     "space": b" ",
     "bspace": b"\x7f",
     "backspace": b"\x7f",

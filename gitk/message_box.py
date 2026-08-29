@@ -72,10 +72,10 @@ class ConfirmDialogPopup(_RedMessageBoxPopup):
         elif key in (curses.KEY_EXIT, ord("n"), ord("N"), ord("q")):
             self.hide()
         else:
-            # Left/Right move focus between buttons; Enter activates the focused
-            # button. Default focus is [Cancel], so a bare Enter cancels; the
-            # user Left-arrows to the confirm button to proceed. (y/Y always
-            # confirms regardless of focus.)
+            # Left/Right (or Tab/Shift+Tab) move focus between buttons; Enter
+            # activates the focused button. Default focus is [Cancel], so a bare
+            # Enter cancels; the user Left-arrows (or Tabs) to the confirm button
+            # to proceed. (y/Y always confirms regardless of focus.)
             super().handle_input(keyboard)
         # Modal: swallow every other key. Otherwise global shortcuts (F1-F5,
         # Ctrl+o/i) would fall through and could bury this popup behind a
@@ -114,7 +114,8 @@ class ErrorDialogPopup(_RedMessageBoxPopup):
         )
 
     def handle_input(self, keyboard):
-        # Any of Enter / Esc / o / q dismisses; Left/Right keep focus on [Ok].
+        # Any of Enter / Esc / o / q dismisses; Left/Right/Tab keep focus on
+        # [Ok].
         if keyboard.key in ENTER_KEYS or keyboard.key in (
             curses.KEY_EXIT,
             ord("o"),

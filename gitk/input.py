@@ -71,6 +71,10 @@ class KeyboardState:
                 key = KEY_SHIFT_RIGHT
             elif sequence == [27, 91, 51, 59, 53, 126]:
                 key = KEY_CTRL_DEL
+            elif sequence == [27, 91, 90]:
+                # Shift+Tab: ncurses only reports KEY_BTAB when terminfo has
+                # kcbt, so decode the raw sequence too.
+                key = curses.KEY_BTAB
             else:
                 return False
         else:

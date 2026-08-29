@@ -17,7 +17,7 @@ from gitk.diff_target import (
     WORKING_TITLE,
 )
 from gitk.ids import ID_GIT_LOG
-from gitk.input import ENTER_KEYS
+from gitk.input import ENTER_KEYS, KEY_TAB
 from gitk.items import Item
 from gitk.screen import Screen
 from gitk.segments import ButtonSegment, FillerSegment, RefSegment, Segment, TextSegment
@@ -183,8 +183,9 @@ class SegmentedListItem(Item):
 
 
 class ButtonRowItem(SegmentedListItem):
-    """A row of buttons navigable with Left/Right (or h/l); Enter activates the
-    focused button. Only the focused button is highlighted, not the whole row."""
+    """A row of buttons navigable with Left/Right (or h/l, or Tab/Shift+Tab);
+    Enter activates the focused button. Only the focused button is highlighted,
+    not the whole row."""
 
     def __init__(self, segments=[], bg_color=Screen.C_NORMAL):
         super().__init__(segments, bg_color)
@@ -217,10 +218,10 @@ class ButtonRowItem(SegmentedListItem):
 
     def handle_input(self, keyboard):
         key = keyboard.key
-        if key in (curses.KEY_LEFT, ord("h")):
+        if key in (curses.KEY_LEFT, ord("h"), curses.KEY_BTAB):
             self._move_focus(-1)
             return True
-        if key in (curses.KEY_RIGHT, ord("l")):
+        if key in (curses.KEY_RIGHT, ord("l"), KEY_TAB):
             self._move_focus(1)
             return True
         if key in ENTER_KEYS:

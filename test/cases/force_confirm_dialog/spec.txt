@@ -12,3 +12,11 @@ text      "master"
 key       <Enter>
 wait      stable
 capture   force_confirm
+# Tab walks the button row like Right/l does: one Tab moves focus off the
+# default [Cancel] onto [Overwrite], Shift+Tab walks back.
+key       <Tab>
+wait      stable
+capture   force_confirm_tab
+key       <S-Tab>
+wait      stable
+capture   force_confirm_shift_tab
