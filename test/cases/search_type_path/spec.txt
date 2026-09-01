@@ -1,7 +1,7 @@
 # Cycle to [Filepaths] (Tab x3: Txt -> ID -> Message -> Filepaths). Path search
 # runs `git log -- *<query>*`; every commit touching a matching file is flagged.
-# HEAD touches src/main.py, so 'n' steps to the first commit below HEAD that
-# touches a *utils* file: 07cd75b "Clarify error path" [3/303].
+# Enter lands on the first commit below HEAD that touches a *utils* file
+# (07cd75b "Clarify error path" [3/303]), and 'n' steps on to the next one.
 size      120x40
 launch
 key       /

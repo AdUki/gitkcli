@@ -1,7 +1,9 @@
-# Diff (pickaxe) search with both flags flipped: <Regexp> ON makes it `git log
-# -G <re>` (regex pickaxe) instead of -S, and <Case> OFF prepends -i. Cycle to
-# [Diff] (Tab*4), F2 enables regexp, F1 disables case, then search. Exercises the
-# -G and -i argument branches of the git search builder.
+# Diff search with both flags flipped: <Regexp> ON passes the query to
+# `git log -G` as a regex verbatim (OFF escapes it to a literal), and <Case> OFF
+# prepends -i. Cycle to [Diff] (Tab*4), F2 enables regexp, F1 disables case,
+# then search. Exercises the regex and -i argument branches of the git search
+# builder; "value_3.9" matches value_309/319/... so Enter lands on the newest
+# one, a77abfa "Speed up hot path" [2/303].
 size      120x40
 launch
 key       /

@@ -1,0 +1,14 @@
+# Diff search with <Regexp> OFF is a literal search, so the query is escaped
+# before it reaches `git log -G` (whose argument is always a POSIX extended
+# regex). "value_3.9" as a regex matches value_309/319/... - as a literal it
+# matches nothing, and an unescaped '.' here would wrongly jump the cursor to
+# a77abfa. Nothing to land on is the one search outcome with no visible effect
+# of its own, so the bottom bar says so.
+size      120x40
+launch
+key       /
+key       <Tab>*4
+text      "value_3.9"
+key       <Enter>
+wait      stable
+capture   no_match

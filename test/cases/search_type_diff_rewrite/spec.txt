@@ -1,0 +1,15 @@
+# Diff search must find a commit that *rewrites* a line, not just one that adds
+# or removes the searched string. Every "Bump build number" commit replaces
+# `"build_number": N` with the next N, leaving the number of occurrences of
+# "build_number" unchanged - so the old pickaxe (`git log -S`) matched only the
+# single commit that created config/settings.json, while `-G` matches all 28
+# rewrites. Enter lands on the newest of them: a3d1fd1 "Clarify error path"
+# [104/303].
+size      120x40
+launch
+key       /
+key       <Tab>*4
+text      "build_number"
+key       <Enter>
+wait      stable
+capture   rewrite_match

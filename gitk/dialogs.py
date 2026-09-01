@@ -787,7 +787,14 @@ class SearchDialogPopup(UserInputDialogPopup):
         super().execute()
 
 
+# git's pickaxe argument (-G) is always a POSIX extended regex, so a literal
+# "Diff" query has to escape the ERE metacharacters itself. Only those are
+# escaped: a backslash before an ordinary character is undefined in ERE.
+_ERE_SPECIAL = re.compile(r"([.^$*+?()\[\]{}|\\])")
+
+
 class GitSearchDialogPopup(SearchDialogPopup):
+    _WORKING_BAR = "Working: searching commits ..."
     _TYPES = [
         ("txt", "[Txt]"),
         ("id", "[ID]"),
@@ -852,17 +859,29 @@ class GitSearchDialogPopup(SearchDialogPopup):
             elif self.search_type == "id":
                 args.append(f"{self.input.txt}^!")
             elif self.search_type == "diff":
-                if self.use_regexp.toggled:
-                    args.append("-G")
-                else:
-                    args.append("-S")
-                args.append(self.input.txt)
+                # Always -G ("changed lines matching"), never -S: -S is a
+                # pickaxe on the *number of occurrences* of the string, so a
+                # commit that rewrites a line without adding or removing an
+                # occurrence (`setValue(..., "Speaker")` -> `..., "Speaker\n")`)
+                # does not match - surprising for a "search the diff" prompt.
+                args.append("-G")
+                args.append(
+                    self.input.txt
+                    if self.use_regexp.toggled
+                    else _ERE_SPECIAL.sub(r"\\\1", self.input.txt)
+                )
             elif self.search_type == "path":
                 args.append("--")
                 args.append(f"*{self.input.txt}*")
 
             self.add_query_to_history()
-            self.app.git_log.job_search.start_job(args)
+            # dim=False: the search runs off the event loop, so the UI stays
+            # live - the bar is only a "still searching" hint, which a diff
+            # search over a big repo needs (it can take tens of seconds).
+            self.app.screen.show_working(self._WORKING_BAR, dim=False)
+            self.app.git_log.job_search.start_job(
+                args, on_finished=self._search_finished
+            )
 
         elif key == KEY_TAB:  # cycle through search types
             self.parent_list_view.dirty = True
@@ -875,3 +894,27 @@ class GitSearchDialogPopup(SearchDialogPopup):
             return super().handle_input(keyboard)
 
         return True
+
+    def _search_finished(self):
+        """Move the cursor onto a match once the git search returns, the way
+        Enter does for a [Txt] search. The job only fills found_ids, so without
+        this a search that took seconds ends with no visible effect beyond
+        highlighting rows the user may be thousands of lines away from.
+
+        A search that lands announces itself (the cursor moved, the row is
+        highlighted); one that finds nothing to land on has nothing to show, so
+        say so on the bottom bar."""
+        # Only drop the bar if it is still ours: a reload started meanwhile
+        # (which owns the bar until its first rows arrive) must keep its own.
+        if self.app.screen.working_message == self._WORKING_BAR:
+            self.app.screen.clear_working()
+        found = len(self.app.git_log.job_search.found_ids)
+        if not found:
+            self.app.screen.show_flash(f"No commit matches '{self.input.txt}'")
+        elif not self.parent_list_view.search(repeat=True):
+            # Matches exist but none is in the log view - e.g. the log was
+            # opened on revisions that exclude them.
+            plural = "" if found == 1 else "es"
+            self.app.screen.show_flash(
+                f"{found} match{plural} for '{self.input.txt}', none in this log"
+            )
