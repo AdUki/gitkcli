@@ -880,7 +880,9 @@ class GitSearchDialogPopup(SearchDialogPopup):
             # search over a big repo needs (it can take tens of seconds).
             self.app.screen.show_working(self._WORKING_BAR, dim=False)
             self.app.git_log.job_search.start_job(
-                args, on_finished=self._search_finished
+                args,
+                on_finished=self._search_finished,
+                scoped=self.search_type != "id",
             )
 
         elif key == KEY_TAB:  # cycle through search types

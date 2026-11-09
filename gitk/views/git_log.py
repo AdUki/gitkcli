@@ -23,6 +23,15 @@ from gitk.split_layout import SPLIT_OFF
 from gitk.view import MODE_FULLSCREEN
 
 
+def _split_pathspec(args: typing.List[str]):
+    """Split git arguments at the first `--`: (options and revisions, paths),
+    paths being None when there is no `--`."""
+    if "--" in args:
+        i = args.index("--")
+        return args[:i], args[i + 1 :]
+    return list(args), None
+
+
 class GitLogView(ListView):
     def __init__(self, app, git_args: typing.List, cmd_args: typing.List):
         super().__init__(app, ID_GIT_LOG, MODE_FULLSCREEN)
@@ -30,6 +39,9 @@ class GitLogView(ListView):
 
         self.marked_commit_id = ""
         self.head_branch = ""
+        # Every commit HEAD has pointed at while the app ran (see the head_id
+        # setter); search_args turns the loaded ones into search revisions.
+        self._seen_heads: typing.Dict[str, None] = {}  # insertion-ordered set
         self.head_id = ""
         # Whether the working tree / index currently differ; recomputed by
         # check_uncommitted_changes and consumed by _place_uncommitted_rows.
@@ -55,8 +67,49 @@ class GitLogView(ListView):
         self.pref_flags = ""
         self.job = GitLogJob(self.app, ID_GIT_LOG, list(self._cli_args))
         self.job_refresh_head = GitRefreshHeadJob(self.app)
-        self.job_search = GitSearchJob(self.app, cmd_args)
+        self.job_search = GitSearchJob(self.app)
         self.reset_dialog = ResetDialogPopup(app)
+
+    @property
+    def head_id(self) -> str:
+        return self._head_id
+
+    @head_id.setter
+    def head_id(self, id: str):
+        self._head_id = id
+        if id:
+            self._seen_heads[id] = None
+
+    def search_args(self, args: typing.List[str]) -> typing.List[str]:
+        """Arguments for the `git log` behind a non-[Txt] search: the view's own
+        arguments (CLI + preference flags, so e.g. an `--all` in the prefs is
+        searched too) plus `args`, the per-search options and an optional
+        `-- <pathspec>`.
+
+        Without an explicit revision the view shows the commits reachable from
+        HEAD *as it was when the log loaded*, and F5 / a checkout / a reset then
+        add commits reachable from each new HEAD. A bare `git log` would only
+        search from the current HEAD, so after HEAD moved (to another branch, or
+        back with a reset) the commits still shown above or beside it could
+        never be found. So also name every HEAD the loaded commits came from as
+        an extra revision. Only the loaded ones: a HEAD outside the view (e.g.
+        the log was opened on another branch) would merely widen the search to
+        commits matches() discards anyway, and a diff search over them is slow.
+        """
+        view_opts, view_paths = _split_pathspec(
+            [a for a in self.job.args if a != "--graph"]
+        )
+        search_opts, search_paths = _split_pathspec(args)
+        heads = [h for h in self._seen_heads if h in self.commits]
+        # A search pathspec is more specific than the view's; matches() keeps
+        # the result inside the view either way.
+        paths = search_paths if search_paths is not None else view_paths
+        return (
+            view_opts
+            + heads
+            + search_opts
+            + (["--"] + paths if paths is not None else [])
+        )
 
     def set_pref_flags(self, flags: str):
         self.pref_flags = flags

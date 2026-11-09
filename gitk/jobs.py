@@ -424,20 +424,22 @@ class GitDiffJob(Job):
 
 
 class GitSearchJob(Job):
-    def __init__(self, app, args=[]):
+    def __init__(self, app):
         super().__init__(app, ID_GIT_SEARCH)
         self.cmd = "git log --format=%H"
-        # CLI revision args (e.g. a branch name). These must precede any
-        # '--' pathspec separator added by the search, so keep them out of
-        # self.args (which the base class appends *after* the per-search args)
-        # and instead prepend them to args in start_job.
-        self.revisions = args
         self.found_ids = set()
 
-    def start_job(self, args=[], on_finished=None):
+    def start_job(self, args=[], on_finished=None, scoped=True):
+        """`args` are the per-search options (and an optional `-- <path>`).
+        When `scoped`, GitLogView.search_args wraps them with the revisions the
+        log view shows, so the search covers the commits on screen; an [ID]
+        search (`<id>^!`) names its one commit itself and must not be scoped -
+        its `^<parent>` exclusion would apply to the extra revisions too."""
         self.found_ids.clear()
         self.app.git_log.dirty = True
-        super().start_job(self.revisions + args, on_finished)
+        if scoped:
+            args = self.app.git_log.search_args(args)
+        super().start_job(args, on_finished)
 
     def process_item(self, item):
         self.found_ids.add(item)
