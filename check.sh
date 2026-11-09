@@ -6,9 +6,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# The project's own Python: package, entry shim, packaging, tests.
+# The project's own Python: the app package, the tuikit library and its
+# demos, the entry shim, packaging, tests.
 # build/ is gitignored (ruff skips it automatically).
-SOURCES=(gitk gitkcli.py setup.py test)
+SOURCES=(gitk tuikit demos gitkcli.py setup.py test)
 
 usage() {
     cat <<'EOF'
@@ -18,7 +19,7 @@ Commands:
   format     apply standard formatting (ruff format)
   lint       ruff check + format --check (add --fix to autofix)
   test       golden-screen test suite
-  coverage   run the suite under coverage, print a gitk/ report
+  coverage   run the suite under coverage, print a gitk/ + tuikit/ report
   all        format, then lint, then test
 
 Extra args are forwarded to the underlying tool, e.g.:

@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-from gitk.dialogs import SearchDialogPopup
-from gitk.ids import ID_LOG, ID_LOG_SEARCH
-from gitk.list_view import ListView
-from gitk.screen import Screen
-from gitk.segmented_items import WindowTopBarItem
-from gitk.segments import (
+from tuikit.dialogs import SearchDialog
+from tuikit.list_view import ListView
+from tuikit.segmented import WindowTopBarItem
+from tuikit.segments import (
     ButtonSegment,
     DynamicTextSegment,
-    HighlightToggleSegment,
+    HighlightButtonSegment,
     TextSegment,
 )
 
+from gitk.ids import ID_LOG, ID_LOG_SEARCH
+from gitk.screen import Screen
+
 
 class LogView(ListView):
+    # Logging each draw of the log view would append to it, and redraw it.
+    debug_draws = False
+
     def __init__(self, app):
         super().__init__(app, ID_LOG, "fullscreen")
 
@@ -24,7 +28,7 @@ class LogView(ListView):
                 "Logs",
                 [
                     ButtonSegment("[Clear]", lambda: self.clear(), Screen.C_TITLE),
-                    HighlightToggleSegment(
+                    HighlightButtonSegment(
                         "[Autoscroll]",
                         lambda: self.autoscroll,
                         self.toggle_autoscroll,
@@ -43,7 +47,7 @@ class LogView(ListView):
             )
         )
 
-        self.set_search_dialog(SearchDialogPopup(app, ID_LOG_SEARCH))
+        self.set_search_dialog(SearchDialog(app, ID_LOG_SEARCH))
 
     def change_log_level(self, value):
         self.app.log.level = max(0, min(5, self.app.log.level + value))

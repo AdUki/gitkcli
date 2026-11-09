@@ -8,21 +8,19 @@ import re
 import shlex
 import typing
 
+from tuikit.list_view import ListView
+from tuikit.segmented import WindowTopBarItem
+from tuikit.segments import ButtonSegment, RunsSegment
+from tuikit.view import MODE_FULLSCREEN
+
 from gitk.diff_target import LOCAL_STAGED_ID, LOCAL_WORKING_ID
 from gitk.dialogs import GitSearchDialogPopup, ResetDialogPopup
 from gitk.graph import CUT, DOT, CommitGraph
 from gitk.ids import ID_GIT_LOG
 from gitk.jobs import GitLogJob, GitRefreshHeadJob, GitSearchJob, Job
-from gitk.list_view import ListView, _raise_split_sibling
 from gitk.screen import Screen
-from gitk.segmented_items import (
-    CommitListItem,
-    UncommittedChangesListItem,
-    WindowTopBarItem,
-)
-from gitk.segments import ButtonSegment, GraphSegment, SplitButtonSegment
-from gitk.split_layout import SPLIT_OFF
-from gitk.view import MODE_FULLSCREEN
+from gitk.segmented_items import CommitListItem, UncommittedChangesListItem
+from gitk.segments import SplitButtonSegment
 
 
 def _split_pathspec(args: typing.List[str]):
@@ -252,7 +250,7 @@ class GitLogView(ListView):
             self.graph = None
 
     def graph_segments(self, id: str):
-        """The graph art of row `id` as a GraphSegment (one colour run per
+        """The graph art of row `id` as a RunsSegment (one colour run per
         lane), in a list: [] when not in graph mode or not on a row."""
         graph = self.graph
         if graph is None:
@@ -273,7 +271,7 @@ class GitLogView(ListView):
                 )
                 runs.append((text[start:x], color))
                 start = x
-        return [GraphSegment(runs, on_click)]
+        return [RunsSegment(runs, on_click)]
 
     def _sync_target(self):
         """Keep the cursor on the commit it was on (and the screen scrolled
@@ -356,10 +354,6 @@ class GitLogView(ListView):
         self.app.screen.show_working("Working: loading commits ...", dim=False)
         self.job.start_job(on_finished=self.app.screen.clear_working)
         self.check_uncommitted_changes()
-
-    def show(self):
-        _raise_split_sibling(self, self.app.git_diff)
-        super().show()
 
     def set_selected(self, what: int | str | re.Pattern, visible_mode="center") -> bool:
         ret = super().set_selected(what, visible_mode)
@@ -511,6 +505,8 @@ class GitLogView(ListView):
         self.items.insert(insert_at, item)
         if insert_at <= self._selected:
             self._selected += 1
+        # Also at the top row: a new commit lands above the view rather than
+        # shifting what is on screen.
         if insert_at <= self._offset_y:
             self._offset_y += 1
         self.dirty = True
@@ -699,17 +695,15 @@ class GitLogView(ListView):
         self.app.git_diff.show_diff(old_commit_id, new_commit_id)
         self.app.git_diff.show()
 
-    def handle_input(self, keyboard):
+    def handle_key(self, event):
         # Rows may have moved under the cursor since the last frame.
         self._sync_target()
-        key = keyboard.key
+        key = event.key
         if key == ord("q"):
             self.app.exit_program()
         elif key == curses.KEY_EXIT:
             if self.app.split.split_active():
-                self.app.split.set_split_mode(
-                    SPLIT_OFF
-                )  # Esc on the log pane leaves split view
+                self.app.split.unsplit()  # Esc on the log pane leaves split view
             else:
                 self.app.exit_program()
         elif key == ord("b"):
@@ -726,7 +720,7 @@ class GitLogView(ListView):
             self.jump_to_commit(self.marked_commit_id)
         elif key in (ord("g"), ord("G"), curses.KEY_HOME, curses.KEY_END):
             self.app.jump_list.record()
-            return super().handle_input(keyboard)
+            return super().handle_key(event)
         else:
-            return super().handle_input(keyboard)
+            return super().handle_key(event)
         return True

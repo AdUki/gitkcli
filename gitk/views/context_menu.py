@@ -2,47 +2,35 @@
 
 from __future__ import annotations
 
-from gitk.config import copy_to_clipboard
+from tuikit.dialogs import Menu
+from tuikit.items import MenuItem, SeparatorItem
+from tuikit.keys import KeyEvent
+
 from gitk.ids import ID_CONTEXT_MENU, ID_GIT_DIFF, ID_GIT_LOG, ID_GIT_REFS, ID_LOG
-from gitk.input import KeyboardState
-from gitk.items import ContextMenuItem, DiffListItem, SeparatorItem, StatListItem
+from gitk.items import DiffListItem, StatListItem
 from gitk.jobs import Job
-from gitk.list_view import ListView
 from gitk.screen import Screen
 from gitk.segmented_items import UncommittedChangesListItem
 
 
-class ContextMenu(ListView):
+class ContextMenu(Menu):
     def __init__(self, app):
-        super().__init__(app, ID_CONTEXT_MENU, "window")
-        self.is_popup = True
+        super().__init__(app, ID_CONTEXT_MENU, width=30)
         # F7 cycle state: (targets, view, row_x, row_y) and the index shown, or
         # None when no segment cycle is active. See start_cycle / advance_cycle.
         self._cycle = None
         self._cycle_index = -1
 
-    def on_activated(self):
-        super().on_activated()
-        self.app.mouse.capture_mouse_movement(True, self)
-
-    def on_deactivated(self):
-        super().on_deactivated()
-        self.app.mouse.capture_mouse_movement(False, self)
-
     def _append_copy_items(self, view, item):
         """The line/range/all clipboard trio shared by the git-log, git-diff and
         log context menus."""
+        self.append(MenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
         self.append(
-            ContextMenuItem("Copy line to clipboard", item.copy_text_to_clipboard)
-        )
-        self.append(
-            ContextMenuItem(
+            MenuItem(
                 "Copy range to clipboard", view.copy_text_range_to_clipboard, [item]
             )
         )
-        self.append(
-            ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard)
-        )
+        self.append(MenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
 
     def start_cycle(self, targets, view, row_x, row_y):
         """Begin the F7 segment cycle for a row. `targets` is the ordered
@@ -61,13 +49,20 @@ class ContextMenu(ListView):
         targets, view, row_x, row_y = self._cycle
         self._cycle_index = (self._cycle_index + 1) % len(targets)
         menu_item, view_id, segment_x = targets[self._cycle_index]
-        self.app.mouse.screen_x = max(0, row_x + segment_x)
-        self.app.mouse.screen_y = row_y
-        self.show_context_menu(menu_item, view_id, view=view, force=True)
+        self.show_context_menu(
+            menu_item,
+            view_id,
+            view=view,
+            force=True,
+            at=(max(0, row_x + segment_x), row_y),
+        )
 
     def show_context_menu(
-        self, item, view_id: str = "", view=None, force=False
+        self, item, view_id: str = "", view=None, force=False, at=None
     ) -> bool:
+        """Open the menu for `item` (as a row of `view_id`, default the active
+        view's) with its corner at screen position `at` (default: the mouse).
+        False when there is no menu for it."""
         if not force and self.app.screen.showed_views[-1] == self:
             return True
         # A plain (non-cycle) open clears any leftover cycle; force=True keeps it
@@ -80,8 +75,7 @@ class ContextMenu(ListView):
             view = self.app.screen.get_active_view()
         if not view_id:
             view_id = view.id
-        x = self.app.mouse.screen_x
-        y = self.app.mouse.screen_y
+        x, y = at if at is not None else self.app.mouse.position
         if item is self.app:  # main menu
             x, y = self._build_main_menu(item, view)
         elif view_id == ID_GIT_LOG and hasattr(item, "id"):
@@ -94,8 +88,7 @@ class ContextMenu(ListView):
             self._append_copy_items(view, item)
         else:
             return False
-        self.set_dimensions(x, y, len(self.items) + 2, 30)
-        self.show()
+        self.open_at(x, y)
         return True
 
     def _build_main_menu(self, item, view):
@@ -106,24 +99,20 @@ class ContextMenu(ListView):
         win_y, win_x = view.win.getbegyx()
         x = win_x + view.x
         y = win_y + view.y
-        self.append(ContextMenuItem("Show Git commit log <F1>", item.git_log.show))
-        self.append(ContextMenuItem("Show Git references <F2>", item.git_refs.show))
-        self.append(ContextMenuItem("Show Git commit diff <F3>", item.git_diff.show))
-        self.append(ContextMenuItem("Show Logs <F4>", item.log.view.show))
+        self.append(MenuItem("Show Git commit log <F1>", item.git_log.show))
+        self.append(MenuItem("Show Git references <F2>", item.git_refs.show))
+        self.append(MenuItem("Show Git commit diff <F3>", item.git_diff.show))
+        self.append(MenuItem("Show Logs <F4>", item.log.view.show))
         self.append(SeparatorItem())
-        self.append(
-            ContextMenuItem("Search </>", view.handle_input, [KeyboardState(ord("/"))])
-        )
-        self.append(
-            ContextMenuItem("Copy all to clipboard", view.copy_text_to_clipboard)
-        )
+        self.append(MenuItem("Search </>", view.handle_key, [KeyEvent(ord("/"))]))
+        self.append(MenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
         self.append(SeparatorItem())
-        self.append(ContextMenuItem("Refresh <F5>", item.git_log.refresh_head))
-        self.append(ContextMenuItem("Reload <Shift+F5>", item.reload_refs_commits))
+        self.append(MenuItem("Refresh <F5>", item.git_log.refresh_head))
+        self.append(MenuItem("Reload <Shift+F5>", item.reload_refs_commits))
         self.append(SeparatorItem())
-        self.append(ContextMenuItem("Preferences", self.app.preferences.show))
+        self.append(MenuItem("Preferences", self.app.preferences.show))
         self.append(SeparatorItem())
-        self.append(ContextMenuItem("Quit", item.exit_program))
+        self.append(MenuItem("Quit", item.exit_program))
         return x, y
 
     def _build_log_menu(self, view, item):
@@ -132,49 +121,45 @@ class ContextMenu(ListView):
         pick/revert/reset, diff-against-selection/mark, and mark/jump."""
         if isinstance(item, UncommittedChangesListItem):
             label = "Clear staged changes" if item._staged else "Clear unstaged changes"
-            self.append(
-                ContextMenuItem(label, view.clean_uncommitted_changes, [item._staged])
-            )
+            self.append(MenuItem(label, view.clean_uncommitted_changes, [item._staged]))
         else:
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Create new branch",
                     self.app.git_refs.new_ref_dialog.create_ref,
                     [item.id],
                 )
             )
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Create new tag",
                     self.app.git_refs.new_ref_dialog.create_ref,
                     [item.id, "tag"],
                 )
             )
             self.append(
-                ContextMenuItem("Cherry-pick this commit", view.cherry_pick, [item.id])
+                MenuItem("Cherry-pick this commit", view.cherry_pick, [item.id])
             )
-            self.append(ContextMenuItem("Revert this commit", view.revert, [item.id]))
+            self.append(MenuItem("Revert this commit", view.revert, [item.id]))
+            self.append(SeparatorItem())
+            self.append(MenuItem("Reset branch here", view.confirm_reset, [item.id]))
             self.append(SeparatorItem())
             self.append(
-                ContextMenuItem("Reset branch here", view.confirm_reset, [item.id])
-            )
-            self.append(SeparatorItem())
-            self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Diff this --> selected",
                     view.diff_commits,
                     [item.id, view.get_selected_commit_id()],
                 )
             )
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Diff selected --> this",
                     view.diff_commits,
                     [view.get_selected_commit_id(), item.id],
                 )
             )
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Diff this --> marked commit",
                     view.diff_commits,
                     [item.id, view.marked_commit_id],
@@ -182,7 +167,7 @@ class ContextMenu(ListView):
                 )
             )
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Diff marked commit --> this",
                     view.diff_commits,
                     [view.marked_commit_id, item.id],
@@ -190,11 +175,9 @@ class ContextMenu(ListView):
                 )
             )
             self.append(SeparatorItem())
+            self.append(MenuItem("Mark this commit", view.mark_commit, [item.id]))
             self.append(
-                ContextMenuItem("Mark this commit", view.mark_commit, [item.id])
-            )
-            self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Return to mark",
                     view.jump_to_commit,
                     [view.marked_commit_id],
@@ -208,7 +191,7 @@ class ContextMenu(ListView):
         """Menu for a row in the diff view: jump to the file (stat rows) or to
         the line's blame origin (diff rows), then the copy trio."""
         self.append(
-            ContextMenuItem(
+            MenuItem(
                 "Jump to file",
                 StatListItem.jump_to_file,
                 [item],
@@ -216,7 +199,7 @@ class ContextMenu(ListView):
             )
         )
         self.append(
-            ContextMenuItem(
+            MenuItem(
                 "Show origin of this line",
                 DiffListItem.jump_to_origin,
                 [item],
@@ -234,25 +217,25 @@ class ContextMenu(ListView):
         branch (delete), or any other ref (just copy the name)."""
         if item.data["type"] == "heads":
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Check out this branch", self.checkout_branch, [item.data["name"]]
                 )
             )
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Rename this branch",
                     self.app.git_refs.new_ref_dialog.rename_branch,
                     [item.data["name"]],
                 )
             )
             self.append(
-                ContextMenuItem(
-                    "Copy branch name", copy_to_clipboard, [item.data["name"], self.app]
+                MenuItem(
+                    "Copy branch name", self.app.copy_to_clipboard, [item.data["name"]]
                 )
             )
             self.append(SeparatorItem())
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Push branch to remote",
                     self.push_ref_to_remote,
                     [item.data["name"]],
@@ -260,18 +243,16 @@ class ContextMenu(ListView):
             )
             self.append(SeparatorItem())
             self.append(
-                ContextMenuItem(
-                    "Remove this branch", self.remove_branch, [item.data["name"]]
-                )
+                MenuItem("Remove this branch", self.remove_branch, [item.data["name"]])
             )
         elif item.data["type"] == "tags":
             self.append(
-                ContextMenuItem(
-                    "Copy tag name", copy_to_clipboard, [item.data["name"], self.app]
+                MenuItem(
+                    "Copy tag name", self.app.copy_to_clipboard, [item.data["name"]]
                 )
             )
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Show tag annotation",
                     self.app.git_diff.show_tag_annotation,
                     [item.data.get("tag_id")],
@@ -280,25 +261,25 @@ class ContextMenu(ListView):
             )
             self.append(SeparatorItem())
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Push tag to remote", self.push_ref_to_remote, [item.data["name"]]
                 )
             )
             self.append(SeparatorItem())
             self.append(
-                ContextMenuItem("Remove this tag", self.remove_tag, [item.data["name"]])
+                MenuItem("Remove this tag", self.remove_tag, [item.data["name"]])
             )
         elif item.data["type"] == "remotes":
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Copy remote branch name",
-                    copy_to_clipboard,
-                    [item.data["name"], self.app],
+                    self.app.copy_to_clipboard,
+                    [item.data["name"]],
                 )
             )
             self.append(SeparatorItem())
             self.append(
-                ContextMenuItem(
+                MenuItem(
                     "Remove this remote branch",
                     self.remove_remote_ref,
                     [item.data["name"]],
@@ -306,8 +287,8 @@ class ContextMenu(ListView):
             )
         else:
             self.append(
-                ContextMenuItem(
-                    "Copy ref name", copy_to_clipboard, [item.data["name"], self.app]
+                MenuItem(
+                    "Copy ref name", self.app.copy_to_clipboard, [item.data["name"]]
                 )
             )
 
@@ -341,9 +322,7 @@ class ContextMenu(ListView):
 
     def push_ref_to_remote(self, branch_name):
         self.app.git_refs.ref_push_dialog.ref_name = branch_name
-        self.app.git_refs.ref_push_dialog.header_item.set_text(
-            f"Push ref: {branch_name}"
-        )
+        self.app.git_refs.ref_push_dialog.set_title(f"Push ref: {branch_name}")
         self.app.git_refs.ref_push_dialog.clear()
         self.app.git_refs.ref_push_dialog.show()
 

@@ -44,6 +44,7 @@ except ImportError as e:
 
 ROOT = os.path.dirname(HERE)
 GITKCLI = os.path.join(ROOT, "gitkcli.py")
+DEMOS = os.path.join(ROOT, "demos")
 COVERAGERC = os.path.join(ROOT, ".coveragerc")
 # All per-process parallel data files land next to this base name, regardless of
 # the child's (throwaway) cwd, so `coverage combine` can find them afterwards.
@@ -138,8 +139,10 @@ class Runner:
         shutil.copytree(template, xdg)
         return work, repo, xdg, home
 
-    def _launch(self, repo, env, rows, cols, app_args):
-        argv = [sys.executable, GITKCLI] + list(app_args)
+    def _launch(self, repo, env, rows, cols, app_args, demo=""):
+        # gitkcli, or a tuikit demo script (the `demo` directive)
+        script = os.path.join(DEMOS, demo + ".py") if demo else GITKCLI
+        argv = [sys.executable, script] + list(app_args)
         if self.coverage:
             # Run the app under coverage; --parallel-mode gives each case its
             # own data file (combined later). COVERAGE_FILE pins them to ROOT so
@@ -155,7 +158,7 @@ class Runner:
                 "coverage",
                 "run",
                 f"--rcfile={COVERAGERC}",
-                GITKCLI,
+                script,
             ] + list(app_args)
             env = {**env, "COVERAGE_FILE": COVERAGE_DATA, "PYTHONPATH": pp}
         h = Harness(
@@ -223,7 +226,7 @@ class Runner:
                 if d.op in ("size", "config"):
                     continue
                 elif d.op == "launch":
-                    h = self._launch(repo, env, size[0], size[1], d.args)
+                    h = self._launch(repo, env, size[0], size[1], d.args, d.name)
                 elif d.op == "run":
                     self._run_shell(d.name, repo, env)
                 elif d.op == "key" or d.op == "text":
@@ -351,7 +354,8 @@ def main():
               pytest test/                         same suite as per-case nodes
 
             spec.txt directives (cases/<name>/spec.txt):
-              size WxH | config NAME | launch [args] | run <shell> | key <tokens> |
+              size WxH | config NAME | launch [args] | demo NAME [args] |
+              run <shell> | key <tokens> |
               text "literal" | mouse click|dblclick|rclick COL ROW | wait stable|<secs> |
               resize WxH | capture NAME | expect-exit
             keys: bare chars, <Up>/<Down>/<Enter>/<Esc>/<F1>..<F12>/<S-F5>, C-w/C-Left;
@@ -395,7 +399,7 @@ def main():
     ap.add_argument(
         "--coverage",
         action="store_true",
-        help="measure gitk/ coverage while running, then print a report",
+        help="measure gitk/ + tuikit/ coverage while running, then print a report",
     )
     ap.add_argument(
         "-j",

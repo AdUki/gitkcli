@@ -4,7 +4,7 @@
 # measure it with `coverage run --parallel-mode` (one data file per process)
 # and `coverage combine` the lot afterwards.
 [run]
-source = gitk
+source = gitk, tuikit
 branch = true
 parallel = true
 # The app drains git subprocess pipes on helper threads.

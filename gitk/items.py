@@ -1,123 +1,18 @@
-"""List items: the rows a ListView renders.
-
-Covers plain items (separators, text, refs, diff/stat rows, context-menu and
-user-input rows) and the SegmentedListItem family (button rows, the window top
-bar, commit / uncommitted-changes rows, preference rows). Items reach the App
-struct through their owning view (`get_app()`); they depend on segments, the
-colour palette (Screen), the clipboard helper, and a few input constants.
+"""gitk's list rows: refs, diff-stat and diff lines, reset modes. The generic
+rows (text, separators, input fields, menu entries) come from tuikit.items.
+Rows reach the App struct through their view (`get_app()`).
 """
 
 from __future__ import annotations
 
-import curses
 import re
 import typing
 from functools import partial
 
-from gitk.config import copy_to_clipboard
-from gitk.input import (
-    ENTER_KEYS,
-    KEY_CTRL_BACKSPACE,
-    KEY_CTRL_DEL,
-    KEY_CTRL_LEFT,
-    KEY_CTRL_RIGHT,
-)
+from tuikit.items import TextListItem
+
 from gitk.screen import Screen
 from gitk.segments import ref_color_and_title
-
-
-class Item:
-    def __init__(self):
-        self.is_selectable = True
-        self.is_separator = False
-        # Back-reference to the owning ListView, set when the item is added
-        # (ListView.append / .items.insert / set_header_item). Lets the item
-        # reach the App struct via get_app().
-        self._view = None
-
-    def get_app(self):
-        """The App struct this item belongs to, reached through its view.
-        None only for a transient item not yet added to a view."""
-        return self._view.app if self._view is not None else None
-
-    def get_text(self) -> str:
-        return ""
-
-    def copy_text_to_clipboard(self):
-        copy_to_clipboard(self.get_text(), self.get_app())
-
-    def set_text(self, txt: str):
-        pass
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        pass
-
-    def activate(self) -> bool:
-        """Default action on Enter / double-click. Override in subclasses."""
-        return False
-
-    def handle_input(self, keyboard) -> bool:
-        if keyboard.key in ENTER_KEYS:
-            return self.activate()
-        return False
-
-    def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type == "double-click":
-            return self.activate()
-        if mouse.event_type == "right-click":
-            return self.get_app().context_menu.show_context_menu(self)
-        return False
-
-
-class SeparatorItem(Item):
-    def __init__(self):
-        super().__init__()
-        self.is_selectable = False
-        self.is_separator = True
-
-
-class TextListItem(Item):
-    def __init__(
-        self, txt, color=Screen.C_NORMAL, expand=False, is_selectable=True, dim=False
-    ):
-        super().__init__()
-        self.txt = txt
-        self.color = color
-        self.expand = expand
-        self.is_selectable = is_selectable
-        self.dim = dim
-
-    def get_text(self):
-        return self.txt
-
-    def set_text(self, txt: str):
-        self.txt = txt
-
-    def color_spans(self) -> typing.List[typing.Tuple[str, int]]:
-        """The text as (chunk, colour) runs; one run unless a subclass splits
-        it (see DiffListItem)."""
-        return [(self.get_text(), self.color)]
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        def attr(color):
-            return Screen.color(color, selected, marked, matched, dim=self.dim)
-
-        room = width
-        for chunk, color in self.color_spans():
-            if offset >= len(chunk):  # scrolled off to the left
-                offset -= len(chunk)
-                continue
-            chunk = chunk[offset:][:room]
-            offset = 0
-            if chunk:
-                win.addstr(chunk, attr(color))
-                room -= len(chunk)
-            if room <= 0:
-                return
-        if selected or marked or self.expand:
-            win.addstr(" " * room, attr(self.color))
-        else:
-            win.clrtoeol()
 
 
 class RefListItem(TextListItem):
@@ -141,15 +36,6 @@ class RefListItem(TextListItem):
         else:
             app.log.warning(f"Commit with hash {self.data['id']} not found")
         return True
-
-
-class SpacerListItem(Item):
-    def __init__(self):
-        super().__init__()
-        self.is_selectable = False
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        win.clrtoeol()
 
 
 class StatListItem(TextListItem):
@@ -257,142 +143,6 @@ class DiffListItem(TextListItem):
     def activate(self) -> bool:
         self.jump_to_origin()
         return True
-
-
-class ContextMenuItem(TextListItem):
-    def __init__(self, text, action, args=[], is_selectable=True):
-        super().__init__(text, is_selectable=is_selectable, dim=not is_selectable)
-        self.action = action
-        self.args = args if args else []
-
-    def activate(self) -> bool:
-        if self.is_selectable:
-            self.get_app().screen.hide_active_view()
-            self.action(*self.args)
-        return True
-
-    def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type in ("left-click", "double-click", "right-release"):
-            return self.activate()
-        return super().handle_mouse_input(mouse)
-
-
-class UserInputListItem(Item):
-    def __init__(self, color=Screen.C_NORMAL):
-        super().__init__()
-        self.txt = ""
-        self.offset = 0
-        self.cursor_pos = 0
-        self.color = color
-
-    def clear(self):
-        self.txt = ""
-        self.offset = 0
-        self.cursor_pos = 0
-
-    def get_text(self):
-        return self.txt
-
-    def set_text(self, txt: str):
-        self.txt = txt
-        self.offset = 0
-        self.cursor_pos = len(txt)
-
-    def prev_word_pos(self):
-        pos = self.cursor_pos
-        while pos > 0 and self.txt[pos - 1].isspace():
-            pos -= 1
-        while pos > 0 and not self.txt[pos - 1].isspace():
-            pos -= 1
-        return pos
-
-    def next_word_pos(self):
-        pos = self.cursor_pos
-        length = len(self.txt)
-        while pos < length and self.txt[pos].isspace():
-            pos += 1
-        while pos < length and not self.txt[pos].isspace():
-            pos += 1
-        return pos
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key in (curses.KEY_BACKSPACE, 127):  # Backspace
-            if self.cursor_pos > 0:
-                self.txt = self.txt[: self.cursor_pos - 1] + self.txt[self.cursor_pos :]
-                self.cursor_pos -= 1
-
-        elif key == KEY_CTRL_BACKSPACE:  # Ctrl+Backspace: delete previous word
-            start = self.prev_word_pos()
-            self.txt = self.txt[:start] + self.txt[self.cursor_pos :]
-            self.cursor_pos = start
-
-        elif key == curses.KEY_DC:  # Delete key
-            if self.cursor_pos < len(self.txt):
-                self.txt = self.txt[: self.cursor_pos] + self.txt[self.cursor_pos + 1 :]
-
-        elif key == KEY_CTRL_DEL:  # Ctrl+Delete: clear whole text
-            self.txt = ""
-            self.cursor_pos = 0
-            self.offset = 0
-
-        elif key == curses.KEY_LEFT:  # Left arrow
-            if self.cursor_pos > 0:
-                self.cursor_pos -= 1
-
-        elif key == curses.KEY_RIGHT:  # Right arrow
-            if self.cursor_pos < len(self.txt):
-                self.cursor_pos += 1
-
-        elif key == KEY_CTRL_LEFT:  # Ctrl+Left: previous word
-            self.cursor_pos = self.prev_word_pos()
-
-        elif key == KEY_CTRL_RIGHT:  # Ctrl+Right: next word
-            self.cursor_pos = self.next_word_pos()
-
-        elif key == curses.KEY_HOME:  # Home key
-            self.cursor_pos = 0
-
-        elif key == curses.KEY_END:  # End key
-            self.cursor_pos = len(self.txt)
-
-        elif 32 <= key <= 126:  # Printable characters
-            self.txt = (
-                self.txt[: self.cursor_pos] + chr(key) + self.txt[self.cursor_pos :]
-            )
-            self.cursor_pos += 1
-
-        else:
-            return super().handle_input(keyboard)
-
-        return True
-
-    def handle_mouse_input(self, mouse) -> bool:
-        if mouse.event_type in ("left-click", "double-click"):
-            # mouse.x is a column within the (possibly scrolled) field.
-            self.cursor_pos = min(self.offset + mouse.x, len(self.txt))
-            return True
-        else:
-            return super().handle_mouse_input(mouse)
-
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        # Scroll the field horizontally so the cursor stays visible and we never
-        # addstr past `width`. The cursor is a 1-col block between the text to
-        # its left and right, so the text occupies `field` = width-1 columns.
-        field = max(1, width - 1)
-        if self.cursor_pos < self.offset:
-            self.offset = self.cursor_pos
-        elif self.cursor_pos - self.offset > field:
-            self.offset = self.cursor_pos - field
-
-        left_txt = self.txt[self.offset : self.cursor_pos]
-        right_txt = self.txt[self.cursor_pos : self.offset + field]
-        pad = max(0, width - len(left_txt) - len(right_txt) - 1)
-
-        win.addstr(left_txt, Screen.color(self.color, selected, marked, matched))
-        win.addch(ord(" "), curses.A_REVERSE | curses.A_BLINK)
-        win.addstr(right_txt, Screen.color(self.color, selected, marked, matched))
-        win.addstr(" " * pad, Screen.color(self.color, selected, marked, matched))
 
 
 class ResetModeItem(TextListItem):

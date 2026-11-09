@@ -1,0 +1,19 @@
+# tuikit demo 4 (demos/demo_4_input.py): a chat log whose last row is an
+# inline text field; Enter posts above it.
+size      70x14
+demo      demo_4_input
+capture   start
+text      "hello there"
+key       <Enter>
+text      "/nope"
+key       <Enter>
+wait      stable
+capture   posted
+# Word motion inside the field: Ctrl+Left jumps to "three", and typing
+# inserts there. (The cursor is a block drawn as a blank cell.)
+text      "one two three"
+key       <C-Left>
+wait      stable
+text      "big "
+wait      stable
+capture   edited

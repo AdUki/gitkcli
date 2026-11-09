@@ -1,0 +1,33 @@
+# tuikit demo 3 (demos/demo_3_windows.py): a SplitLayout of a list and a
+# detail pane, floating windows, and split switching.
+size      90x20
+demo      demo_3_windows
+capture   side_by_side
+# Moving in the list updates the detail pane.
+key       j j
+wait      stable
+capture   detail_follows
+# F3 opens two floating note windows over the split.
+key       <F3> <F3>
+wait      stable
+capture   notes
+# [X] on the top note closes it; a double-click on the other's title
+# maximizes it, and q closes it again.
+mouse     click 41 5
+wait      stable
+capture   note_closed
+mouse     dblclick 15 4
+wait      stable
+capture   note_maximized
+key       q
+wait      stable
+# Ctrl+w focuses the other pane; `|` cycles to stacked, then off.
+key       C-w
+wait      stable
+capture   detail_focused
+key       |
+wait      stable
+capture   stacked
+key       |
+wait      stable
+capture   unsplit

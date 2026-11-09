@@ -1,10 +1,8 @@
-"""Modal dialog popups: reset, ref-push, the user-input base, preferences,
-new-ref, and the search dialogs. (The red confirm/error message boxes live in
-message_box.py.)
+"""gitk's dialogs: reset, ref-push, git command, preferences, new-ref, and
+the commit search. (Generic popups - message boxes, the input and search
+prompts - come from tuikit.dialogs.)
 
-Each is a small ListView/UserInputDialogPopup. They reach the concrete views
-and services through the App struct at runtime (`self.app`/`get_app()`), so this
-module depends only on the base View, items, segments, jobs, and helpers.
+They reach the views and services through the App struct (`self.app`).
 """
 
 from __future__ import annotations
@@ -12,9 +10,22 @@ from __future__ import annotations
 import curses
 import re
 import shlex
-import typing
 
-from gitk.config import KEY_CTRL, save_config
+from tuikit import keys as K
+from tuikit.dialogs import Dialog, InputDialog, SearchDialog
+from tuikit.items import SeparatorItem, SpacerListItem, TextListItem, UserInputListItem
+from tuikit.segmented import LabeledRow, SegmentedListItem, button_row
+from tuikit.segments import (
+    ButtonSegment,
+    ChoiceSegment,
+    FillerSegment,
+    OnOffToggleSegment,
+    TextSegment,
+    ToggleSegment,
+)
+from tuikit.view import MODE_FULLSCREEN
+
+from gitk.config import save_config
 from gitk.ids import (
     ID_GIT_COMMAND,
     ID_GIT_LOG_SEARCH,
@@ -23,40 +34,18 @@ from gitk.ids import (
     ID_NEW_GIT_REF,
     ID_PREFERENCES,
 )
-from gitk.input import ENTER_KEYS, KEY_TAB, KeyboardState
-from gitk.items import (
-    ResetModeItem,
-    SeparatorItem,
-    SpacerListItem,
-    TextListItem,
-    UserInputListItem,
-)
+from gitk.items import ResetModeItem
 from gitk.jobs import Job
-from gitk.list_view import ListView
 from gitk.screen import Screen
-from gitk.segmented_items import PreferenceRow, SegmentedListItem, button_row
+from gitk.segments import ref_color_and_title
 from gitk.split_layout import SPLIT_OFF, SPLIT_SIDE, SPLIT_STACKED
-from gitk.view import MODE_FULLSCREEN
-from gitk.segments import (
-    ButtonSegment,
-    ChoiceSegment,
-    FillerSegment,
-    OnOffToggleSegment,
-    TextSegment,
-    ToggleSegment,
-    ref_color_and_title,
-)
 
 
-class ResetDialogPopup(ListView):
+class ResetDialogPopup(Dialog):
     def __init__(self, app):
-        super().__init__(app, ID_GIT_RESET, "window", height=9, width=68)
-        self.is_popup = True
+        super().__init__(app, ID_GIT_RESET, " Reset current branch", height=9, width=68)
         self.commit_id = ""
         self.selected_mode = "--mixed"
-        self.set_header_item(
-            TextListItem(" Reset current branch", Screen.C_TITLE, expand=True)
-        )
 
         self.target_item = TextListItem("", Screen.C_GIT_ID, is_selectable=False)
         self.append(self.target_item)
@@ -83,12 +72,13 @@ class ResetDialogPopup(ListView):
             )
         )
         self.append(SeparatorItem())
-        self._button_row = button_row(
-            ButtonSegment("[Ok]", self._confirm, Screen.C_STATUS),
-            TextSegment("   "),
-            ButtonSegment("[Cancel]", self.hide),
+        self.set_button_row(
+            button_row(
+                ButtonSegment("[Ok]", self._confirm, Screen.C_STATUS),
+                TextSegment("   "),
+                ButtonSegment("[Cancel]", self.hide),
+            )
         )
-        self.append(self._button_row)
 
     def _confirm(self):
         # [Ok] applies whichever reset mode is currently highlighted.
@@ -116,21 +106,19 @@ class ResetDialogPopup(ListView):
         self._button_row.reset_focus()
         self.show()
 
-    def handle_input(self, keyboard):
-        key = keyboard.key
+    def handle_key(self, event):
+        key = event.key
         if key in (curses.KEY_EXIT, ord("q")):
             self.hide()
             return True
-        return super().handle_input(keyboard)
+        return super().handle_key(event)
 
 
-class RefPushDialogPopup(ListView):
+class RefPushDialogPopup(Dialog):
     def __init__(self, app):
         # Fixed width (like the other input dialogs) instead of half the
         # terminal, so the box stays tight on wide screens.
-        super().__init__(app, ID_GIT_REF_PUSH, "window", height=5, width=60)
-        self.set_header_item(TextListItem("", Screen.C_TITLE, expand=True))
-        self.is_popup = True
+        super().__init__(app, ID_GIT_REF_PUSH, height=5, width=60)
 
         # `git remote` prints one name per line (none in a repo with no
         # remotes). split() drops the trailing/empty lines so a remote-less repo
@@ -154,15 +142,17 @@ class RefPushDialogPopup(ListView):
         )
 
         self.append(SpacerListItem())
-        self._button_row = button_row(
-            ButtonSegment("[Push]", self._confirm), ButtonSegment("[Cancel]", self.hide)
+        self.set_button_row(
+            button_row(
+                ButtonSegment("[Push]", self._confirm),
+                ButtonSegment("[Cancel]", self.hide),
+            )
         )
-        self.append(self._button_row)
         self.ref_name = ""
 
         # Make the buttons row navigable (Left/Right pick a button, Enter
         # activates it); default focus is [Push] so a bare Enter still pushes.
-        self._focus_button_row()
+        self.focus_button_row()
 
     def _confirm(self):
         self.hide()
@@ -210,115 +200,22 @@ class RefPushDialogPopup(ListView):
             label="[Force push]",
         )
 
-    def handle_input(self, keyboard):
-        key = keyboard.key
+    def handle_key(self, event):
+        key = event.key
         # Enter is routed through the buttons row (super -> ButtonRowItem) so it
         # activates the focused button instead of always pushing.
         if key == curses.KEY_EXIT:
             self.hide()
         elif key == curses.KEY_F1:
             self.force.toggle()
-        elif key == KEY_TAB:  # cycle through remotes
+        elif key == K.KEY_TAB:  # cycle through remotes
             names = [r.txt for r in self.remotes]
             if (
                 names
             ):  # a repo with no remotes has none to cycle (avoids index/%0 errors)
                 self.change_remote(names[(names.index(self.remote) + 1) % len(names)])
         else:
-            return super().handle_input(keyboard)
-        return True
-
-
-class UserInputDialogPopup(ListView):
-    def __init__(
-        self,
-        app,
-        id: str,
-        title: str,
-        header_item: Item,
-        bottom_item: typing.Optional[Item] = None,
-        width=60,
-    ):
-        # Compact 3-row layout (no blank spacers): the label/flags header, the
-        # input field right below it, and the buttons. A fixed width keeps the
-        # box from ballooning to half the terminal on wide screens.
-        super().__init__(app, id, "window", height=5, width=width)
-        self.set_header_item(TextListItem(title, Screen.C_TITLE, expand=True))
-        self.input = UserInputListItem()
-        self.is_popup = True
-        self.history_queries = []
-        self.history_index = -1  # -1 == the live (not-from-history) input
-        self.pending_input = ""  # live input stashed while browsing history
-
-        if not bottom_item:
-            bottom_item = SegmentedListItem(
-                [
-                    FillerSegment(),
-                    ButtonSegment(
-                        "[Execute]",
-                        lambda: self.handle_input(KeyboardState(curses.KEY_ENTER)),
-                    ),
-                    ButtonSegment(
-                        "[Cancel]",
-                        lambda: self.handle_input(KeyboardState(curses.KEY_EXIT)),
-                    ),
-                    FillerSegment(),
-                ]
-            )
-            bottom_item.is_selectable = False
-
-        header_item.is_selectable = False
-
-        self.append(header_item)
-        self.append(self.input)
-        self.append(bottom_item)
-        self._selected = 1
-
-    def add_query_to_history(self):
-        if self.input.txt and (
-            not self.history_queries or self.history_queries[0] != self.input.txt
-        ):
-            self.history_queries.insert(0, self.input.txt)
-
-    def execute(self):
-        self.add_query_to_history()
-
-    def clear(self):
-        self.input.clear()
-        self.history_index = -1
-        self.pending_input = ""
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key in ENTER_KEYS:
-            self.hide()
-            self.execute()
-
-        elif key == curses.KEY_EXIT:
-            self.hide()
-
-        elif key in (curses.KEY_DOWN, KEY_CTRL("n")):
-            # Walk toward newer entries; stepping below index 0 returns to the
-            # live input the user was typing before they entered history.
-            if self.history_index >= 0:
-                self.history_index -= 1
-                self.input.set_text(
-                    self.pending_input
-                    if self.history_index < 0
-                    else self.history_queries[self.history_index]
-                )
-
-        elif key in (curses.KEY_UP, KEY_CTRL("p"), KEY_CTRL("o")):
-            if self.history_index + 1 < len(self.history_queries):
-                if self.history_index < 0:
-                    # Entering history: stash the live input so DOWN can restore it.
-                    self.pending_input = self.input.txt
-                self.history_index += 1
-                self.input.set_text(self.history_queries[self.history_index])
-
-        else:
-            return super().handle_input(keyboard)
-
+            return super().handle_key(event)
         return True
 
 
@@ -339,7 +236,7 @@ class InsertChipSegment(ButtonSegment):
         )
 
 
-class CommandDialogPopup(UserInputDialogPopup):
+class CommandDialogPopup(InputDialog):
     """F8: run an arbitrary git command. The leading `git` is implied, so the
     user types just the arguments (e.g. `checkout main`, `stash pop`).
 
@@ -388,10 +285,7 @@ class CommandDialogPopup(UserInputDialogPopup):
                 self.insert_tokens.append(ref["name"])
         else:
             segments.append(TextSegment("(no commit selected)", Screen.C_DIM))
-        # Rewire the row's segments (segment -> item back-ref, so get_app works).
-        self.chip_row.segments = segments
-        for segment in segments:
-            segment._item = self.chip_row
+        self.chip_row.set_segments(segments)
         self.cycle_index = -1
         self._tab_span = None
 
@@ -402,8 +296,7 @@ class CommandDialogPopup(UserInputDialogPopup):
             inp.txt = inp.txt[:start] + inp.txt[end:]
             inp.cursor_pos = start
         start = inp.cursor_pos
-        inp.txt = inp.txt[:start] + token + inp.txt[start:]
-        inp.cursor_pos = start + len(token)
+        inp.insert(token)
         self._tab_span = (start, inp.cursor_pos)
         self.dirty = True
 
@@ -447,13 +340,13 @@ class CommandDialogPopup(UserInputDialogPopup):
         self._selected = 1
         super().on_activated()
 
-    def handle_input(self, keyboard):
-        if keyboard.key == KEY_TAB:
+    def handle_key(self, event):
+        if event.key == K.KEY_TAB:
             return self.cycle_insert()
         # Any edit / cursor move ends the in-place replace chain, so the next Tab
         # pastes fresh at the cursor rather than clobbering unrelated text.
         self._tab_span = None
-        return super().handle_input(keyboard)
+        return super().handle_key(event)
 
     def execute(self):
         command = self.input.txt.strip()
@@ -489,11 +382,9 @@ class CommandDialogPopup(UserInputDialogPopup):
         self.app.git_log.check_uncommitted_changes()
 
 
-class PreferencesDialogPopup(ListView):
+class PreferencesDialogPopup(Dialog):
     def __init__(self, app):
-        super().__init__(app, ID_PREFERENCES, "window", height=15, width=50)
-        self.is_popup = True
-        self.set_header_item(TextListItem(" Preferences", Screen.C_TITLE, expand=True))
+        super().__init__(app, ID_PREFERENCES, " Preferences", height=15, width=50)
 
         self.t_show_id = OnOffToggleSegment()
         self.t_show_date = OnOffToggleSegment()
@@ -510,25 +401,26 @@ class PreferencesDialogPopup(ListView):
         )
         self.input_flags = UserInputListItem()
 
-        self.append(PreferenceRow("Show commit ID", self.t_show_id))
-        self.append(PreferenceRow("Show commit date", self.t_show_date))
-        self.append(PreferenceRow("Show commit author", self.t_show_author))
+        self.append(LabeledRow("Show commit ID", self.t_show_id))
+        self.append(LabeledRow("Show commit date", self.t_show_date))
+        self.append(LabeledRow("Show commit author", self.t_show_author))
         self.append(SeparatorItem())
-        self.append(PreferenceRow("Ignore whitespace (diff)", self.t_ign_ws))
+        self.append(LabeledRow("Ignore whitespace (diff)", self.t_ign_ws))
         self.append(SeparatorItem())
-        self.append(PreferenceRow("Autoscroll (log view)", self.t_autoscroll))
+        self.append(LabeledRow("Autoscroll (log view)", self.t_autoscroll))
         self.append(SeparatorItem())
-        self.append(PreferenceRow("Default view mode", self.c_view_mode))
+        self.append(LabeledRow("Default view mode", self.c_view_mode))
         self.append(SeparatorItem())
         self.append(TextListItem("  Git log default flags:", is_selectable=False))
         self.append(self.input_flags)
 
-        self._button_row = button_row(
-            ButtonSegment("[Save]", self.on_save),
-            TextSegment("  "),
-            ButtonSegment("[Close]", self.on_cancel),
+        self.set_button_row(
+            button_row(
+                ButtonSegment("[Save]", self.on_save),
+                TextSegment("  "),
+                ButtonSegment("[Close]", self.on_cancel),
+            )
         )
-        self.append(self._button_row)
         self._selected = 0
 
     def on_activated(self):
@@ -587,15 +479,15 @@ class PreferencesDialogPopup(ListView):
     def on_cancel(self):
         self.hide()
 
-    def handle_input(self, keyboard):
-        key = keyboard.key
+    def handle_key(self, event):
+        key = event.key
         if key == curses.KEY_EXIT:
             self.on_cancel()
             return True
-        return super().handle_input(keyboard)
+        return super().handle_key(event)
 
 
-class NewRefDialogPopup(UserInputDialogPopup):
+class NewRefDialogPopup(InputDialog):
     def __init__(self, app):
         self.force = ToggleSegment("<Force>")
         self.commit_id = ""
@@ -622,7 +514,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
         self.rename_from = ""
         self.commit_id = commit_id
         self.ref_type = ref_type
-        self.header_item.set_text(f" New {ref_type.capitalize()}")
+        self.set_title(f" New {ref_type.capitalize()}")
         self.prompt.set_text(f"Specify the new {ref_type} name:")
         self.clear()
         self.show()
@@ -635,7 +527,7 @@ class NewRefDialogPopup(UserInputDialogPopup):
             return
         self.rename_from = old_name
         self.ref_type = "branch"
-        self.header_item.set_text(" Rename Branch")
+        self.set_title(" Rename Branch")
         self.prompt.set_text(f"Rename '{old_name}' to:")
         self.clear()
         self.show()
@@ -644,12 +536,12 @@ class NewRefDialogPopup(UserInputDialogPopup):
         self.force.toggled = False
         super().clear()
 
-    def handle_input(self, keyboard):
-        key = keyboard.key
+    def handle_key(self, event):
+        key = event.key
         if key == curses.KEY_F1:
             self.force.toggle()
         else:
-            return super().handle_input(keyboard)
+            return super().handle_key(event)
         return True
 
     def execute(self):
@@ -710,92 +602,13 @@ class NewRefDialogPopup(UserInputDialogPopup):
         )
 
 
-class SearchDialogPopup(UserInputDialogPopup):
-    def __init__(self, app, id: str, width=60):
-        self.parent_list_view: ListView
-        self.case_sensitive = ToggleSegment("<Case>", True)
-        self.use_regexp = ToggleSegment("<Regexp>")
-        # Single leading filler right-aligns the "Flags:" group against the
-        # right edge (subclasses prepend a left-aligned "Type:" group).
-        self.header = SegmentedListItem(
-            [
-                FillerSegment(),
-                TextSegment("Flags:"),
-                self.case_sensitive,
-                self.use_regexp,
-            ]
-        )
-        buttons = SegmentedListItem(
-            [
-                FillerSegment(),
-                ButtonSegment("[Search Next]", lambda: self.do_search(backward=False)),
-                ButtonSegment(
-                    "[Search Previous]", lambda: self.do_search(backward=True)
-                ),
-                ButtonSegment("[Clear]", self.clear_input),
-                FillerSegment(),
-            ]
-        )
-        buttons.is_selectable = False
-        super().__init__(app, id, " Search", self.header, buttons, width=width)
-
-    def clear_input(self):
-        self.clear()
-        self.dirty = True
-        self.parent_list_view.dirty = True
-
-    def do_search(self, backward: bool):
-        # repeat=True so the [Search Next]/[Search Previous] buttons wrap around
-        # like the 'n'/'N' keys and the initial Enter, instead of dead-ending.
-        self.parent_list_view.search(backward, repeat=True)
-        self.dirty = True
-        super().execute()
-
-    def matches(self, item):
-        if not self.input.txt:
-            return False
-        text = item.get_text()
-        if self.use_regexp.toggled:
-            # matches() runs on every redraw (to highlight hits) and on each
-            # keystroke, so a half-typed / invalid pattern (e.g. "[", "(") must
-            # not raise: an invalid regex simply matches nothing until valid.
-            try:
-                return re.search(
-                    self.input.txt,
-                    text,
-                    0 if self.case_sensitive.toggled else re.IGNORECASE,
-                )
-            except re.error:
-                return None
-        if self.case_sensitive.toggled:
-            return self.input.txt in text
-        return self.input.txt.lower() in text.lower()
-
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key in (curses.KEY_DC, curses.KEY_BACKSPACE, 127) or 32 <= key <= 126:
-            self.parent_list_view.dirty = True
-
-        if key == curses.KEY_F1:
-            self.case_sensitive.toggle()
-        elif key == curses.KEY_F2:
-            self.use_regexp.toggle()
-        else:
-            return super().handle_input(keyboard)
-        return True
-
-    def execute(self):
-        self.parent_list_view.search(repeat=True)
-        super().execute()
-
-
 # git's pickaxe argument (-G) is always a POSIX extended regex, so a literal
 # "Diff" query has to escape the ERE metacharacters itself. Only those are
 # escaped: a backslash before an ordinary character is undefined in ERE.
 _ERE_SPECIAL = re.compile(r"([.^$*+?()\[\]{}|\\])")
 
 
-class GitSearchDialogPopup(SearchDialogPopup):
+class GitSearchDialogPopup(SearchDialog):
     _WORKING_BAR = "Working: searching commits ..."
     _TYPES = [
         ("txt", "[Txt]"),
@@ -836,11 +649,11 @@ class GitSearchDialogPopup(SearchDialogPopup):
             return item.id in self.app.git_log.job_search.found_ids
         return False
 
-    def handle_input(self, keyboard):
-        key = keyboard.key
-        if key in ENTER_KEYS:
+    def handle_key(self, event):
+        key = event.key
+        if key in K.ENTER_KEYS:
             if self.search_type == "txt":
-                return super().handle_input(keyboard)
+                return super().handle_key(event)
 
             if not self.input.txt:
                 # An empty query would launch a doomed git command — e.g. ID
@@ -887,7 +700,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
                 scoped=self.search_type != "id",
             )
 
-        elif key == KEY_TAB:  # cycle through search types
+        elif key == K.KEY_TAB:  # cycle through search types
             self.parent_list_view.dirty = True
             types = [t for t, _ in self._TYPES]
             self.change_search_type(
@@ -895,7 +708,7 @@ class GitSearchDialogPopup(SearchDialogPopup):
             )
 
         else:
-            return super().handle_input(keyboard)
+            return super().handle_key(event)
 
         return True
 

@@ -18,7 +18,9 @@ import threading
 import typing
 
 from gitk.ids import ID_GIT_DIFF, ID_GIT_REFRESH_HEAD, ID_GIT_REFS, ID_GIT_SEARCH
-from gitk.items import DiffListItem, RefListItem, StatListItem, TextListItem
+from tuikit.items import TextListItem
+
+from gitk.items import DiffListItem, RefListItem, StatListItem
 from gitk.screen import Screen
 from gitk.segmented_items import CommitListItem
 

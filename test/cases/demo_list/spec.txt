@@ -1,0 +1,36 @@
+# tuikit demo 1 (demos/demo_1_list.py): a ListView with a title bar, coloured
+# rows, separators, search, a right-click Menu and the function-key bar.
+size      80x16
+demo      demo_1_list
+capture   start
+# Enter on Earth activates the row: a green flash replaces the bar.
+key       j j <Enter>
+wait      stable
+capture   flash
+wait      2.5
+# `/` opens the search prompt; typing highlights the matching rows.
+key       /
+text      "ar"
+wait      stable
+capture   search_typing
+# Enter jumps to the next match after Earth (Mars).
+key       <Enter>
+wait      stable
+capture   search_found
+# Right-click Saturn: a menu at the mouse; "Visit" flashes its name.
+mouse     rclick 6 8
+wait      stable
+capture   menu
+mouse     click 10 9
+wait      stable
+capture   visited
+wait      2.5
+# F7 opens the menu under the selected row from the keyboard; Esc closes it,
+# and q closes the last view, which ends the app.
+key       <F7>
+wait      stable
+capture   menu_keyboard
+key       <Esc>
+wait      stable
+key       q
+expect-exit

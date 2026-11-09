@@ -179,16 +179,24 @@ Other adjustments:
 
 ## Project structure
 
-The application lives in the `gitk/` package; `gitkcli.py` at the repo root is a
-thin launch shim (`from gitk.main import main`). Modules are layered bottom-up
-(config/ids/input/screen → segments → items → views → app → main); the whole map
-and the design (an injected `App` struct reached via `self.app` / `get_app()`,
-no globals) is documented in `gitk/__init__.py`.
+The UI is a separate, git-agnostic library, **`tuikit/`**: a z-ordered deck of
+fullscreen and floating (draggable, resizable) views, split layouts, list views
+with search, rows built from segments (buttons, toggles, choices), dialogs and
+menus, a function-key bar, a 256/8/mono colour palette, and clean key/mouse
+events with local coordinates, drag grabs and the event loop. Its module map and
+a minimal example are in `tuikit/__init__.py`; `demos/` has runnable examples
+(`python3 demos/launcher.py`).
+
+The application lives in the `gitk/` package, built on tuikit; `gitkcli.py` at
+the repo root is a thin launch shim (`from gitk.main import main`). The module
+map and the design (an injected `App` struct - a `tuikit.App` - reached via
+`self.app` / `get_app()`, no globals) are documented in `gitk/__init__.py`.
 
 Tests are in `test/`:
 
 - `python3 test/run.py` runs the pty golden-screen suite (renders the real app
   on a fixed-size terminal and diffs each frame against `test/cases/*/golden/`).
+  The `demo_*` cases run the tuikit demos the same way.
 - `python3 -m pytest test/` runs that suite plus the fast pure-logic unit tests
   in `test/test_units.py`.
 

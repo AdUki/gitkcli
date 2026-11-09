@@ -1,17 +1,12 @@
-"""Configuration persistence, the clipboard helper, and the Ctrl-key helper.
+"""Configuration persistence.
 
-A leaf module: depends only on the standard library. Functions that need to
-report problems take the `app` struct and log through `app.log`, rather than
-reaching a global.
+A leaf module: depends only on the standard library. save_config takes the
+`app` struct to report a failure through `app.log`.
 """
 
 import json
 import os
 import sys
-
-
-def KEY_CTRL(key):
-    return ord(key) & 0x1F
 
 
 DEFAULT_CONFIG = {
@@ -70,16 +65,3 @@ def save_config(cfg: dict, app) -> bool:
     except OSError as e:
         app.log.error(f"Failed to save preferences: {e}")
         return False
-
-
-def copy_to_clipboard(txt: str, app):
-    try:
-        import pyperclip
-
-        pyperclip.copy(txt)
-    except ImportError:
-        app.log.warning(
-            "pyperclip module not found. Install with: pip install pyperclip"
-        )
-    except Exception as e:
-        app.log.error(f"Error copying to clipboard: {str(e)}")

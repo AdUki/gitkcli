@@ -5,6 +5,7 @@ A spec is a sequence of directives, one per line:
     size      120x40        # pty resolution (set before launch)
     config    default       # which config/<NAME> template to use
     launch                  # start the app (implicitly settles)
+    demo      demo_1_list   # ... or start demos/<NAME>.py (a tuikit demo) instead
     key       <F2>          # send key tokens
     key       <Down>*3 j    # *N repeats a token; bare chars are literal
     text      "fix"         # type a literal string (e.g. into search)
@@ -97,7 +98,7 @@ class Directive:
     # op-specific payload
     rows: int = 0
     cols: int = 0
-    name: str = ""  # capture/config name, or shell command for `run`
+    name: str = ""  # capture/config/demo name, or shell command for `run`
     seconds: float = 0.0  # for wait <seconds>; 0 means "stable"
     keys: list = dataclasses.field(default_factory=list)  # for key/text: [KeyEvent]
     args: list = dataclasses.field(default_factory=list)  # extra argv for `launch`
@@ -201,6 +202,15 @@ def parse_spec(text: str):
             directives.append(Directive("config", lineno, name=rest or "default"))
         elif op == "launch":
             directives.append(Directive("launch", lineno, args=rest.split()))
+        elif op == "demo":
+            # A tuikit demo instead of gitkcli: `demo NAME [args]` runs
+            # demos/NAME.py (keeps the library's public API under test).
+            parts = rest.split()
+            if not parts:
+                raise SpecError(f"line {lineno}: demo needs a demo name")
+            directives.append(
+                Directive("launch", lineno, name=parts[0], args=parts[1:])
+            )
         elif op == "run":
             if not rest:
                 raise SpecError(f"line {lineno}: run needs a shell command")

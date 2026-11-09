@@ -18,7 +18,8 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/AdUki/gitkcli",
     py_modules=["gitkcli"],  # the entry-point shim
-    packages=find_packages(include=["gitk", "gitk.*"]),  # the application package
+    # the application package, and the curses UI library it is built on
+    packages=find_packages(include=["gitk", "gitk.*", "tuikit", "tuikit.*"]),
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.7",

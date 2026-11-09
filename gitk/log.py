@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import datetime
 
-from gitk.items import TextListItem
+from tuikit.items import TextListItem
+
 from gitk.screen import Screen
 from gitk.views import LogView
 

@@ -1,38 +1,40 @@
 """The App struct: holds the app's components and the methods that coordinate
-them.
+them. A tuikit.App, so it also runs the event loop.
 
 Created once in `launch_curses` and injected into the components: Screen, views,
 and jobs receive it at construction (`self.app`); items and segments reach it
-through the parent chain (`get_app()`). A plain instance, not a global.
+through their view (`get_app()`). A plain instance, not a global.
 """
 
 from __future__ import annotations
 
-from gitk.input import KeyboardState
+import curses
+
+import tuikit
+from tuikit import keys as K
+
 from gitk.jobs import Job
 from gitk.jump_list import JumpList
-from gitk.screen import Screen
-from gitk.split_layout import SplitLayout
+from gitk.split_layout import GitSplitLayout
 
 
-class App:
+class App(tuikit.App):
+    name = "gitkcli"
+
     def __init__(self):
-        self.running = True
-        self.screen: Screen = None
-        self.mouse: MouseState = None
-        self.keyboard: KeyboardState = None
-        self.log: Log = None
+        super().__init__()
         self.git_log: GitLogView = None
         self.git_diff: GitDiffView = None
         self.git_refs: GitRefsView = None
         self.context_menu: ContextMenu = None
         self.preferences: "PreferencesDialogPopup" = None
         self.command_dialog: "CommandDialogPopup" = None
-        self.confirm_dialog: "ConfirmDialogPopup" = None
-        self.error_dialog: "ErrorDialogPopup" = None
+        self.confirm_dialog: "ConfirmDialog" = None
+        self.error_dialog: "ErrorDialog" = None
 
-        # Split-view state + tiling logic, reached as `app.split`.
-        self.split = SplitLayout(self)
+        # Split-view state + tiling logic, reached as `app.split`; the panes
+        # are attached once the views exist.
+        self.split = GitSplitLayout(self)
         # Back/forward history shared by the log and diff panes, `app.jump_list`.
         self.jump_list = JumpList(self)
 
@@ -69,7 +71,7 @@ class App:
         # run inside the same bar - they block too (e.g. the uncommitted-changes
         # probes re-stat the whole tree right after a checkout).
         previous_message = self.screen.working_message
-        previous_dim = Screen.dimmed
+        previous_dim = self.screen.dimmed
         message = "Working: " + " ".join(args) + " ..."
         if not quiet:
             self.screen.show_working(message)
@@ -98,7 +100,7 @@ class App:
             if not quiet and self.screen.working_message == message:
                 if previous_message:
                     self.screen.working_message = previous_message
-                    Screen.dimmed = previous_dim
+                    self.screen.dimmed = previous_dim
                 else:
                     self.screen.clear_working()
         return result
@@ -112,7 +114,7 @@ class App:
         """Open the active view's search dialog (the F6 / '/' action)."""
         view = self.screen.get_active_view()
         if view:
-            view.handle_input(KeyboardState(ord("/")))
+            view.handle_key(K.KeyEvent(ord("/")))
 
     def open_context_menu(self, at_selection=True):
         """Open the context menu for the active view's selected item.
@@ -137,11 +139,10 @@ class App:
         if item is None:
             return
 
-        win_y, win_x = view.win.getbegyx()
-        row_x = win_x + view.x - view._offset_x
+        row_x, row_y = view.row_screen_position()
         # Anchor one row BELOW the selection so the selected row stays visible
         # above the menu (the keyboard has no cursor to show what it acts on).
-        row_y = win_y + view.y + (view._selected - view._offset_y) + 1
+        row_y += 1
 
         targets = (
             item.get_context_menu_targets()
@@ -153,16 +154,43 @@ class App:
         else:
             # Mouse bar button, or a row with no segment menus: a single menu.
             # The keyboard anchors it at the row; the mouse keeps its position.
-            if at_selection:
-                self.mouse.screen_x = max(0, row_x)
-                self.mouse.screen_y = row_y
-            menu.show_context_menu(item)
+            at = (max(0, row_x), row_y) if at_selection else None
+            menu.show_context_menu(item, at=at)
 
     def reload_refs_commits(self):
         self.git_refs.reload_refs()
         self.git_log.reload_commits()
 
     def exit_program(self):
-        self.running = False
+        self.quit()
         for job in Job.jobs.values():
             job.stop_job()
+
+    # -- tuikit.App hooks -----------------------------------------------------
+
+    def process_background(self) -> bool:
+        return Job.process_all_jobs()
+
+    def show_context_menu(self, item, view=None) -> bool:
+        return self.context_menu.show_context_menu(item)
+
+    def handle_global_key(self, event) -> bool:
+        key = event.key
+        if key in (K.KEY_CTRL_LEFT, K.ctrl("o")):
+            self.jump_list.move(+1)
+        elif key in (K.KEY_CTRL_RIGHT, K.ctrl("i")):
+            self.jump_list.move(-1)
+        elif key == ord("|"):
+            self.split.cycle_split_view()
+        elif key == K.ctrl("w") and self.split.split_active():
+            # toggle focus between the two split panes
+            (self.git_diff if self.git_log.is_active() else self.git_log).show()
+        elif key == K.KEY_SHIFT_F5:
+            self.reload_refs_commits()
+        elif key == curses.KEY_F7:
+            # From the keyboard, open at the selected row (no mouse cursor).
+            self.open_context_menu()
+        else:
+            # q / Esc close the top view; the F-keys run their bar entry.
+            return super().handle_global_key(event)
+        return True

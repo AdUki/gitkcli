@@ -1,0 +1,36 @@
+# tuikit demo 2 (demos/demo_2_widgets.py): segmented rows (on/off switch,
+# choice, a radio group of toggles), a keyboard-navigable button row, and the
+# input / confirm / error dialogs.
+size      90x18
+demo      demo_2_widgets
+capture   start
+# Enter flips the switch; Down + Enter cycles the theme; a click picks <S>.
+key       <Enter> <Down> <Enter>
+mouse     click 10 4
+wait      stable
+capture   toggled
+# G selects the button row; Right moves to [Rename]; Enter opens the prompt.
+key       G <Right> <Enter>
+wait      stable
+key       <bspace>*5
+text      "alice"
+wait      stable
+capture   rename_prompt
+key       <Enter>
+wait      stable
+capture   renamed
+# [Reset] asks first (focus on Cancel); y confirms and restores the defaults.
+key       <Right> <Enter>
+wait      stable
+capture   confirm
+key       y
+wait      stable
+capture   reset
+wait      2.5
+# [Fail] raises the red error dialog; Enter dismisses it.
+key       <Right> <Enter>
+wait      stable
+capture   error
+key       <Enter>
+wait      stable
+capture   dismissed

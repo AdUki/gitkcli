@@ -1,0 +1,7 @@
+[0;34;49m─ Chat [6/6] ──────────────────────────────────────────────────── [0;31;49m[X][0;34;49m─[0m
+[0;38;2;138;138;138;49mWelcome! Type a message and press Enter.[0m
+[0;38;2;138;138;138;49mTry /find or /clear.[0m
+[0;37;49mme: hello there[0m
+[0;33;49mecho: ereht olleh[0m
+[0;31;49munknown command /nope[0m
+[0;7;39;49m [0;1;32;48;2;38;38;38m                                                                     [0m

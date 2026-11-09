@@ -22,6 +22,7 @@ golden to see colour, e.g. the selected row's background highlight).
     size 120x40           pty size, before launch
     config default        config/<name> template (pins preferences)
     launch [args]         start app; args go to it (e.g. launch --graph)
+    demo NAME [args]      start demos/NAME.py instead (tuikit library demos)
     run <shell>           shell cmd in the work repo (setup / external change)
     key <tokens>          send keys; *N repeats; bare chars literal
     text "literal"        type a string (e.g. into search)

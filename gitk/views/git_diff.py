@@ -7,7 +7,17 @@ import re
 import typing
 from functools import partial
 
-from gitk.config import KEY_CTRL
+from tuikit import keys as K
+from tuikit.dialogs import SearchDialog
+from tuikit.list_view import ListView
+from tuikit.segmented import WindowTopBarItem
+from tuikit.segments import (
+    ButtonSegment,
+    DynamicTextSegment,
+    HighlightButtonSegment,
+    TextSegment,
+)
+
 from gitk.diff_target import (
     CommitTarget,
     DiffOptions,
@@ -15,20 +25,10 @@ from gitk.diff_target import (
     TagTarget,
     WorktreeTarget,
 )
-from gitk.dialogs import SearchDialogPopup
 from gitk.ids import ID_GIT_DIFF, ID_GIT_DIFF_SEARCH
-from gitk.input import KeyboardState
 from gitk.items import DiffListItem
 from gitk.jobs import GitDiffJob
-from gitk.list_view import ListView, _raise_split_sibling
 from gitk.screen import Screen
-from gitk.segmented_items import WindowTopBarItem
-from gitk.segments import (
-    ButtonSegment,
-    DynamicTextSegment,
-    HighlightToggleSegment,
-    TextSegment,
-)
 
 
 class GitDiffView(ListView):
@@ -66,7 +66,7 @@ class GitDiffView(ListView):
                     ButtonSegment(
                         "[-]", lambda: self.change_context(-1), Screen.C_TITLE
                     ),
-                    HighlightToggleSegment(
+                    HighlightButtonSegment(
                         "[Ignore whitespace]",
                         lambda: self.app.git_diff.ignore_whitespace,
                         lambda: self.app.git_diff.change_ignore_whitespace(),
@@ -87,7 +87,7 @@ class GitDiffView(ListView):
             )
         )
 
-        self.set_search_dialog(SearchDialogPopup(app, ID_GIT_DIFF_SEARCH))
+        self.set_search_dialog(SearchDialog(app, ID_GIT_DIFF_SEARCH))
 
     def show_commit(self, commit_id: str, on_finished=None):
         """Load 'git show -m COMMIT'."""
@@ -156,10 +156,6 @@ class GitDiffView(ListView):
         self.target = None
         super().clear()
 
-    def show(self):
-        _raise_split_sibling(self, self.app.git_log)
-        super().show()
-
     def _tracks_position(self) -> bool:
         return self.target is not None and self.target.tracks_position
 
@@ -222,8 +218,8 @@ class GitDiffView(ListView):
         self.ignore_whitespace = not self.ignore_whitespace if val is None else val
         self._reload_diff()
 
-    def handle_input(self, keyboard) -> bool:
-        key = keyboard.key
+    def handle_key(self, event) -> bool:
+        key = event.key
         if self.app.split.split_active() and key in (ord("q"), curses.KEY_EXIT):
             # Esc/q in split view steps back to the log pane and stays split,
             # rather than collapsing the split.
@@ -235,13 +231,13 @@ class GitDiffView(ListView):
             self.change_context(+1)
         elif key == ord("-"):
             self.change_context(-1)
-        elif key == KEY_CTRL("n"):
-            self.app.git_log.handle_input(KeyboardState(curses.KEY_DOWN))
-        elif key == KEY_CTRL("p"):
-            self.app.git_log.handle_input(KeyboardState(curses.KEY_UP))
+        elif key == K.ctrl("n"):
+            self.app.git_log.handle_key(K.KeyEvent(curses.KEY_DOWN))
+        elif key == K.ctrl("p"):
+            self.app.git_log.handle_key(K.KeyEvent(curses.KEY_UP))
         elif key in (ord("g"), ord("G"), curses.KEY_HOME, curses.KEY_END):
             self.app.jump_list.record()
-            return super().handle_input(keyboard)
+            return super().handle_key(event)
         else:
-            return super().handle_input(keyboard)
+            return super().handle_key(event)
         return True
