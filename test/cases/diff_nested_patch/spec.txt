@@ -1,0 +1,16 @@
+# A changed .patch file is a diff inside a diff: column 0 carries this diff's
+# marker (coloured as usual), the rest of the line is the patch's own line and
+# is coloured by ITS marker (-/+/@@/headers) instead of all green/red. The
+# patch's "+++ b/g" line, added here as "++++ b/g", is hunk content, not a file
+# header of the outer diff. A plain patch line (context, message) that is
+# itself added/removed ("+ d", "-Subject: ...") is drawn in DIM (SGR 2)
+# green/red instead - pyte drops SGR 2, so the golden shows those lines in
+# plain green/red. `less -R` the golden to see the colours.
+size      120x40
+config    default
+run       printf 'Subject: [PATCH] fix\n\n---\ndiff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,3 +1,3 @@\n a\n-a\n+b\n c\n-- \n2.43\n' > fix.patch && git add fix.patch && git commit -qm "Add fix.patch"
+run       printf 'Subject: [PATCH] fix it\n\n---\ndiff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,3 +1,5 @@\n a\n-a\n+b\n+++ b/g\n c\n d\n-- \n2.43\n' > fix.patch && git commit -qam "Edit fix.patch"
+launch
+key       <Enter>
+wait      stable
+capture   nested_diff
