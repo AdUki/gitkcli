@@ -1,0 +1,12 @@
+# F5 in --graph mode files a new HEAD commit into the existing graph (no full
+# reload): the new row appears above, and the cursor stays on the commit it
+# was on - it moves down one row with it.
+size      120x40
+config    default
+launch    --graph
+wait      stable
+key       <Down>*3
+run       git commit --allow-empty -m "external graph commit"
+key       <F5>
+wait      stable
+capture   kept

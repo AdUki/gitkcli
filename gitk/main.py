@@ -55,6 +55,10 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
     app.git_log.show_commit_date = _cfg["git_log"]["show_commit_date"]
     app.git_log.show_commit_author = _cfg["git_log"]["show_commit_author"]
     app.git_log.set_pref_flags(_cfg["git_log"]["flags"])
+    dot = _cfg["git_log"]["graph_dot"]
+    # one narrow character, or the default: the lanes are laid out in columns
+    if isinstance(dot, str) and len(dot) == 1 and dot.isprintable():
+        app.git_log.graph_dot = dot
     app.git_diff.ignore_whitespace = _cfg["git_diff"]["ignore_whitespace"]
     app.log.view.autoscroll = _cfg["log"]["autoscroll"]
     app.split.default_view_mode = _cfg["view"]["default_mode"]

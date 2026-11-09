@@ -2,7 +2,7 @@
 
 **gitk, in your terminal.**
 
-GitkCLI brings the beloved [gitk](https://git-scm.com/docs/gitk) history-browsing experience to the terminal — no X11, no display server, no GUI. Just `git log --graph` rendered into a fast, mouse-aware, keyboard-driven curses interface that runs anywhere a shell does.
+GitkCLI brings the beloved [gitk](https://git-scm.com/docs/gitk) history-browsing experience to the terminal — no X11, no display server, no GUI. Just your history and its graph in a fast, mouse-aware, keyboard-driven curses interface that runs anywhere a shell does.
 
 ## Why GitkCLI?
 
@@ -18,13 +18,21 @@ The moment you're on a remote box over SSH, inside tmux, or on a headless server
 | Commit ops (cherry-pick, revert, reset, branch/tag) | ✅ | ✅ |
 | Blame / trace line origin | ✅ | ✅ |
 
-### The lazy trick that makes it work
+### The graph: gitk's own algorithm
 
-The hard part of any gitk clone is the commit graph layout. GitkCLI doesn't reinvent it — it **piggybacks on `git log --graph`** and renders git's own output. Almost zero lines of graph-drawing code, and it stays correct because git does the math.
+The hard part of any gitk clone is the commit graph layout. With `--graph`, GitkCLI lays it out the way gitk does (`gitk/graph.py` is a port of gitk's "arc" model, checked row for row against gitk's own Tcl code):
+
+- **No `--topo-order` wait.** git streams plain `git log` output, and each commit is filed into its proper place as it arrives - the first screen shows up at once even for `--all` on the Linux kernel (1.8M commits, where `git log --graph` first sits silent for ~25 s).
+- **Few lanes.** A line whose parent is far below is cut short (`┆`) and resumes just above the parent, so `--all` on a huge repository stays a handful of lanes wide. Double-click a `┆` to jump to the line's other end (`<-` jumps back).
+- **Starts at HEAD.** The view opens with HEAD (and any uncommitted changes) at the top while the rest streams in around it.
+- **Incremental.** New commits (F5 after a commit, cherry-pick, ...) are inserted into the loaded graph instead of reloading it, and the cursor stays on its commit. The "uncommitted changes" rows are nodes in the graph, right above HEAD.
+- **Lazy.** Only the rows on screen are laid out; jumping to the end of a million-commit log is instant.
+
+Commits are drawn as `⬤` beside box-drawing lanes - `⬤┤` a commit, `⬤┬─┐` a merge, `⬤┼─┘` a branch joining back. Fonts put round glyphs at different heights: set `"graph_dot"` in the `git_log` section of `~/.config/gitkcli/config.json` to another one (e.g. `"●"`) if `⬤` looks off.
 
 ## Features
 
-- **Browse commit history** with a real graph view, Vim-like navigation, and smooth scrolling
+- **Browse commit history** with a real graph view (`--graph`), Vim-like navigation, and smooth scrolling
 - **View commit diffs** with customizable context size and whitespace handling
 - **Advanced search** with regex support, case sensitivity, and multiple search types (commit ID, message, diff, file paths)
 - **Git references** - browse and manage branches, tags, and remote branches

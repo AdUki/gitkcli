@@ -1,0 +1,9 @@
+# The glyph marking a commit in --graph mode comes from git_log.graph_dot in
+# the config (fonts place round glyphs at different heights): here "●"
+# instead of the default "⬤".
+size      120x40
+config    graph_dot
+launch    --graph --all
+wait      stable
+key       g
+capture   dot

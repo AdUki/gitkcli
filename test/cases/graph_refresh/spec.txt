@@ -1,6 +1,6 @@
-# F5 refresh in --graph mode. The lane art is computed by git over the whole
-# commit set, so a single new commit cannot be appended incrementally - the view
-# must reload the full log. Launch with --graph, create an external commit on
+# F5 refresh in --graph mode. The graph engine (gitk.graph) files the new
+# commit into the loaded graph incrementally (`old..HEAD`, no full reload).
+# Launch with --graph, create an external commit on
 # HEAD, press F5, then 'g' to scroll to the (reloaded) top where the new commit
 # is visible with correct graph art.
 size      120x40

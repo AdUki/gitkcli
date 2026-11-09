@@ -1,0 +1,10 @@
+# --graph mode with both staged and unstaged changes: the two pseudo-rows are
+# fake commits in the graph (working -> staged -> HEAD), so they sit directly
+# above HEAD and are drawn as nodes in HEAD's lane.
+size      120x40
+config    default
+run       printf 'junk\n' >> README.md && git add README.md && printf 'more\n' >> README.md
+launch    --graph
+wait      stable
+key       g
+capture   pseudo

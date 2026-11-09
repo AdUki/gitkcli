@@ -574,6 +574,8 @@ class PreferencesDialogPopup(ListView):
                 "show_commit_date": self.t_show_date.toggled,
                 "show_commit_author": self.t_show_author.toggled,
                 "flags": new_flags,
+                # not edited here; keep what the config file has
+                "graph_dot": self.app.git_log.graph_dot,
             },
             "git_diff": {"ignore_whitespace": self.t_ign_ws.toggled},
             "log": {"autoscroll": self.t_autoscroll.toggled},

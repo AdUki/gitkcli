@@ -73,6 +73,41 @@ class FillerSegment(Segment):
     pass
 
 
+class GraphSegment(Segment):
+    """Commit-graph art: one segment (so no separators split it) painted in
+    runs, each run in its own lane colour. `runs` is [(text, color), ...]."""
+
+    def __init__(self, runs, on_click=None):
+        super().__init__()
+        self.runs = runs
+        self.txt = "".join(t for t, _ in runs)
+        # on_double_click(x): a double click at column x of the art; True if
+        # handled (a plain click just selects the row, as anywhere else)
+        self.on_double_click = on_click
+
+    def get_text(self):
+        return self.txt
+
+    def draw(self, win, offset, width, selected, matched, marked) -> int:
+        drawn = 0
+        pos = 0
+        for text, color in self.runs:
+            lo = max(offset - pos, 0)
+            pos += len(text)
+            if lo >= len(text) or drawn >= width:
+                continue
+            piece = text[lo : lo + width - drawn]
+            win.addstr(piece, Screen.color(color, selected, marked, False))
+            drawn += len(piece)
+        return drawn
+
+    def handle_mouse_input(self, mouse) -> bool:
+        # The art is the row's first segment, so the row's x is the art's.
+        if mouse.event_type == "double-click" and self.on_double_click:
+            return bool(self.on_double_click(mouse.x))
+        return False
+
+
 class TextSegment(Segment):
     def __init__(self, txt, color=Screen.C_NORMAL):
         super().__init__()

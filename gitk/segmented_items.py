@@ -325,9 +325,6 @@ class UncommittedChangesListItem(SegmentedListItem):
         super().__init__()
         self._staged = staged
         self.id = LOCAL_STAGED_ID if staged else LOCAL_WORKING_ID
-        # Graph art mirrored from the HEAD row when in --graph mode; set by
-        # GitLogView._place_uncommitted_rows, empty otherwise.
-        self.graph_prefix = ""
         if self._staged:
             self.txt, self.color = STAGED_TITLE, Screen.C_STATUS
         else:
@@ -337,10 +334,10 @@ class UncommittedChangesListItem(SegmentedListItem):
         return (self, ID_GIT_LOG)
 
     def get_segments(self):
-        segments = []
-        if self.graph_prefix:
-            segments.append(TextSegment(self.graph_prefix))
+        segments = self.get_app().git_log.graph_segments(self.id)
         segments.append(TextSegment(self.txt, self.color))
+        for segment in segments:
+            segment._item = self
         return segments
 
     def load_to_view(self):
@@ -377,10 +374,7 @@ class CommitListItem(SegmentedListItem):
             for segment in segments:
                 segment._item = self
             return segments
-        segments = []
-
-        if commit["prefix"]:
-            segments.append(TextSegment(commit["prefix"]))
+        segments = app.git_log.graph_segments(self.id)
         if app.git_log.show_commit_id:
             segments.append(TextSegment(self.id[:7], Screen.C_GIT_ID))
         if app.git_log.show_commit_date:

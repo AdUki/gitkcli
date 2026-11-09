@@ -1,0 +1,12 @@
+# --graph --all: every branch gets its own lane, laid out by gitk.graph (the
+# port of gitk's arc model) from plain streaming `git log`. Page down into the
+# region where the feature branches fork and merge.
+size      120x40
+config    default
+launch    --graph --all
+wait      stable
+key       g
+capture   top
+key       <PgDn>
+wait      stable
+capture   paged

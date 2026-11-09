@@ -8,7 +8,9 @@ import re
 import shlex
 import typing
 
+from gitk.diff_target import LOCAL_STAGED_ID, LOCAL_WORKING_ID
 from gitk.dialogs import GitSearchDialogPopup, ResetDialogPopup
+from gitk.graph import CUT, DOT, CommitGraph
 from gitk.ids import ID_GIT_LOG
 from gitk.jobs import GitLogJob, GitRefreshHeadJob, GitSearchJob, Job
 from gitk.list_view import ListView, _raise_split_sibling
@@ -18,7 +20,7 @@ from gitk.segmented_items import (
     UncommittedChangesListItem,
     WindowTopBarItem,
 )
-from gitk.segments import ButtonSegment, SplitButtonSegment
+from gitk.segments import ButtonSegment, GraphSegment, SplitButtonSegment
 from gitk.split_layout import SPLIT_OFF
 from gitk.view import MODE_FULLSCREEN
 
@@ -30,6 +32,61 @@ def _split_pathspec(args: typing.List[str]):
         i = args.index("--")
         return args[:i], args[i + 1 :]
     return list(args), None
+
+
+class GraphRows:
+    """The log's rows in --graph mode: a read-only sequence view of the
+    commit graph's display order, standing in for ListView.items. Commits are
+    filed into the graph in whatever order git streams them and may land
+    anywhere, so rows are looked up by number on demand instead of being
+    inserted into a list. Row items are created lazily and cached by id, so a
+    commit keeps one item (and its identity) wherever it moves."""
+
+    def __init__(self, view: "GitLogView", graph: CommitGraph):
+        self.view = view
+        self.graph = graph
+        self._items: typing.Dict[str, typing.Any] = {}
+
+    def item(self, id: str):
+        it = self._items.get(id)
+        if it is None:
+            if id in self.graph.fake:
+                it = UncommittedChangesListItem(staged=id == LOCAL_STAGED_ID)
+            else:
+                it = CommitListItem(id)
+            it._view = self.view
+            self._items[id] = it
+        return it
+
+    def forget(self, id: str):
+        self._items.pop(id, None)
+
+    def __len__(self) -> int:
+        return self.graph.num_rows
+
+    def __bool__(self) -> bool:
+        return self.graph.num_rows > 0
+
+    def __getitem__(self, i):
+        n = self.graph.num_rows
+        if isinstance(i, slice):
+            return [self[j] for j in range(*i.indices(n))]
+        if i < 0:
+            i += n
+        id = self.graph.commit_on_row(i)
+        if id is None:
+            raise IndexError(i)
+        return self.item(id)
+
+    def __iter__(self):
+        for r in range(self.graph.num_rows):
+            yield self[r]
+
+    def index(self, item) -> int:
+        r = self.graph.row_of(getattr(item, "id", None))
+        if r is None:
+            raise ValueError(item)
+        return r
 
 
 class GitLogView(ListView):
@@ -47,13 +104,22 @@ class GitLogView(ListView):
         # check_uncommitted_changes and consumed by _place_uncommitted_rows.
         self._has_working = False
         self._has_staged = False
-        # In --graph mode git computes the lane art over the whole commit set, so
-        # we cannot append a single commit's art incrementally - HEAD changes must
-        # trigger a full reload instead. Recomputed in set_pref_flags.
+        # --graph mode: the lanes are laid out by gitk.graph (a port of gitk's
+        # arc model), which also orders the rows, so self.items is a GraphRows
+        # over `graph`. None when not in graph mode. Recreated on each reload
+        # (see clear); --graph may come from the command line or the prefs.
         self._graph_mode = "--graph" in git_args
+        self.graph: typing.Optional[CommitGraph] = None
+        self.graph_dot = DOT  # from the config's git_log.graph_dot
+        # The commit the cursor is on and the row it was on when last drawn:
+        # rows inserted above it move it down, and the cursor (and scroll
+        # position) follow it, like gitk's targetid/targetrow.
+        self._target_id = ""
+        self._target_row = 0
         # Commit to re-select once it streams back in after a reload (keeps the
         # cursor where the user left it). One-shot, like _pending_focus_head.
         self._pending_select_id = ""
+        self._pending_select_line = 0
         # One-shot: scroll to HEAD the first time it can be located after launch,
         # so it is visible even when it is not at the top (uncommitted rows above
         # it, an unrelated revision arg, or a detached/old HEAD deep in the list).
@@ -154,7 +220,88 @@ class GitLogView(ListView):
         if id in self.commits:
             return False
         self.commits[id] = commit
+        graph = self.graph
+        if graph is not None:
+            parents = commit["parents"]
+            if "--first-parent" in self.job.args:
+                parents = parents[:1]
+            graph.add_commit(id, parents, commit["ctime"])
+            self.dirty = True
+            if graph.fake and self.head_id in parents:
+                # HEAD gained a child after its pseudo-rows were placed: that
+                # splits HEAD's arc and may move it, so re-place them.
+                self._place_uncommitted_rows()
         return True
+
+    def graph_finished(self):
+        """The log finished streaming: rows near the end can be laid out for
+        good now (gitk: viewcomplete)."""
+        self.graph.complete = True
+        self.graph.reset_layout()
+        self.dirty = True
+
+    def clear(self):
+        super().clear()
+        self._target_id = ""
+        self._target_row = 0
+        if self._graph_mode:
+            self.graph = CommitGraph(date_mode="--date-order" in self.job.args)
+            self.graph.dot = self.graph_dot
+            self.items = GraphRows(self, self.graph)
+        else:
+            self.graph = None
+
+    def graph_segments(self, id: str):
+        """The graph art of row `id` as a GraphSegment (one colour run per
+        lane), in a list: [] when not in graph mode or not on a row."""
+        graph = self.graph
+        if graph is None:
+            return []
+        row = graph.row_of(id)
+        if row is None:
+            return []
+        text, owners = graph.render_row(row)
+        if not text:
+            return []
+        on_click = lambda x: self.follow_cut_line(row, x, text, owners)  # noqa: E731
+        runs = []
+        start = 0
+        for x in range(1, len(text) + 1):
+            if x == len(text) or owners[x] != owners[start]:
+                color = Screen.C_LANE + graph.lane_color(
+                    owners[start], Screen.LANE_COLORS
+                )
+                runs.append((text[start:x], color))
+                start = x
+        return [GraphSegment(runs, on_click)]
+
+    def _sync_target(self):
+        """Keep the cursor on the commit it was on (and the screen scrolled
+        with it) when rows were inserted or removed above it."""
+        if self.graph is None or not self._target_id:
+            return
+        row = self.graph.row_of(self._target_id)
+        if row is None or row == self._target_row:
+            return
+        delta = row - self._target_row
+        self._selected = max(0, min(self._selected + delta, len(self.items) - 1))
+        self._offset_y = max(0, self._offset_y + delta)
+        self._target_row = row
+        self.dirty = True
+
+    def _remember_target(self):
+        if self.graph is None:
+            return
+        item = self.get_selected()
+        self._target_id = getattr(item, "id", "") or ""
+        self._target_row = self._selected
+
+    def draw(self):
+        if self.graph is not None:
+            self._sync_target()
+            self.graph.layout(self._offset_y, self._offset_y + self.height)
+        super().draw()
+        self._remember_target()
 
     def refresh_head(self):
         """Pull in commits made since the view last saw HEAD. When HEAD merely
@@ -167,6 +314,17 @@ class GitLogView(ListView):
         `old..HEAD`."""
         new_head = Job.run_job(self.app, ["git", "rev-parse", "HEAD"]).stdout.strip()
         if new_head and new_head in self.commits:
+            self.head_id = new_head
+            self.check_uncommitted_changes()
+            return
+        if self.graph is not None and self.head_id in self.commits:
+            # The graph files new commits wherever they belong, so fetch just
+            # the new ones, as below. The pseudo-rows hang off the old HEAD:
+            # take them down until the new HEAD has streamed in.
+            self._remove_fake_rows()
+            self.job_refresh_head.start_job(
+                [f"{self.head_id}..HEAD"], on_finished=self._place_uncommitted_rows
+            )
             self.head_id = new_head
             self.check_uncommitted_changes()
             return
@@ -186,6 +344,8 @@ class GitLogView(ListView):
         # change, a new commit in --graph mode, Shift+F5) does not dump the
         # cursor at the top.
         self._pending_select_id = self.get_selected_commit_id()
+        # ... on the same screen line (graph mode, see select_if_pending)
+        self._pending_select_line = self._selected - self._offset_y
         self.clear()
         # The silent up-front phase can take a long time on a big repo
         # (--graph implies --topo-order, computed over the whole set before
@@ -226,11 +386,14 @@ class GitLogView(ListView):
         exist and reinsert the ones we need directly above the HEAD commit row
         (working above staged), keeping the cursor on the same screen line.
         Idempotent, so it can be re-fired whenever HEAD or the rows change."""
+        if self.graph is not None:
+            self._place_fake_rows()
+            return
         selected_id = getattr(self.get_selected(), "id", None)
         old_selected = self._selected
 
         self._strip_pseudo_rows()
-        insert_at, graph_prefix = self._pseudo_insert_pos()
+        insert_at = self._pseudo_insert_pos()
 
         rows = []
         if self._has_working:
@@ -238,12 +401,65 @@ class GitLogView(ListView):
         if self._has_staged:
             rows.append(UncommittedChangesListItem(staged=True))
         for n, row in enumerate(rows):
-            row.graph_prefix = graph_prefix
             row._view = self
             self.items.insert(insert_at + n, row)
 
         self._restore_selection(selected_id, old_selected)
         self.dirty = True
+
+    def _remove_fake_rows(self):
+        for id in (LOCAL_WORKING_ID, LOCAL_STAGED_ID):
+            if self.graph.remove_fake_row(id):
+                self.items.forget(id)
+
+    def _place_fake_rows(self):
+        """Graph mode: the pseudo-rows are fake commits in the graph (as in
+        gitk), children of HEAD - staged above HEAD, working above that - so
+        they sit directly above HEAD with real lanes. The cursor follows its
+        commit through _sync_target; a vanished pseudo-row keeps the index."""
+        # HEAD's block (the pseudo-rows and HEAD) at the top of the view stays
+        # there, pseudo-rows included, as they come and go.
+        at_top = self._head_block_top() == self._offset_y
+        self._remove_fake_rows()
+        parent = self.head_id
+        if parent in self.graph:
+            if self._has_staged and self.graph.insert_fake_row(LOCAL_STAGED_ID, parent):
+                parent = LOCAL_STAGED_ID
+            if self._has_working:
+                self.graph.insert_fake_row(LOCAL_WORKING_ID, parent)
+        if self.items:
+            self._selected = max(0, min(self._selected, len(self.items) - 1))
+        self._sync_target()
+        top = self._head_block_top()
+        if at_top and top is not None:
+            self._offset_y = top
+        self.dirty = True
+
+    def _head_block_top(self) -> typing.Optional[int]:
+        """Graph mode: the row of the topmost of HEAD and its pseudo-rows."""
+        rows = [
+            self.graph.row_of(id)
+            for id in (LOCAL_WORKING_ID, LOCAL_STAGED_ID, self.head_id)
+            if id
+        ]
+        rows = [r for r in rows if r is not None]
+        return min(rows) if rows else None
+
+    def follow_cut_line(self, row: int, x: int, text: str, owners) -> bool:
+        """A double click at column `x` of the graph art of `row`: on a cut
+        line (┆), select the row with the line's other dashed end - as a jump,
+        so the jump list can come back. Elsewhere it is not ours (False), and
+        the double click opens the row as usual."""
+        if not (0 <= x < len(text)) or text[x] != CUT or not owners[x]:
+            return False
+        target = self.graph.cut_line_target(row, owners[x])
+        if target is None:
+            return False
+        point = self.app.jump_list.capture()
+        self.set_selected(target)
+        self._remember_target()
+        self.app.jump_list.record(point)
+        return True
 
     def _strip_pseudo_rows(self):
         """Rebuild self.items without the uncommitted pseudo-rows."""
@@ -252,13 +468,8 @@ class GitLogView(ListView):
         ]
 
     def _pseudo_insert_pos(self):
-        """Where to insert the pseudo-rows, and the graph-art prefix to mirror
-        onto them. Insert directly above the HEAD row; fall back to the top of
-        the real-commit list when HEAD is not (yet) in view. Mirror HEAD's
-        graph art onto the rows only when HEAD is the topmost commit, so they
-        render as nodes in HEAD's lane; never splice a node into unrelated
-        lanes when HEAD is buried (e.g. --all). Empty when not in --graph mode.
-        """
+        """Where to insert the pseudo-rows: directly above the HEAD row, or at
+        the top of the real-commit list while HEAD is not (yet) in view."""
         first_commit = head_index = None
         for i, it in enumerate(self.items):
             if isinstance(it, CommitListItem):
@@ -267,13 +478,7 @@ class GitLogView(ListView):
                 if it.id == self.head_id:
                     head_index = i
                     break
-        insert_at = head_index if head_index is not None else (first_commit or 0)
-
-        graph_prefix = ""
-        if head_index is not None and head_index == first_commit:
-            graph_prefix = self.commits.get(self.head_id, {}).get("prefix", "")
-
-        return insert_at, graph_prefix
+        return head_index if head_index is not None else (first_commit or 0)
 
     def _restore_selection(self, selected_id, old_selected):
         """Keep the previously-selected row on the same screen line. Real
@@ -311,6 +516,13 @@ class GitLogView(ListView):
         self.dirty = True
 
     def select_commit(self, id: str) -> typing.Optional[CommitListItem]:
+        if self.graph is not None:
+            row = self.graph.row_of(id) if id not in self.graph.fake else None
+            if row is None:
+                return None
+            self.set_selected(row)
+            self._remember_target()
+            return self.items[row]
         for idx, item in enumerate(self.items):
             if isinstance(item, CommitListItem) and id == item.id:
                 self.set_selected(idx)
@@ -328,6 +540,15 @@ class GitLogView(ListView):
             and self.select_commit(self.head_id)
         ):
             self._pending_focus_head = False
+            if self.graph is not None:
+                # Graph mode files commits where they belong as they stream
+                # in, so put HEAD (and the uncommitted rows over it) at the
+                # top of the view: newer commits are inserted above, out of
+                # view, and older ones appended below, while the cursor and
+                # screen follow HEAD (_sync_target).
+                self._offset_y = self._head_block_top()
+                self.dirty = True
+                return
             # At this instant HEAD is the last row streamed in, so select_commit's
             # center clamp (min(sel - h/2, len - h)) pins it to the bottom of the
             # screen. Re-place it half a screen from the top WITHOUT clamping to
@@ -349,10 +570,16 @@ class GitLogView(ListView):
             and self.select_commit(id)
         ):
             self._pending_select_id = ""
+            if self.graph is not None:
+                # back on the screen line it was on before the reload
+                self._offset_y = max(0, self._selected - self._pending_select_line)
+                self.dirty = True
 
     def find_row(self, view_key: str) -> typing.Optional[int]:
         """Index of the row `view_key` names - a commit sha, or an uncommitted
         pseudo-row id - or None when it is not (or no longer) loaded."""
+        if self.graph is not None:
+            return self.graph.row_of(view_key)
         return next(
             (
                 i
@@ -473,6 +700,8 @@ class GitLogView(ListView):
         self.app.git_diff.show()
 
     def handle_input(self, keyboard):
+        # Rows may have moved under the cursor since the last frame.
+        self._sync_target()
         key = keyboard.key
         if key == ord("q"):
             self.app.exit_program()

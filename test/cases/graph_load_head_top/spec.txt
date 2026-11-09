@@ -1,0 +1,12 @@
+# On load in --graph mode the view starts at HEAD - its uncommitted rows on
+# top - even with --all, where newer commits of other branches are filed in
+# above it (out of view: scroll up to see them).
+size      120x40
+config    default
+run       printf 'junk\n' >> README.md
+launch    --graph --all
+wait      stable
+capture   loaded
+key       <PgUp>
+wait      stable
+capture   above

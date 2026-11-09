@@ -46,6 +46,8 @@ run_lint() {
 }
 
 run_test() {
+    echo ">> graph engine unit tests"
+    python3 test/test_graph.py
     echo ">> test suite"
     python3 test/run.py "$@"
 }

@@ -62,6 +62,9 @@ class Screen:
     C_MATCH = 16  # search match
     C_DIFF_INFO = 17  # diff info lines
     C_DIM = 18  # debug text / neutral grey (also SPLIT_DIVIDER_COLOR in view.py)
+    # Commit-graph lane colours: C_LANE + 0 .. C_LANE + LANE_COLORS - 1.
+    C_LANE = 20
+    LANE_COLORS = 6
     C_TITLE = 30  # window title bar (active/inactive)
     C_BANNER = 31  # warning title bar (white on red)
 
@@ -224,6 +227,17 @@ class Screen:
         Screen._init_color(Screen.C_MATCH, curses.COLOR_YELLOW)
         Screen._init_color(Screen.C_DIFF_INFO, curses.COLOR_BLUE)
         Screen._init_color(Screen.C_DIM, 245)
+        for i, fg in enumerate(
+            (
+                curses.COLOR_GREEN,
+                curses.COLOR_RED,
+                curses.COLOR_BLUE,
+                curses.COLOR_MAGENTA,
+                curses.COLOR_YELLOW,
+                curses.COLOR_CYAN,
+            )
+        ):
+            Screen._init_color(Screen.C_LANE + i, fg)
 
         Screen._init_color(
             Screen.C_TITLE,

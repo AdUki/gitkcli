@@ -160,12 +160,13 @@ class Job:
         self.stop = False
         self.on_finished = on_finished
 
+        tail = self.command_args()
         self.app.log.info(
-            " ".join(["Job started", self.id + ":", self.cmd] + args + self.args)
+            " ".join(["Job started", self.id + ":", self.cmd] + args + tail)
         )
 
         self.job = subprocess.Popen(
-            self.cmd.split(" ") + args + self.args,
+            self.cmd.split(" ") + args + tail,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=_git_env(),
@@ -180,6 +181,10 @@ class Job:
         self._reader_threads = [stdout_thread, stderr_thread]
         stdout_thread.start()
         stderr_thread.start()
+
+    def command_args(self) -> typing.List[str]:
+        """The arguments appended after the per-run ones (default: self.args)."""
+        return self.args
 
     def get_exit_code(self):
         return self.job.poll() if self.job else None
@@ -236,7 +241,7 @@ def _parse_date(date_str: str) -> datetime.datetime:
 class GitLogJob(Job):
     def __init__(self, app, id: str, args=[]):
         super().__init__(app, id)
-        self.cmd = "git log --format=#%H#%P#%aI#%an#%s"
+        self.cmd = "git log --format=%H#%P#%ct#%aI#%an#%s"
         self.args = args
         # One-shot: clear the "loading commits" bar once the first row streams
         # in. False here so GitRefreshHeadJob (which shows no bar and skips
@@ -248,6 +253,15 @@ class GitLogJob(Job):
         self._first_item_pending = True
         super().start_job(args, on_finished)
 
+    def command_args(self) -> typing.List[str]:
+        # In graph mode the lanes are ours (gitk.graph), so git must not draw
+        # them: plain `git log` streams at once, where --graph (implying
+        # --topo-order) first walks the whole history. --parents makes git
+        # rewrite the parents of a path-limited log onto the shown commits.
+        if self.app.git_log.graph is not None:
+            return [a for a in self.args if a != "--graph"] + ["--parents"]
+        return self.args
+
     def process_message(self, message):
         # A repo with no commits yet (fresh `git init`, unborn branch) makes
         # `git log` exit non-zero with this stderr. That's an empty log, not an
@@ -258,15 +272,17 @@ class GitLogJob(Job):
         ):
             return
         super().process_message(message)
+        if message["type"] == "finished" and self.app.git_log.graph is not None:
+            self.app.git_log.graph_finished()
 
     def process_line(self, line) -> typing.Any:
         try:
-            prefix, id, parents_str, date_str, author, title = line.split("#", 5)
+            id, parents_str, ctime, date_str, author, title = line.split("#", 5)
             return (
                 id,
                 {
-                    "prefix": prefix,
-                    "parents": parents_str.split(" "),
+                    "parents": parents_str.split(),
+                    "ctime": int(ctime),
                     "date": _parse_date(date_str),
                     "author": author,
                     "title": title,
@@ -283,11 +299,16 @@ class GitLogJob(Job):
             self._first_item_pending = False
             self.app.screen.clear_working()
         if isinstance(item, str):
-            self.app.git_log.append(TextListItem(item, is_selectable=False))
+            if self.app.git_log.graph is not None:
+                # the rows are the graph's: a line we cannot parse has no place
+                self.app.log.warning(f"Unparsed git log line: {item}")
+            else:
+                self.app.git_log.append(TextListItem(item, is_selectable=False))
         else:
             id, commit = item
             if self.app.git_log.add_commit(id, commit):
-                self.app.git_log.append(CommitListItem(id))
+                if self.app.git_log.graph is None:
+                    self.app.git_log.append(CommitListItem(id))
                 self.app.git_log.select_if_pending(id)
                 if id == self.app.git_log.head_id:
                     self.app.git_log.focus_head_if_pending()
@@ -300,18 +321,19 @@ class GitRefreshHeadJob(GitLogJob):
 
     def start_job(self, args=[], on_finished=None):
         log = self.app.git_log
-        head_in_view = any(
-            hasattr(item, "id") and item.id == log.head_id for item in log.items
-        )
-        if not head_in_view:
+        if log.head_id not in log.commits:
             return  # nothing to refresh onto
         # Skip GitLogJob.start_job (which clears commits): this appends to the view.
         Job.start_job(self, args, on_finished)
 
+    def process_message(self, message):
+        Job.process_message(self, message)
+
     def process_item(self, item):
         (id, commit) = item
         if self.app.git_log.add_commit(id, commit):
-            self.app.git_log.prepend_commit(CommitListItem(id))
+            if self.app.git_log.graph is None:
+                self.app.git_log.prepend_commit(CommitListItem(id))
             if id == self.app.git_log.head_id:
                 self.app.git_log._place_uncommitted_rows()
 

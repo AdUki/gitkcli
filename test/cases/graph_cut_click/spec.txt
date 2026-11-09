@@ -1,0 +1,14 @@
+# Double-clicking a cut line's dashed end (┆) in --graph mode selects the row
+# with the line's other dashed end; the jump list's back button returns.
+size      120x40
+config    default
+launch    --graph --all
+wait      stable
+key       g
+wait      stable
+mouse     dblclick 6 11
+wait      stable
+capture   jumped
+mouse     click 108 1
+wait      stable
+capture   back
