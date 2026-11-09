@@ -224,6 +224,15 @@ class Job:
             self.messages.put({"type": "finished"})
 
 
+def _parse_date(date_str: str) -> datetime.datetime:
+    """An ISO date from git. A few real commits carry an impossible timezone
+    (the kernel has "+80:00"); show those with the offset dropped."""
+    try:
+        return datetime.datetime.fromisoformat(date_str)
+    except ValueError:
+        return datetime.datetime.fromisoformat(date_str[:19])
+
+
 class GitLogJob(Job):
     def __init__(self, app, id: str, args=[]):
         super().__init__(app, id)
@@ -258,7 +267,7 @@ class GitLogJob(Job):
                 {
                     "prefix": prefix,
                     "parents": parents_str.split(" "),
-                    "date": datetime.datetime.fromisoformat(date_str),
+                    "date": _parse_date(date_str),
                     "author": author,
                     "title": title,
                 },
