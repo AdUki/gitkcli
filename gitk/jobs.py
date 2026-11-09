@@ -317,8 +317,11 @@ class GitDiffJob(Job):
         super().__init__(app, ID_GIT_DIFF)
         self.cmd = "git"
 
+        # Lines outside a hunk: file headers, the hunk header itself, and (with
+        # nothing matched) the commit message / diffstat. Lines INSIDE a hunk
+        # never reach this pattern - see process_line.
         self.line_pattern = re.compile(
-            r"^(?:( )|(?:\+\+\+ b/(.*))|(?:--- a/(.*))|(\+\+\+|---|diff|index)|(\+)|(-)|(@@ -(\d+),\d+ \+(\d+),\d+ @@))"
+            r"^(?:( )|(?:\+\+\+ (?:b/(.*)|/dev/null))|(?:--- (?:a/(.*)|/dev/null))|(\+\+\+|---|diff|index)|(\+)|(-)|(@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@))"
         )
         # Detects a diffstat line (" path | 5 +-"); the post-rename path used for
         # jump-to-file is reconstructed separately by _stat_file_path.
@@ -334,6 +337,15 @@ class GitDiffJob(Job):
         self.new_file_path: typing.Optional[str] = None
         self.new_file_line: int = -1
         self.line_count = -1
+        # Lines still owed by the current hunk, per its "@@ -o,N +n,M @@"
+        # header. While either is non-zero a line is hunk content whatever it
+        # looks like, so a patch file's own "+++ b/x" / "--- a/x" / "-- " lines
+        # are not mistaken for this diff's headers.
+        self.old_remaining = 0
+        self.new_remaining = 0
+        # Whether the current hunk belongs to a patch file, whose content is
+        # itself a diff and gets its own colours (see _nested_color).
+        self.nested = False
 
     def start_job(self, args=[], on_finished=None):
         self._reset_parser()
@@ -356,67 +368,139 @@ class GitDiffJob(Job):
             path = path.rsplit(" => ", 1)[-1]  # a => b -> b
         return path
 
+    # A changed file whose content is a diff itself (a quilt / Yocto / kernel
+    # patch). Its lines carry two markers: column 0 is this diff's, the rest
+    # is a line of the patch.
+    _PATCH_SUFFIXES = (".patch", ".diff")
+
+    @staticmethod
+    def _nested_color(text):
+        """Colour for a patch file's line once this diff's marker is cut off:
+        the same scheme as the outer diff, applied to the inner one."""
+        if text.startswith("@@"):
+            return Screen.C_DIFF_RANGE
+        if text.startswith(
+            ("diff ", "index ", "--- a/", "+++ b/", "--- /dev/null", "+++ /dev/null")
+        ):
+            return Screen.C_DIFF_INFO
+        # format-patch's message/diffstat separator and mail signature line.
+        if text.rstrip() in ("---", "--"):
+            return Screen.C_NORMAL
+        if text.startswith("+"):
+            return Screen.C_DIFF_ADD
+        if text.startswith("-"):
+            return Screen.C_DIFF_DEL
+        return Screen.C_NORMAL
+
     def process_line(self, line) -> typing.Any:
-        color = Screen.C_NORMAL
         self.line_count += 1
+        if self.old_remaining > 0 or self.new_remaining > 0:
+            item = self._hunk_line(line)
+            if item:
+                return item
+            # Not a hunk line although the header promised more (a truncated
+            # or hand-edited diff): stop trusting the counts.
+            self.old_remaining = self.new_remaining = 0
+        return self._header_line(line)
 
-        # 9 capture groups
+    def _hunk_line(self, line):
+        """A line inside a hunk, classified by its first column alone."""
+        marker = line[:1]
+        old_path, old_line = self.old_file_path, None
+        new_path, new_line = self.new_file_path, None
+        if marker in (" ", ""):  # context ("" when trailing space was lost)
+            color = Screen.C_NORMAL
+            self.old_remaining -= 1
+            self.new_remaining -= 1
+            self.old_file_line += 1
+            self.new_file_line += 1
+            old_line, new_line = self.old_file_line, self.new_file_line
+        elif marker == "+":
+            color = Screen.C_DIFF_ADD
+            self.new_remaining -= 1
+            self.new_file_line += 1
+            old_path, new_line = None, self.new_file_line
+        elif marker == "-":
+            color = Screen.C_DIFF_DEL
+            self.old_remaining -= 1
+            self.old_file_line += 1
+            old_line, new_path = self.old_file_line, None
+        elif marker == "\\":  # "\ No newline at end of file"
+            return TextListItem(line, Screen.C_NORMAL)
+        else:
+            return None
+        inner, dim = None, False
+        if self.nested:
+            inner = self._nested_color(line[1:])
+            if inner == Screen.C_NORMAL and marker in ("+", "-"):
+                # A plain line of the patch (its context, message text) added
+                # or removed here: draw the whole line in dimmed red/green, so
+                # it reads as changed without competing with the patch's own
+                # +/- lines.
+                inner, dim = None, True
+        return DiffListItem(
+            self.line_count,
+            line,
+            color,
+            old_path,
+            old_line,
+            new_path,
+            new_line,
+            inner_color=inner,
+            dim=dim,
+        )
+
+    def _header_line(self, line):
+        """A line outside any hunk: commit message, diffstat, file headers or
+        a hunk header."""
+        color = Screen.C_NORMAL
         match = self.line_pattern.search(line)
-        if match:
-            if match.group(1):  # code lines, stats and commit message
-                if (
-                    self.old_file_line < 0 and self.new_file_line < 0
-                ):  # commit message or stats line
-                    # Diffstat lines are indented with a single space
-                    # (" file | 5 ++"); commit-message body lines with four. Only
-                    # parse a stat on the former, so a message line that happens to
-                    # contain "| N +-" (e.g. a markdown table) is not misread as a
-                    # clickable stat row pointing at a bogus file.
-                    if line.startswith(" ") and not line.startswith(
-                        "    "
-                    ):  # stats line
-                        color = Screen.C_DIFF_RANGE
-                        if self.stat_pattern.match(line):
-                            return StatListItem(line, color, self._stat_file_path(line))
-                    return TextListItem(line, color)
-                self.old_file_line += 1
-                self.new_file_line += 1
-                old_path, old_line = self.old_file_path, self.old_file_line
-                new_path, new_line = self.new_file_path, self.new_file_line
-            elif match.group(2):  # '+++' new file
-                color = Screen.C_DIFF_INFO
-                self.new_file_path = str(match.group(2))
-                return TextListItem(line, color)
-            elif match.group(3):  # '---' old file
-                color = Screen.C_DIFF_INFO
-                self.old_file_path = str(match.group(3))
-                return TextListItem(line, color)
-            elif match.group(4):  # infos
-                color = Screen.C_DIFF_INFO
-                return TextListItem(line, color)
-            elif match.group(5):  # '+' added code lines
-                color = Screen.C_DIFF_ADD
-                self.new_file_line += 1
-                old_path, old_line = None, None
-                new_path, new_line = self.new_file_path, self.new_file_line
-            elif match.group(6):  # '-' remove code lines
-                color = Screen.C_DIFF_DEL
-                self.old_file_line += 1
-                old_path, old_line = self.old_file_path, self.old_file_line
-                new_path, new_line = None, None
-            elif match.group(7):  # diff numbers
+        if not match:
+            return TextListItem(line, color)
+        if match.group(1):  # commit message and stats lines
+            # Diffstat lines are indented with a single space (" file | 5 ++");
+            # commit-message body lines with four. Only parse a stat on the
+            # former, so a message line that happens to contain "| N +-" (e.g.
+            # a markdown table) is not misread as a clickable stat row pointing
+            # at a bogus file.
+            if line.startswith(" ") and not line.startswith("    "):  # stats line
                 color = Screen.C_DIFF_RANGE
-                self.old_file_line = int(match.group(8)) - 1
-                self.new_file_line = int(match.group(9)) - 1
-                old_path, old_line = self.old_file_path, self.old_file_line
-                new_path, new_line = self.new_file_path, self.new_file_line
-            else:
-                return TextListItem(line, color)
-
-            return DiffListItem(
-                self.line_count, line, color, old_path, old_line, new_path, new_line
+                if self.stat_pattern.match(line):
+                    return StatListItem(line, color, self._stat_file_path(line))
+            return TextListItem(line, color)
+        if line.startswith("+++ "):  # new file ("/dev/null" when deleted)
+            self.new_file_path = match.group(2)
+            return TextListItem(line, Screen.C_DIFF_INFO)
+        if line.startswith("--- "):  # old file ("/dev/null" when added)
+            self.old_file_path = match.group(3)
+            return TextListItem(line, Screen.C_DIFF_INFO)
+        if match.group(4):  # other headers
+            if line.startswith("diff "):
+                # A new file starts; its ---/+++ lines (absent for a binary
+                # or mode-only change) name it.
+                self.old_file_path = self.new_file_path = None
+            return TextListItem(line, Screen.C_DIFF_INFO)
+        if match.group(7):  # hunk header
+            self.old_file_line = int(match.group(8)) - 1
+            self.new_file_line = int(match.group(10)) - 1
+            # A count is omitted when it is 1.
+            self.old_remaining = int(match.group(9) or 1)
+            self.new_remaining = int(match.group(11) or 1)
+            self.nested = any(
+                p and p.endswith(self._PATCH_SUFFIXES)
+                for p in (self.new_file_path, self.old_file_path)
             )
-
+            return DiffListItem(
+                self.line_count,
+                line,
+                Screen.C_DIFF_RANGE,
+                self.old_file_path,
+                self.old_file_line,
+                self.new_file_path,
+                self.new_file_line,
+            )
+        # A stray +/- line outside a hunk (not expected from git).
+        color = Screen.C_DIFF_ADD if match.group(5) else Screen.C_DIFF_DEL
         return TextListItem(line, color)
 
     def process_item(self, item):

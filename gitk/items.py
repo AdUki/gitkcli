@@ -93,20 +93,30 @@ class TextListItem(Item):
     def set_text(self, txt: str):
         self.txt = txt
 
-    def draw_line(self, win, offset, width, selected, matched, marked):
-        line = self.get_text()[offset:]
-        clear = True
-        if selected or marked or self.expand:
-            line += " " * (width - len(line))
-            clear = False
-        if len(line) >= width:
-            line = line[:width]
-            clear = False
+    def color_spans(self) -> typing.List[typing.Tuple[str, int]]:
+        """The text as (chunk, colour) runs; one run unless a subclass splits
+        it (see DiffListItem)."""
+        return [(self.get_text(), self.color)]
 
-        win.addstr(
-            line, Screen.color(self.color, selected, marked, matched, dim=self.dim)
-        )
-        if clear:
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        def attr(color):
+            return Screen.color(color, selected, marked, matched, dim=self.dim)
+
+        room = width
+        for chunk, color in self.color_spans():
+            if offset >= len(chunk):  # scrolled off to the left
+                offset -= len(chunk)
+                continue
+            chunk = chunk[offset:][:room]
+            offset = 0
+            if chunk:
+                win.addstr(chunk, attr(color))
+                room -= len(chunk)
+            if room <= 0:
+                return
+        if selected or marked or self.expand:
+            win.addstr(" " * room, attr(self.color))
+        else:
             win.clrtoeol()
 
 
@@ -172,13 +182,24 @@ class DiffListItem(TextListItem):
         old_file_line: typing.Optional[int] = None,
         new_file_path: typing.Optional[str] = None,
         new_file_line: typing.Optional[int] = None,
+        inner_color: typing.Optional[int] = None,
+        dim: bool = False,
     ):
         self.line = line
+        # Set on a line of a patch file: column 0 keeps `color` (this diff's
+        # marker), the rest is drawn in `inner_color` (the patch's own marker).
+        self.inner_color = inner_color
         self.old_file_line = old_file_line
         self.old_file_path = old_file_path
         self.new_file_line = new_file_line
         self.new_file_path = new_file_path
-        super().__init__(txt, color)
+        super().__init__(txt, color, dim=dim)
+
+    def color_spans(self):
+        if self.inner_color is None:
+            return super().color_spans()
+        txt = self.get_text()
+        return [(txt[:1], self.color), (txt[1:], self.inner_color)]
 
     def jump_to_origin(self):
         from gitk.jobs import (
