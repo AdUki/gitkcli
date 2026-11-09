@@ -1,0 +1,16 @@
+# HEAD moves after launch (checkout of a branch 25 commits back, F5): the log
+# keeps showing the commits above the new HEAD, so a non-[Txt] search must
+# still find them. It used to run `git log` from the CURRENT HEAD only and
+# report "No commit matches" for every commit above it. Message search for
+# a77abfa "Speed up hot path" (2nd row, well above the moved HEAD).
+size      120x40
+launch
+run       git checkout -q behind/old-master
+key       <F5>
+wait      stable
+key       /
+key       <Tab>*2
+text      "Speed up hot path"
+key       <Enter>
+wait      stable
+capture   found_above_head
