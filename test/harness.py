@@ -84,6 +84,33 @@ def _sgr(state):
     return "\x1b[" + ";".join(codes) + "m"
 
 
+class _Screen(pyte.Screen):
+    """pyte.Screen plus SU/SD (CSI n S / CSI n T): scroll the region between
+    the margins up/down by n lines. ncurses uses them (inside a scroll region
+    it has just set) to redraw a list that shifted by a few rows; pyte drops
+    them, which leaves the shifted lines stale in the captured frame."""
+
+    def scroll_up(self, count=None, *args, **kwargs):
+        top, bottom = self.margins or (0, self.lines - 1)
+        x, y = self.cursor.x, self.cursor.y
+        self.cursor.y = bottom
+        for _ in range(count or 1):
+            self.index()
+        self.cursor.x, self.cursor.y = x, y
+
+    def scroll_down(self, count=None, *args, **kwargs):
+        top, bottom = self.margins or (0, self.lines - 1)
+        x, y = self.cursor.x, self.cursor.y
+        self.cursor.y = top
+        for _ in range(count or 1):
+            self.reverse_index()
+        self.cursor.x, self.cursor.y = x, y
+
+
+class _Stream(pyte.Stream):
+    csi = dict(pyte.Stream.csi, S="scroll_up", T="scroll_down")
+
+
 class Harness:
     """A gitkcli process on a pty plus its emulated screen."""
 
@@ -99,14 +126,14 @@ class Harness:
         self._alive = False
         self._status = None
 
-        self.screen = pyte.Screen(cols, rows)
+        self.screen = _Screen(cols, rows)
         # Decode UTF-8 ourselves (incrementally, so multi-byte chars split across
         # reads survive) and feed a text Stream with use_utf8=False. That keeps
         # pyte's DEC-special-graphics charset mapping active -- curses draws popup
         # borders with the alternate charset (ESC(0 q -> "─"), which a ByteStream
         # in UTF-8 mode would render as raw letters.
         self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-        self.stream = pyte.Stream(self.screen)
+        self.stream = _Stream(self.screen)
         self.stream.use_utf8 = False
         # Raw output bytes kept so --live can replay them verbatim to the real
         # terminal -- they carry the actual SGR colours and the alt-screen /
