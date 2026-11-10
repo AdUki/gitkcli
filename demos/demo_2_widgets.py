@@ -2,11 +2,12 @@
 """Demo 2: widgets - segments, button rows and dialogs.
 
 A settings form built from segmented rows: an on/off switch, a choice, a
-radio group of toggles, a live (dynamic) text segment and a multi-colour
-segment; a keyboard-navigable button row (Left/Right/Tab, Enter) that opens
-the input, confirm and error dialogs. Everything is also clickable.
+radio group, a live (dynamic) text segment and a multi-colour segment; a
+keyboard-navigable button row (Left/Right/Tab, Enter) that opens the input,
+confirm and error dialogs. Everything is also clickable.
 
-Keys: Up/Down pick a row, Enter / click activates, q quits.
+Keys: Up/Down pick a row, Left/Right (Tab) change its value or button,
+Enter / click activates, q quits.
 """
 
 import os
@@ -35,16 +36,10 @@ class WidgetsDemo(tuikit.App):
         form.append(tuikit.LabeledRow("Notifications", self.notify))
         form.append(tuikit.LabeledRow("Theme", self.theme))
 
-        # A radio group: toggles whose callback un-toggles the others.
-        self.sizes = [
-            tuikit.ToggleSegment(f"<{s}>", s == "M", callback=self.pick_size)
-            for s in ("S", "M", "L", "XL")
-        ]
-        form.append(
-            tuikit.SegmentedListItem(
-                [tuikit.TextSegment("  Size:", colors.ACCENT), *self.sizes]
-            )
+        self.size = tuikit.RadioSegment(
+            [("S", "<S>"), ("M", "<M>"), ("L", "<L>"), ("XL", "<XL>")], "M"
         )
+        form.append(tuikit.LabeledRow("Size", self.size))
         form.append(tuikit.SeparatorItem())
 
         form.append(
@@ -91,15 +86,11 @@ class WidgetsDemo(tuikit.App):
         self.errors = tuikit.ErrorDialog(self)
         form.show()
 
-    def pick_size(self, chosen):
-        for seg in self.sizes:
-            seg.toggled = seg is chosen
-
     def save(self):
         self.saves += 1
         self.screen.show_flash(
             f"Saved: notifications {'on' if self.notify.toggled else 'off'}, "
-            f"theme {self.theme.value}"
+            f"theme {self.theme.value}, size {self.size.value}"
         )
         return True
 
@@ -122,7 +113,7 @@ class WidgetsDemo(tuikit.App):
     def do_reset(self):
         self.notify.set_toggled(True)
         self.theme.set_value("dark")
-        self.pick_size(self.sizes[1])
+        self.size.set_value("M")
         self.form.dirty = True
         self.screen.show_flash("Settings reset")
 

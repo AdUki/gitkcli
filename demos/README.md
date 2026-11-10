@@ -10,7 +10,7 @@ this folder):
 | demo | shows |
 |------|-------|
 | `demo_1_list.py` | `ListView`, `WindowTopBarItem`, separators, `SearchDialog` (`/`, n/N), a `Menu` on right-click / F7, the function-key bar and flash messages |
-| `demo_2_widgets.py` | segmented rows: `OnOffToggleSegment`, `ChoiceSegment`, a radio group of `ToggleSegment`s, `DynamicTextSegment`, `RunsSegment`; a keyboard-navigable `button_row`; `InputDialog` (with history), `ConfirmDialog`, `ErrorDialog` |
+| `demo_2_widgets.py` | segmented rows: `OnOffToggleSegment`, `ChoiceSegment`, `RadioSegment`, `DynamicTextSegment`, `RunsSegment`; a keyboard-navigable `button_row`; `InputDialog` (with history), `ConfirmDialog`, `ErrorDialog` |
 | `demo_3_windows.py` | `SplitLayout` (side / stacked, drag the divider), floating `MODE_WINDOW` views (drag, resize, double-click to maximize, [X]), `show_working` + `process_background` |
 | `demo_4_input.py` | an inline `UserInputListItem` (word motion, word delete, click to place the cursor), `ListView.insert` |
 | `demo_5_dashboard.py` | live updates from `process_background`, rows that rebuild their segments on every draw |

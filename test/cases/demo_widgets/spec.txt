@@ -4,9 +4,14 @@
 size      90x18
 demo      demo_2_widgets
 capture   start
-# Enter flips the switch; Down + Enter cycles the theme; a click picks <S>.
-key       <Enter> <Down> <Enter>
-mouse     click 10 4
+# Enter flips the switch; Down + Enter cycles the theme; on the Size row
+# Right steps the radio group (M -> L -> XL) and Tab wraps around to <S>.
+key       <Enter> <Down> <Enter> <Down> <Right> <Right> <Tab>
+wait      stable
+capture   size_keys
+# Left on the switch row picks ON again; a click picks <L> (columns 79-81).
+key       <Up> <Up> <Left>
+mouse     click 80 4
 wait      stable
 capture   toggled
 # G selects the button row; Right moves to [Rename]; Enter opens the prompt.

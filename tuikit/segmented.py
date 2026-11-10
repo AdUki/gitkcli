@@ -88,6 +88,12 @@ class SegmentedListItem(Item):
                 return segment
         return Segment()
 
+    def _segment_start(self, segment):
+        for seg, pos, _ in self._segment_spans():
+            if seg is segment:
+                return pos
+        return 0
+
     def handle_mouse(self, event) -> bool:
         segment = self.clicked_segment or self.get_segment_on_offset(event.x)
         if event.is_left_press:
@@ -101,7 +107,9 @@ class SegmentedListItem(Item):
             ):
                 # still on the row, but dragged off the pressed segment
                 event = event.with_type(M.LEFT_MOVE_OUT)
-        if segment and segment.handle_mouse(event):
+        # The segment sees the event in its own columns.
+        local = event.at(event.x - self._segment_start(segment), event.y)
+        if segment and segment.handle_mouse(local):
             return True
         return super().handle_mouse(event)
 
@@ -306,7 +314,9 @@ class WindowTopBarItem(SegmentedListItem):
 
 class LabeledRow(SegmentedListItem):
     """`  label ........ control  ` for settings dialogs; Enter (or a
-    double-click) activates the control (a toggle, choice, button...)."""
+    double-click) activates the control (a toggle, choice, radio group,
+    button...) and the control gets the row's other keys, so Left/Right
+    change a switch, choice or radio group."""
 
     def __init__(self, label, control):
         super().__init__(
@@ -317,3 +327,6 @@ class LabeledRow(SegmentedListItem):
     def activate(self) -> bool:
         self.control.activate()
         return True
+
+    def handle_key(self, event) -> bool:
+        return self.control.handle_key(event) or super().handle_key(event)

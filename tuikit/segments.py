@@ -9,8 +9,15 @@ returns the number of cells written.
 
 from __future__ import annotations
 
+import curses
+
 from tuikit import colors
+from tuikit import keys as K
 from tuikit import mouse as M
+
+# Keys that step a control's value back / forward when its row is selected.
+PREV_KEYS = (curses.KEY_LEFT, ord("h"), curses.KEY_BTAB)
+NEXT_KEYS = (curses.KEY_RIGHT, ord("l"), K.KEY_TAB)
 
 
 class Segment:
@@ -41,6 +48,11 @@ class Segment:
         return len(visible_txt)
 
     def handle_mouse(self, event) -> bool:
+        """`event.x` is the column inside this segment."""
+        return False
+
+    def handle_key(self, event) -> bool:
+        """Keys a row forwards to its control (see LabeledRow)."""
         return False
 
 
@@ -106,7 +118,6 @@ class RunsSegment(Segment):
         return drawn
 
     def handle_mouse(self, event) -> bool:
-        # x is the row's column; exact for a segment that starts the row.
         if event.type == M.DOUBLE_CLICK and self.on_double_click:
             return bool(self.on_double_click(event.x))
         return False
@@ -214,6 +225,15 @@ class OnOffToggleSegment(ToggleSegment):
     def toggle(self):
         self.set_toggled(not self.toggled)
 
+    def handle_key(self, event) -> bool:
+        # Left/Right pick the side drawn there: [ON|off].
+        if event.key in PREV_KEYS or event.key in NEXT_KEYS:
+            on = event.key in PREV_KEYS
+            if self.toggled != on:
+                self.activate()
+            return True
+        return False
+
     def draw(self, win, offset, width, selected, matched, marked) -> int:
         # Chunks: (text, is_active_side).
         chunks = [
@@ -254,14 +274,109 @@ class ChoiceSegment(ButtonSegment):
         self.value = value
         super().__init__("", self._cycle, color)
 
-    def _cycle(self):
+    def _cycle(self, step=1):
         values = [v for v, _ in self.options]
         i = values.index(self.value) if self.value in values else 0
-        self.value = values[(i + 1) % len(values)]
+        self.value = values[(i + step) % len(values)]
         return True
+
+    def handle_key(self, event) -> bool:
+        if event.key in PREV_KEYS:
+            return self._cycle(-1)
+        if event.key in NEXT_KEYS:
+            return self._cycle(1)
+        return False
 
     def set_value(self, value):
         self.value = value
 
     def get_text(self):
         return "<" + dict(self.options).get(self.value, self.value) + ">"
+
+
+class RadioSegment(Segment):
+    """A radio group drawn inline, ``<S> <M> <L>``, the chosen option
+    highlighted. A click picks the option under it, Left/Right (h/l,
+    Shift+Tab/Tab) step through the options and Enter moves to the next.
+    `options` is [(value, label), ...]; `callback(value)` runs after each
+    change."""
+
+    def __init__(self, options, value, callback=None, color=colors.NORMAL):
+        super().__init__()
+        self.options = list(options)
+        self.value = value
+        self.callback = callback
+        self.color = color
+        self.enabled = True
+
+    def get_text(self):
+        return " ".join(label for _, label in self.options)
+
+    def _index(self):
+        values = [v for v, _ in self.options]
+        return values.index(self.value) if self.value in values else 0
+
+    def set_value(self, value):
+        """Choose `value` without running the callback."""
+        self.value = value
+
+    def select(self, value) -> bool:
+        if value != self.value:
+            self.value = value
+            if self.callback:
+                self.callback(value)
+        return True
+
+    def step(self, direction) -> bool:
+        if not self.options:
+            return False
+        i = (self._index() + direction) % len(self.options)
+        return self.select(self.options[i][0])
+
+    def activate(self) -> bool:
+        return self.step(1)
+
+    def option_at(self, x):
+        """The value of the option drawn at column `x`, or None (a gap)."""
+        pos = 0
+        for value, label in self.options:
+            if pos <= x < pos + len(label):
+                return value
+            pos += len(label) + 1
+        return None
+
+    def handle_key(self, event) -> bool:
+        if event.key in PREV_KEYS:
+            return self.step(-1)
+        if event.key in NEXT_KEYS:
+            return self.step(1)
+        return False
+
+    def handle_mouse(self, event) -> bool:
+        if event.is_left_press:
+            value = self.option_at(event.x)
+            if value is not None and self.enabled:
+                self.select(value)
+            return True
+        return False
+
+    def draw(self, win, offset, width, selected, matched, marked) -> int:
+        drawn = 0
+        pos = 0
+        for i, (value, label) in enumerate(self.options):
+            chunks = [(" ", False)] if i else []
+            chunks.append((label, value == self.value))
+            for txt, chosen in chunks:
+                lo = max(offset - pos, 0)
+                pos += len(txt)
+                if lo >= len(txt) or drawn >= width:
+                    continue
+                piece = txt[lo : lo + width - drawn]
+                win.addstr(
+                    piece,
+                    colors.attr(
+                        self.color, selected, chosen or marked, dim=not self.enabled
+                    ),
+                )
+                drawn += len(piece)
+        return drawn
