@@ -433,30 +433,53 @@ class PreferencesDialogPopup(Dialog):
         self.dirty = True
         super().on_activated()
 
-    def on_save(self):
-        self.app.git_log.show_commit_id = self.t_show_id.toggled
-        self.app.git_log.show_commit_date = self.t_show_date.toggled
-        self.app.git_log.show_commit_author = self.t_show_author.toggled
-        self.app.log.view.autoscroll = self.t_autoscroll.toggled
-        self.app.git_log.dirty = True
-        self.app.log.view.dirty = True
+    def _apply(self, flags=True):
+        """Make the dialog's values take effect now (Save only persists them).
+        Each setting is applied only when it differs from what is in effect,
+        so an untouched "Default view mode" never re-lays out the views."""
+        git_log, log_view = self.app.git_log, self.app.log.view
+        shown = (
+            git_log.show_commit_id,
+            git_log.show_commit_date,
+            git_log.show_commit_author,
+        )
+        wanted = (
+            self.t_show_id.toggled,
+            self.t_show_date.toggled,
+            self.t_show_author.toggled,
+        )
+        if shown != wanted:
+            (
+                git_log.show_commit_id,
+                git_log.show_commit_date,
+                git_log.show_commit_author,
+            ) = wanted
+            git_log.dirty = True
+        if log_view.autoscroll != self.t_autoscroll.toggled:
+            log_view.autoscroll = self.t_autoscroll.toggled
+            log_view.dirty = True
         if self.app.git_diff.ignore_whitespace != self.t_ign_ws.toggled:
             self.app.git_diff.change_ignore_whitespace(self.t_ign_ws.toggled)
-
+        # The flags reload the log, so they apply once the field is left (or
+        # the dialog saved or closed), not on every keystroke.
         new_flags = self.input_flags.txt.strip()
-        if new_flags != self.app.git_log.pref_flags:
-            self.app.git_log.set_pref_flags(new_flags)
-            self.app.git_log.reload_commits()
+        if flags and new_flags != git_log.pref_flags:
+            git_log.set_pref_flags(new_flags)
+            git_log.reload_commits()
+        split = self.app.split
+        if self.c_view_mode.value != split.default_view_mode:
+            split.default_view_mode = self.c_view_mode.value
+            split.set_split_mode(
+                split.default_view_mode
+                if split.default_view_mode in (SPLIT_SIDE, SPLIT_STACKED)
+                else SPLIT_OFF
+            )
+            # Entering a split raises the log/diff panes: keep this on top.
+            self.show()
 
-        self.app.split.default_view_mode = self.c_view_mode.value
-        # Apply the chosen layout right away; entering a split raises the
-        # log/diff panes, so re-show this dialog to keep it on top.
-        self.app.split.set_split_mode(
-            self.c_view_mode.value
-            if self.c_view_mode.value in (SPLIT_SIDE, SPLIT_STACKED)
-            else SPLIT_OFF
-        )
-        self.show()
+    def on_save(self):
+        self._apply()
+        new_flags = self.input_flags.txt.strip()
 
         cfg = {
             "git_log": {
@@ -477,12 +500,25 @@ class PreferencesDialogPopup(Dialog):
     def on_cancel(self):
         self.hide()
 
+    def on_deactivated(self):
+        super().on_deactivated()
+        if not self.is_shown():
+            self._apply()  # closed with the flags field still being edited
+
+    def _apply_after(self, handled):
+        if self.is_active():
+            self._apply(flags=self.get_selected() is not self.input_flags)
+        return handled
+
     def handle_key(self, event):
         key = event.key
         if key == curses.KEY_EXIT:
             self.on_cancel()
             return True
-        return super().handle_key(event)
+        return self._apply_after(super().handle_key(event))
+
+    def handle_mouse(self, event):
+        return self._apply_after(super().handle_mouse(event))
 
 
 class NewRefDialogPopup(InputDialog):

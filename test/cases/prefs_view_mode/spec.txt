@@ -1,5 +1,6 @@
 # F9 Preferences: change "Default view mode" from Fullscreen to Horizontal split.
-# Saving applies the split layout immediately (log + diff panes side by side).
+# The split layout applies as soon as it is chosen (log + diff panes side by
+# side), before Save, which only makes it persistent.
 size      120x40
 config    default
 launch

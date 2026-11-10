@@ -1,0 +1,24 @@
+# Float the log and the diff into windows, then toggle "Show commit author" in
+# Preferences and Save. Both views must stay windows: Save used to re-apply the
+# default view mode, and for Fullscreen that unsplit both views to fullscreen.
+# The toggle shows in the log as soon as it is flipped, before Save.
+size      120x40
+config    default
+launch
+mouse     dblclick 40 1
+wait      stable
+key       <Enter>
+wait      stable
+mouse     dblclick 40 1
+wait      stable
+capture   windows
+key       <F9>
+wait      stable
+key       <Down>*2
+key       <Enter>
+wait      stable
+capture   author_off_live
+key       <End>
+key       <Enter>
+wait      2.5
+capture   saved
