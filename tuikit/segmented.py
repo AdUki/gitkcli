@@ -51,6 +51,11 @@ class SegmentedListItem(Item):
     def get_text(self):
         return self.segment_separator.join(s.get_text() for s in self.get_segments())
 
+    def natural_width(self) -> int:
+        segments = self.get_segments()
+        separators = len(self.segment_separator) * max(0, len(segments) - 1)
+        return separators + sum(s.natural_width() for s in segments)
+
     def get_row_context_menu(self):
         """The whole-row context menu (a right-click on a plain part of the
         row), as a (menu_item, view_id) pair, or None. Listed first when the

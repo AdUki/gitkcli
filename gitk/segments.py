@@ -5,7 +5,7 @@ generic segments (text, buttons, toggles, ...) come from tuikit.segments.
 from __future__ import annotations
 
 from tuikit import mouse as M
-from tuikit.segments import ButtonSegment, TextSegment
+from tuikit.segments import TextSegment
 
 from gitk.ids import ID_GIT_REFS
 from gitk.screen import Screen
@@ -54,17 +54,3 @@ class RefSegment(TextSegment):
             self.get_app().git_diff.show_tag_annotation(self.ref["tag_id"])
             return True
         return super().handle_mouse(event)
-
-
-class SplitButtonSegment(ButtonSegment):
-    """Header button that shows the current split-view state and cycles it."""
-
-    _LABELS = {"off": "[Split]", "side": "[Split |]", "stacked": "[Split =]"}
-
-    def __init__(self, color=Screen.C_TITLE):
-        # Defer the action: at construction the segment isn't wired to its item
-        # yet, so reach the app lazily (the button is clicked long after wiring).
-        super().__init__("", lambda: self.get_app().split.cycle_split_view(), color)
-
-    def get_text(self):
-        return self._LABELS.get(self.get_app().split.split_mode, "[Split]")

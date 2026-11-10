@@ -19,7 +19,7 @@
 [0;31;49morigin/w│  Error deleting remote branch: error: unable to delete 'zzz-fake-branch': remote ref does not exist[0;39;49m  [0;31;49m│[0m
 [0;31;49morigin/w│  error: failed to push some refs to '/home/simonmikuda/projects/gitkcli/test/remotes/origin.git'[0;39;49m     [0;31;49m│[0m
 [0;1;31;48;2;38;38;38morigin/z[0;31;49m│[0;39;49m                                                                                                      [0;31;49m│[0;1;31;48;2;38;38;38m        [0m
-[0;31;49mupstream│[0;37;49m                                                [0;1;31;48;2;38;38;38m[Ok][0;37;49m                                                [0;39;49m  [0;31;49m│[0m
+[0;31;49mupstream│[0;37;49m                                                 [0;1;31;48;2;38;38;38m[Ok][0;37;49m                                                 [0;31;49m│[0m
 [0;31;49mupstream└──────────────────────────────────────────────────────────────────────────────────────────────────────┘[0m
 [0;31;49mupstream/feature/csv-export[0m
 [0;31;49mupstream/feature/dark-mode[0m

@@ -1,33 +1,51 @@
-# tuikit demo 3 (demos/demo_3_windows.py): a SplitLayout of a list and a
-# detail pane, floating windows, and split switching.
+# tuikit demo 3 (demos/demo_3_windows.py): a SplitLayout of the colours and
+# the open windows (a taskbar), a floating window per colour (packed,
+# cascaded), and split switching.
 size      90x20
 demo      demo_3_windows
 capture   side_by_side
-# Moving in the list updates the detail pane.
 key       j j
+# Enter opens yellow's own window (packed, at the first cascade slot). In a
+# colour window Up/Down still browse the list and Enter opens the next colour,
+# so all five windows end up open, cascaded down-right.
+key       <Enter> k k <Enter> j <Enter> j j <Enter> j <Enter>
 wait      stable
-capture   detail_follows
-# F3 opens two floating note windows over the split.
-key       <F3> <F3>
+capture   all_windows
+# [X] on the top window (grey, row 7) closes it; a double-click on the next one's
+# title (blue) maximizes it, a second one restores it where it was.
+mouse     click 64 7
 wait      stable
-capture   notes
-# [X] on the top note closes it; a double-click on the other's title
-# maximizes it, and q closes it again.
-mouse     click 41 5
+capture   window_closed
+mouse     dblclick 18 6
 wait      stable
-capture   note_closed
-mouse     dblclick 15 4
+capture   window_maximized
+mouse     dblclick 10 1
 wait      stable
-capture   note_maximized
+# F3 reopens grey (still selected in the list) in the slot it freed.
+key       <F3>
+wait      stable
+capture   window_reopened
+# Ctrl+w focuses a pane (from a window: the colours, again: the window list),
+# raising the split over the windows. The list shows the open windows,
+# topmost first; Enter on its third row raises green.
+key       C-w C-w
+wait      stable
+capture   window_list
+key       j j <Enter>
+wait      stable
+capture   raised_from_list
+# q closes green; the list drops it.
 key       q
 wait      stable
-# Ctrl+w focuses the other pane; `|` cycles to stacked, then off.
+capture   list_after_close
+# Ctrl+w goes back to the colours; `|` cycles to stacked, then a click on the
+# title bar's [Split =] button turns the split off.
 key       C-w
 wait      stable
-capture   detail_focused
+capture   colours_focused
 key       |
 wait      stable
 capture   stacked
-key       |
+mouse     click 79 1
 wait      stable
 capture   unsplit

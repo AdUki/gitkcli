@@ -1,8 +1,9 @@
 """Popup dialogs built on ListView.
 
 - `Dialog`: a modal popup window with a title in its top border and, usually,
-  a row of buttons (`set_button_row`); `show_message()` lays out a content-sized
-  message box.
+  a row of buttons (`set_button_row`). Unless given a fixed size it packs
+  itself (ListView.pack) every time it is shown, so it always fits what it
+  holds; `show_message()` fills it as a message box.
 - `ConfirmDialog` / `ErrorDialog`: red message boxes (yes/cancel, ok).
 - `InputDialog`: a header row, a one-line text field with history (Up/Down),
   and buttons; Enter runs `execute()`.
@@ -33,11 +34,18 @@ MIN_MESSAGE_WIDTH = 40
 
 
 class Dialog(ListView):
-    """A modal popup window. `title` is drawn inset in the top border."""
+    """A modal popup window. `title` is drawn inset in the top border. With no
+    `height`/`width` it is packed around its rows on every show(), at least
+    `min_width` wide and with `padx` spare columns (rows customarily indent
+    two columns: the same margin on the right)."""
+
+    min_width = 0
+    padx = 2
 
     def __init__(self, app, id, title="", height=None, width=None, title_color=None):
         super().__init__(app, id, MODE_WINDOW, height=height, width=width)
         self.is_popup = True
+        self.auto_pack = height is None and width is None
         self.set_header_item(
             TextListItem(
                 title, colors.TITLE if title_color is None else title_color, expand=True
@@ -47,6 +55,14 @@ class Dialog(ListView):
 
     def set_title(self, title):
         self.header_item.set_text(title)
+
+    def show(self):
+        # After super(): on_activated() may still fill the rows. Also when
+        # already on top, so a dialog refilled while open (an error coalesced
+        # into an open box) resizes too.
+        super().show()
+        if self.auto_pack:
+            self.pack(min_width=self.min_width, padx=self.padx)
 
     def set_button_row(self, row):
         """Append `row` (see button_row()) as the dialog's buttons."""
@@ -68,31 +84,24 @@ class Dialog(ListView):
         self._selected = len(self.items) - 1
 
     def show_message(self, lines, buttons, focus="first"):
-        """Lay out a content-sized message box and show it: a spacer, `lines`
+        """Fill the dialog as a message box and show it: a spacer, `lines`
         (each a str or a (text, color) tuple, indented two spaces), a spacer,
-        then `buttons` (a button row) - the only navigable item. Sized to the
-        widest of the title, the lines and the buttons, and centred."""
+        then `buttons` (a button row) - the only navigable item."""
         self.clear()
         self.append(SpacerListItem())
-        content = len(self.header_item.get_text())
         for line in lines:
             text, color = line if isinstance(line, tuple) else (line, colors.NORMAL)
             self.append(TextListItem("  " + text, color, is_selectable=False))
-            content = max(content, len(text) + 2)  # + 2 for the left indent
         self.append(SpacerListItem())
         self.set_button_row(buttons)
-        content = max(content, len(buttons.get_text()))
         self.focus_button_row(focus)
-        # + 2 right margin so text doesn't touch the border, + 2 box sides;
-        # x/y None centres the popup.
-        self.set_dimensions(
-            None, None, len(self.items) + 2, max(MIN_MESSAGE_WIDTH, content + 4)
-        )
         self.show()
 
 
 class MessageBox(Dialog):
     """A red message box: red border and title, for warnings and errors."""
+
+    min_width = MIN_MESSAGE_WIDTH
 
     def __init__(self, app, id, title=""):
         super().__init__(app, id, title, title_color=colors.BANNER)
@@ -182,7 +191,8 @@ class InputDialog(Dialog):
     """A compact three-row prompt: `header_item` (a label / flags row), the
     text field, and `bottom_item` (default: [Execute] [Cancel]). Enter hides
     the dialog and calls `execute()`; Esc cancels; Up/Down (Ctrl+p/n) walk
-    the history of executed inputs."""
+    the history of executed inputs. `width` is the least it packs to (room to
+    type); a wider header row widens it."""
 
     def __init__(
         self,
@@ -193,7 +203,8 @@ class InputDialog(Dialog):
         bottom_item=None,
         width=60,
     ):
-        super().__init__(app, id, title, height=5, width=width)
+        super().__init__(app, id, title)
+        self.min_width = width
         self.input = UserInputListItem()
         self.history_queries = []
         self.history_index = -1  # -1 == the live (not-from-history) input
@@ -361,9 +372,10 @@ class Menu(ListView):
         self.app.mouse.release(self)
 
     def open_at(self, x: int, y: int):
-        """Size the menu to its items and show it with its corner at (x, y)
-        (pulled back on-screen if it would overflow)."""
-        self.set_dimensions(x, y, len(self.items) + 2, self.menu_width)
+        """Pack the menu around its items (at least `menu_width` wide) and show
+        it with its corner at (x, y), pulled back on-screen if it would
+        overflow."""
+        self.pack(x, y, min_width=self.menu_width)
         self.show()
 
     def popup(self, entries: typing.Iterable, x: int, y: int):

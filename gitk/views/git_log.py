@@ -11,6 +11,7 @@ import typing
 from tuikit.list_view import ListView
 from tuikit.segmented import WindowTopBarItem
 from tuikit.segments import ButtonSegment, RunsSegment
+from tuikit.split import SplitButtonSegment
 from tuikit.view import MODE_FULLSCREEN
 
 from gitk.diff_target import LOCAL_STAGED_ID, LOCAL_WORKING_ID
@@ -20,7 +21,6 @@ from gitk.ids import ID_GIT_LOG
 from gitk.jobs import GitLogJob, GitRefreshHeadJob, GitSearchJob, Job
 from gitk.screen import Screen
 from gitk.segmented_items import CommitListItem, UncommittedChangesListItem
-from gitk.segments import SplitButtonSegment
 
 
 def _split_pathspec(args: typing.List[str]):

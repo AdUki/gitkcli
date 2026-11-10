@@ -9,10 +9,13 @@ one ([X]) leaves the split with the other fullscreen, and double-clicking a
 pane's title "maximizes" it the same way. On a terminal too small to tile,
 both panes fall back to fullscreen (the split *intent* is kept and re-applied
 on resize). Subclass and override `on_split()` to react to entering a split.
+Put a `SplitButtonSegment` in a pane's title bar for a clickable toggle.
 """
 
 from __future__ import annotations
 
+from tuikit import colors
+from tuikit.segments import ButtonSegment
 from tuikit.view import MODE_WINDOW
 
 SPLIT_OFF = "off"  # single fullscreen views
@@ -24,6 +27,30 @@ _NEXT_MODE = {
     SPLIT_SIDE: SPLIT_STACKED,
     SPLIT_STACKED: SPLIT_OFF,
 }
+
+
+class SplitButtonSegment(ButtonSegment):
+    """A title-bar button for a split pane: shows the split state ([Split],
+    [Split |], [Split =]) and cycles it when clicked. It finds the layout
+    through the view its row belongs to (`view.split`), so it can be built
+    before the panes are attached."""
+
+    LABELS = {SPLIT_OFF: "[Split]", SPLIT_SIDE: "[Split |]", SPLIT_STACKED: "[Split =]"}
+
+    def __init__(self, color=colors.TITLE):
+        super().__init__("", self._cycle, color)
+
+    def _layout(self):
+        view = self._item._view if self._item is not None else None
+        return view.split if view is not None else None
+
+    def _cycle(self):
+        layout = self._layout()
+        return layout.cycle_split_view() if layout is not None else False
+
+    def get_text(self):
+        layout = self._layout()
+        return self.LABELS[layout.split_mode if layout is not None else SPLIT_OFF]
 
 
 class SplitLayout:
@@ -90,10 +117,12 @@ class SplitLayout:
 
     def close_pane(self, view):
         """Closing a tiled pane leaves the split and brings the other pane up
-        fullscreen (rather than leaving a hole with no backdrop)."""
+        fullscreen (rather than leaving a hole with no backdrop). The closed
+        pane is hidden, not left fullscreen behind the other one."""
         other = self.sibling(view)
         self.unsplit()
         other.show()
+        view.hide()
 
     def raise_sibling(self, view):
         """Keep both panes adjacent on top of the deck with `view` focused, so

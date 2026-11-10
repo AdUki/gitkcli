@@ -25,7 +25,15 @@ import typing
 from tuikit import colors
 from tuikit import mouse as M
 from tuikit.status_bar import StatusBar
-from tuikit.view import MODE_FULLSCREEN
+from tuikit.view import MODE_FULLSCREEN, MODE_WINDOW
+
+# Window placement (window_position): new windows fill free space in reading
+# order (left to right, then the next row down), at least CASCADE_ORIGIN from
+# the top-left corner, and cascade only when the screen has no room left: from
+# the first slot's corner, a step per window - one row down so every title
+# stays visible, a few columns right.
+CASCADE_ORIGIN = (4, 2)  # x, y
+CASCADE_STEP = (3, 1)
 
 MOUSE_MASK = curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION
 
@@ -79,6 +87,84 @@ class Screen:
 
     def get_view(self, id):
         return self.views.get(id)
+
+    def floating_windows(self, exclude=None):
+        """The shown floating windows (no popups, no tiled split panes),
+        bottom -> top."""
+        return [
+            v
+            for v in self.showed_views
+            if v is not exclude
+            and v.view_mode == MODE_WINDOW
+            and not v.is_popup
+            and not (v.split is not None and v.split.split_active())
+        ]
+
+    def window_position(self, view, height, width) -> typing.Tuple[int, int]:
+        """(x, y) for a new `height` x `width` window, placed the way a
+        desktop does it: the first free spot (overlapping no other floating
+        window) in reading order - rows from the top, each left to right - so
+        windows fill a row, then wrap below. With no free space left it
+        cascades: the first slot no other window has its corner on (closed
+        windows free theirs), slot 0 when none fits."""
+        lines, cols = self.getmaxyx()
+        corners = {
+            (v.win.getbegyx()[1], v.win.getbegyx()[0])
+            for v in self.floating_windows(exclude=view)
+        }
+        (x0, y0), (dx, dy) = CASCADE_ORIGIN, CASCADE_STEP
+        slot, k = (x0, y0), 0
+        while x0 + k * dx + width <= cols and y0 + k * dy + height <= lines:
+            if (x0 + k * dx, y0 + k * dy) not in corners:
+                slot = (x0 + k * dx, y0 + k * dy)
+                break
+            k += 1
+        return self.free_spot(view, height, width) or slot
+
+    def free_spot(self, view, height, width, near=None):
+        """Where a `height` x `width` window fits on screen without
+        overlapping any other floating window, or None when there is no such
+        room. With `near` (x, y): the free spot closest to it. Without: the
+        first in reading order, keeping CASCADE_ORIGIN's margin from the
+        screen's top-left corner when there is room for that."""
+        lines, cols = self.getmaxyx()
+        rects = [
+            (*v.win.getbegyx(), *v.win.getmaxyx())
+            for v in self.floating_windows(exclude=view)
+        ]
+
+        def blocker(x, y):
+            """The window a spot at (x, y) would overlap, or None."""
+            for ry, rx, rh, rw in rects:
+                if x < rx + rw and rx < x + width and y < ry + rh and ry < y + height:
+                    return rx, rw
+            return None
+
+        if near is None:
+            for top, left in (CASCADE_ORIGIN[::-1], (0, 0)):
+                for y in range(top, lines - height + 1):
+                    x = left
+                    while x <= cols - width:
+                        hit = blocker(x, y)
+                        if hit is None:
+                            return x, y
+                        x = hit[0] + hit[1]  # skip past the window in the way
+            return None
+
+        wx, wy = near
+        if 0 <= wx <= cols - width and 0 <= wy <= lines - height:
+            if blocker(wx, wy) is None:
+                return near
+        spots = [
+            (abs(x - wx) + abs(y - wy), y, x)
+            for y in range(lines - height + 1)
+            for x in range(cols - width + 1)
+            if blocker(x, y) is None
+        ]
+        if not spots:
+            return None
+        _, y, x = min(spots)
+        return x, y
 
     def get_active_view(self) -> typing.Any:
         return self.showed_views[-1] if self.showed_views else None

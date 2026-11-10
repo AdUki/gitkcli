@@ -17,7 +17,15 @@ from tuikit import colors
 from tuikit import keys as K
 from tuikit import mouse as M
 from tuikit.segmented import WindowTopBarItem
-from tuikit.view import MODE_FULLSCREEN, MODE_WINDOW, View
+from tuikit.view import (
+    MIN_FLOAT_WIDTH,
+    MODE_FULLSCREEN,
+    MODE_WINDOW,
+    WINDOW_MAX_SHARE,
+    WINDOW_PADX,
+    WINDOW_PADY,
+    View,
+)
 
 HSCROLL_BIG_STEP = 10
 WHEEL_STEP = 5
@@ -93,6 +101,58 @@ class ListView(View):
         self._offset_y = 0
         self._offset_x = 0
         self.dirty = True
+
+    # -- geometry -------------------------------------------------------------
+
+    def pack(self, x=None, y=None, min_width=0, padx=0, pady=0, **limits):
+        """Shrink-wrap the window around its rows, like Tk's pack: see
+        packed_size() for the size (`limits`: max_width / max_height). x/y
+        place the corner; None keeps the current position (centred unless
+        placed or moved)."""
+        height, width = self.packed_size(min_width, padx, pady, **limits)
+        self.set_dimensions(
+            self.fixed_x if x is None else x,
+            self.fixed_y if y is None else y,
+            height,
+            width,
+        )
+
+    def packed_size(self, min_width=0, padx=0, pady=0, max_width=None, max_height=None):
+        """(height, width) of a box around the rows: as tall as the rows plus
+        `pady` blank lines, as wide as the widest row (`natural_width()`) plus
+        `padx` spare columns, never narrower than `min_width` or than the
+        header - for a popup, the title inset in its top border. Both include
+        the box and stop at max_width / max_height; only the rows that fit
+        are measured, so a long list costs no more than a screenful."""
+        height = len(self.items) + pady + 2
+        if max_height is not None:
+            height = min(height, max_height)
+        shown = self.items[self._offset_y :][: max(0, height - 2)]
+        content = max((item.natural_width() for item in shown), default=0)
+        content += padx
+        if self.header_item is not None:
+            self.update_header()  # e.g. the [current/total] counter, as drawn
+            if self.is_popup:
+                # ┌─ Title ─┐: the title, a space each side, and a rule cell
+                title = len(self.header_item.get_text().strip())
+                content = max(content, title + 4 if title else 0)
+            else:
+                content = max(content, self.header_item.natural_width())
+        width = max(min_width, content + 2)
+        if max_width is not None:
+            width = min(width, max_width)
+        return height, width
+
+    def window_size(self, lines, cols):
+        """A floated list packs around its rows with some air, up to
+        WINDOW_MAX_SHARE of the screen."""
+        return self.packed_size(
+            MIN_FLOAT_WIDTH,
+            WINDOW_PADX,
+            WINDOW_PADY,
+            max_width=int(cols * WINDOW_MAX_SHARE),
+            max_height=int(lines * WINDOW_MAX_SHARE),
+        )
 
     def get_selected(self) -> typing.Any:
         if 0 <= self._selected < len(self.items):
@@ -322,11 +382,9 @@ class ListView(View):
             current = self._selected + 1 if self.items else 0
             self.header_item.set_counter(current, len(self.items))
 
-    def separator_color(self):
-        return colors.ACCENT if self.is_active() else colors.MATCH
-
     def draw(self):
         separator_rows = []
+        win_height, win_width = self.win.getmaxyx()
         for i in range(0, min(self.height, len(self.items) - self._offset_y)):
             idx = i + self._offset_y
             item = self.items[idx]
@@ -334,9 +392,12 @@ class ListView(View):
             matched = (
                 self._search_dialog.matches(item) if self._search_dialog else False
             )
-            # curses raises when writing the bottom-right cell of a window
+            # curses raises when writing the bottom-right cell of a window (a
+            # borderless view's last row; a box keeps rows off that cell). A
+            # separator may also join a divider with one more cell (┤).
             width = self.width
-            if i == self.height - 1:
+            end = self.x + width + (1 if item.is_separator else 0)
+            if self.y + i == win_height - 1 and end >= win_width:
                 width -= 1
             if item.is_separator:
                 separator_rows.append((i, width))
@@ -350,8 +411,9 @@ class ListView(View):
         super().draw()
 
         if separator_rows:
-            # Separators are drawn after the border so they can join onto it.
-            attr = colors.attr(self.separator_color())
+            # Separators are drawn after the border so they can join onto it,
+            # in its colour (blue when active, grey when not, red in a red box).
+            attr = self.border_color()
             join = colors.attr(colors.DIM)  # joins onto a split divider are neutral
             sides = self.border_sides()
             if sides is not None:

@@ -8,9 +8,11 @@ launch
 key       /
 text      "Merge"
 wait      stable
-mouse     click 36 19
+# [ID] is columns 36-39 and [Txt] 30-34 of the header row.
+mouse     click 38 19
 wait      stable
-mouse     click 30 19
+capture   type_id
+mouse     click 32 19
 wait      stable
 mouse     click 90 19
 wait      stable

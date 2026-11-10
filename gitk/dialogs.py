@@ -43,7 +43,7 @@ from gitk.split_layout import SPLIT_OFF, SPLIT_SIDE, SPLIT_STACKED
 
 class ResetDialogPopup(Dialog):
     def __init__(self, app):
-        super().__init__(app, ID_GIT_RESET, " Reset current branch", height=9, width=68)
+        super().__init__(app, ID_GIT_RESET, " Reset current branch")
         self.commit_id = ""
         self.selected_mode = "--mixed"
 
@@ -99,7 +99,7 @@ class ResetDialogPopup(Dialog):
         self.commit_id = commit_id
         self.selected_mode = "--mixed"
         title = self.app.git_log.commits.get(commit_id, {}).get("title", "")
-        if len(title) > 34:
+        if len(title) > 34:  # the dialog packs around it: keep it compact
             title = title[:33] + "…"
         self.target_item.set_text(f"  Reset HEAD → {commit_id[:8]}  {title}")
         self.set_selected(3)  # highlight Mixed by default
@@ -116,9 +116,7 @@ class ResetDialogPopup(Dialog):
 
 class RefPushDialogPopup(Dialog):
     def __init__(self, app):
-        # Fixed width (like the other input dialogs) instead of half the
-        # terminal, so the box stays tight on wide screens.
-        super().__init__(app, ID_GIT_REF_PUSH, height=5, width=60)
+        super().__init__(app, ID_GIT_REF_PUSH)
 
         # `git remote` prints one name per line (none in a repo with no
         # remotes). split() drops the trailing/empty lines so a remote-less repo
@@ -261,7 +259,7 @@ class CommandDialogPopup(InputDialog):
         self.insert_tokens = []
         self.cycle_index = -1  # index of the last chip pasted via Tab / click
         self._tab_span = None  # (start, end) of that paste, for replace-in-place
-        super().__init__(app, ID_GIT_COMMAND, " Git command", self.chip_row, width=76)
+        super().__init__(app, ID_GIT_COMMAND, " Git command", self.chip_row)
 
     def _build_chips(self):
         """Rebuild the helper row from the selected commit's id + refs."""
@@ -384,7 +382,7 @@ class CommandDialogPopup(InputDialog):
 
 class PreferencesDialogPopup(Dialog):
     def __init__(self, app):
-        super().__init__(app, ID_PREFERENCES, " Preferences", height=15, width=50)
+        super().__init__(app, ID_PREFERENCES, " Preferences")
 
         self.t_show_id = OnOffToggleSegment()
         self.t_show_date = OnOffToggleSegment()
@@ -619,9 +617,7 @@ class GitSearchDialogPopup(SearchDialog):
     ]
 
     def __init__(self, app):
-        # Wider than the plain search popup: the "Type:" group plus the right-
-        # aligned "Flags:" group don't fit in the default width.
-        super().__init__(app, ID_GIT_LOG_SEARCH, width=76)
+        super().__init__(app, ID_GIT_LOG_SEARCH)
         self._type_segments = [
             (
                 t,

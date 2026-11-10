@@ -36,6 +36,11 @@ class Item:
     def get_text(self) -> str:
         return ""
 
+    def natural_width(self) -> int:
+        """Columns this row wants to show all of itself (what `pack()` sizes
+        a window to)."""
+        return len(self.get_text())
+
     def copy_text_to_clipboard(self):
         self.get_app().copy_to_clipboard(self.get_text())
 
@@ -169,6 +174,9 @@ class UserInputListItem(Item):
 
     def get_text(self):
         return self.txt
+
+    def natural_width(self) -> int:
+        return len(self.txt) + 1  # + the cursor cell after the text
 
     def set_text(self, txt: str):
         self.txt = txt

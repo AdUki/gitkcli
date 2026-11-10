@@ -1,0 +1,33 @@
+# tuikit demo 3: where new windows go when there is room - the first free spot
+# in reading order: left to right along a row, then wrapping below. With the
+# split off, a double-click floats the colour list (packed, at the top-left
+# margin); red and green, opened next, line up to its right, and yellow, with
+# the row full, wraps below.
+size      140x40
+demo      demo_3_windows
+key       | |
+wait      stable
+mouse     dblclick 10 1
+wait      stable
+capture   list_floated
+key       <Enter>
+wait      stable
+capture   beside_list
+key       j <Enter>
+wait      stable
+capture   next_free_spot
+key       j <Enter>
+wait      stable
+capture   wraps_below
+# q q q closes yellow, green and red. Blue, new, takes the first free spot -
+# red's old one; red, reopened, does not come back on top of it but moves to
+# the nearest free spot (the harness cannot drag, so this stands in for moving
+# a window onto a closed one's place).
+key       q q q
+wait      stable
+key       j <Enter>
+wait      stable
+capture   blue_in_reds_place
+key       k k k <Enter>
+wait      stable
+capture   red_reopened_beside

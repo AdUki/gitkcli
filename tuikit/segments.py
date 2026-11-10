@@ -31,6 +31,10 @@ class Segment:
     def get_text(self) -> str:
         return ""
 
+    def natural_width(self) -> int:
+        """Columns the segment needs at its widest (see ListView.pack)."""
+        return len(self.get_text())
+
     def get_context_menu(self):
         """The context menu this segment opens, as a (menu_item, view_id) pair,
         or None. Used by a right-click on the segment and by keyboard cycling
@@ -292,6 +296,10 @@ class ChoiceSegment(ButtonSegment):
 
     def get_text(self):
         return "<" + dict(self.options).get(self.value, self.value) + ">"
+
+    def natural_width(self) -> int:
+        # Room for the longest option, so cycling never outgrows the row.
+        return max((len(label) + 2 for _, label in self.options), default=2)
 
 
 class RadioSegment(Segment):

@@ -1,0 +1,19 @@
+# tuikit demo 3: a window restored from fullscreen must not land on a window
+# opened meanwhile. The colour list floats to the first cascade slot, is
+# maximized again, and red opens from it - into that same free slot. Restoring
+# the list (a double-click on its title, which first raises it) moves it to
+# the nearest free spot instead of back on top of red.
+size      140x40
+demo      demo_3_windows
+key       | |
+wait      stable
+mouse     dblclick 10 1
+wait      stable
+mouse     dblclick 10 3
+wait      stable
+key       <Enter>
+wait      stable
+capture   red_in_list_slot
+mouse     dblclick 10 1
+wait      stable
+capture   list_restored_beside

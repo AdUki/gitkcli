@@ -1,10 +1,10 @@
-# Float the window, then double-click its (now centered) title bar again to
+# Float the window, then double-click its title bar (now row 3) again to
 # toggle back to fullscreen.
 size      120x40
 launch
 mouse     dblclick 40 1
 wait      stable
 capture   floated
-mouse     dblclick 50 11
+mouse     dblclick 50 3
 wait      stable
 capture   fullscreen_again

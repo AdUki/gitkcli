@@ -12,6 +12,9 @@ What it gives you on top of plain curses:
   toggles, on/off switches, choices, multi-colour text, fillers for alignment;
 - dialogs: message boxes, confirmations, text prompts with history, a search
   prompt, popup menus;
+- packing (as in Tk): `ListView.pack()` shrink-wraps a window around its
+  rows' natural widths; dialogs and menus pack themselves when shown, so
+  they are never sized by hand;
 - a Midnight-Commander-style function-key bar with flash and progress states;
 - a three-tier palette (256 colours / 8 colours / monochrome) chosen from the
   terminal, honouring NO_COLOR;
@@ -88,7 +91,13 @@ from tuikit.segments import (
     TextSegment,
     ToggleSegment,
 )
-from tuikit.split import SPLIT_OFF, SPLIT_SIDE, SPLIT_STACKED, SplitLayout
+from tuikit.split import (
+    SPLIT_OFF,
+    SPLIT_SIDE,
+    SPLIT_STACKED,
+    SplitButtonSegment,
+    SplitLayout,
+)
 from tuikit.status_bar import StatusBar
 from tuikit.view import MODE_FULLSCREEN, MODE_WINDOW, View
 
@@ -128,6 +137,7 @@ __all__ = [
     "SegmentedListItem",
     "SeparatorItem",
     "SpacerListItem",
+    "SplitButtonSegment",
     "SplitLayout",
     "StatusBar",
     "StdLog",

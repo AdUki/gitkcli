@@ -8,7 +8,7 @@ launch
 key       <Down>*3
 key       r
 wait      stable
-mouse     click 33 21
+mouse     click 40 21
 wait      stable
 capture   hard_selected
 mouse     click 54 23

@@ -1,18 +1,19 @@
-# Float the log window (double-click title), then click each of its borders. Each
-# click's press arms a resize via View.start_resize (edge detection: right='e',
-# left='w', bottom='s', title='m') and the release stops it. The actual drag needs
-# mouse motion (not available in a pty), but the edge-detection branches run.
+# Float the log window (double-click title; the box spans columns 5-94 and rows
+# 3-31), then click each of its borders. Each click's press arms a resize via
+# View.start_resize (edge detection: right='e', left='w', bottom='s',
+# title='m') and the release stops it. The actual drag needs mouse motion (not
+# available in a pty), but the edge-detection branches run.
 size      120x40
 config    default
 launch
 mouse     dblclick 40 1
 wait      stable
-mouse     click 90 20
+mouse     click 94 20
 wait      stable
-mouse     click 31 20
+mouse     click 5 20
 wait      stable
-mouse     click 60 29
+mouse     click 60 31
 wait      stable
-mouse     click 60 11
+mouse     click 60 3
 wait      stable
 capture   after_edges

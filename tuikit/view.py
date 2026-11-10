@@ -31,6 +31,13 @@ MODE_WINDOW = "window"
 
 MIN_WINDOW_SIZE = 5  # smallest width/height an edge drag can shrink a window to
 
+# Where a window with no geometry of its own opens (place_window): sized to
+# its content with some air, at most this share of the screen, at a spot
+# chosen by Screen.window_position.
+WINDOW_PADX, WINDOW_PADY = 4, 1
+WINDOW_MAX_SHARE = 0.75
+MIN_FLOAT_WIDTH = 20
+
 
 class View:
     # Log a debug line per draw (off for a view that displays the log itself,
@@ -168,12 +175,63 @@ class View:
         item._view = self
         self._calculate_dimensions()
 
+    def has_geometry(self) -> bool:
+        """Was a window position or size ever set (or dragged) for this view?"""
+        return any(
+            v is not None
+            for v in (self.fixed_x, self.fixed_y, self.fixed_height, self.fixed_width)
+        )
+
+    def window_size(self, lines, cols):
+        """(height, width) a window opens at when it has no geometry yet. Base:
+        half the screen; a ListView packs around its rows instead."""
+        return lines // 2, cols // 2
+
+    def place_window(self):
+        """Give the view an OS-like window geometry: window_size(), placed on
+        the first free space in reading order, or cascaded down-right of the
+        windows already open when the screen is full (Screen.window_position)."""
+        lines, cols = self.app.screen.getmaxyx()
+        height, width = self.window_size(lines, cols)
+        x, y = self.app.screen.window_position(self, height, width)
+        self.view_mode = MODE_WINDOW
+        self.set_dimensions(x, y, height, width)
+
+    def _needs_placing(self) -> bool:
+        return (
+            self.view_mode == MODE_WINDOW
+            and not self.is_popup  # popups centre themselves
+            and not self.has_geometry()  # (tiled split panes always have one)
+        )
+
+    def _is_floating(self) -> bool:
+        return (
+            self.view_mode == MODE_WINDOW
+            and not self.is_popup
+            and not (self.split is not None and self.split.split_active())
+        )
+
+    def _keep_clear(self):
+        """A floating window reopened, or restored from fullscreen, comes back
+        where it was - unless another window took that place meanwhile: then
+        it moves to the nearest free spot (and stays put when there is no
+        room)."""
+        (y, x), (height, width) = self.win.getbegyx(), self.win.getmaxyx()
+        spot = self.app.screen.free_spot(self, height, width, near=(x, y))
+        if spot is not None and spot != (x, y):
+            self.set_dimensions(spot[0], spot[1], height, width)
+
     def set_view_mode(self, view_mode: str):
         if self.view_mode == view_mode:
             return
         lines, cols = self.app.screen.getmaxyx()
         self.view_mode = view_mode
+        if self._needs_placing():
+            self.place_window()  # first time floated: no geometry to restore
+            return
         self._set_geometry(*self._calculate_dimensions(lines, cols))
+        if self._is_floating():
+            self._keep_clear()  # restored: a window may have opened there
 
     def set_fullscreen(self):
         self.set_view_mode(MODE_FULLSCREEN)
@@ -259,6 +317,10 @@ class View:
         if new_x == win_x and new_y == win_y:
             return
         self.panel.move(new_y, new_x)
+        if not self.is_popup:
+            # Remembered, so maximize + restore (or a resize) brings the
+            # window back where it was dragged. Popups re-centre each open.
+            self.fixed_x, self.fixed_y = new_x, new_y
         self.dirty = True
 
     def _resize_window_edges(self, dx, dy):
@@ -412,6 +474,10 @@ class View:
             self.split.raise_sibling(self)
         if self.is_active():
             return
+        if self._needs_placing():
+            self.place_window()  # a window opened without a geometry
+        elif not self.is_shown() and self._is_floating():
+            self._keep_clear()
         screen = self.app.screen
         prev_view = screen.get_active_view()
         if self in screen.showed_views:

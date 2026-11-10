@@ -1,0 +1,12 @@
+# tuikit demo 3: [X] on the Windows pane (columns 87-89) leaves the
+# split with the colours fullscreen and hides the closed pane - floating the
+# colours (double-click the title) shows an empty screen behind, not the
+# closed Windows pane still lying there fullscreen.
+size      90x20
+demo      demo_3_windows
+mouse     click 88 1
+wait      stable
+capture   pane_closed
+mouse     dblclick 10 1
+wait      stable
+capture   colours_floated
