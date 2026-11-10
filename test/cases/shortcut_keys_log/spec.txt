@@ -1,0 +1,23 @@
+# Keymap actions in the git log act on the selected commit: t opens the New Tag
+# prompt; d (diff against the mark) with no mark only says so; after m marks
+# HEAD and the cursor moves down, d diffs that commit against the mark.
+size      120x40
+config    default
+launch
+key       t
+wait      stable
+capture   new_tag
+key       <Esc>
+wait      stable
+key       d
+wait      stable
+capture   no_mark
+key       m
+key       j*2
+key       d
+wait      stable
+capture   diff_to_mark
+# In the diff, w toggles [Ignore whitespace] (highlighted in the title bar).
+key       w
+wait      stable
+capture   ignore_ws

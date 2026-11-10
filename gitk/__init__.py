@@ -8,6 +8,7 @@ pieces. Modules are layered bottom-up (the import graph is a DAG):
 
     tuikit                       the UI library (knows nothing about git)
     config, ids, diff_target     leaves
+    keymap                       -> tuikit.keys (rebindable shortcuts)
     screen                       -> tuikit (git palette, function-key bar)
     segments                     -> screen (refs, split button)
     items                        -> segments, screen (refs, diff/stat rows)

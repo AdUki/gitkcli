@@ -19,6 +19,7 @@ from gitk.dialogs import GitSearchDialogPopup, ResetDialogPopup
 from gitk.graph import CUT, DOT, CommitGraph
 from gitk.ids import ID_GIT_LOG
 from gitk.jobs import GitLogJob, GitRefreshHeadJob, GitSearchJob, Job
+from gitk.keymap import handle_copy_key
 from gitk.screen import Screen
 from gitk.segmented_items import CommitListItem, UncommittedChangesListItem
 
@@ -706,21 +707,44 @@ class GitLogView(ListView):
                 self.app.split.unsplit()  # Esc on the log pane leaves split view
             else:
                 self.app.exit_program()
-        elif key == ord("b"):
-            self.app.git_refs.new_ref_dialog.create_ref(self.get_selected_commit_id())
-        elif key in (ord("r"), ord("R")):
-            self.confirm_reset()
-        elif key == ord("c"):
-            self.cherry_pick()
-        elif key == ord("v"):
-            self.revert()
-        elif key == ord("m"):
-            self.mark_commit()
-        elif key == ord("M"):
-            self.jump_to_commit(self.marked_commit_id)
         elif key in (ord("g"), ord("G"), curses.KEY_HOME, curses.KEY_END):
             self.app.jump_list.record()
             return super().handle_key(event)
-        else:
+        elif self.app.keymap.action_for("log", key):
+            self.run_action(self.app.keymap.action_for("log", key))
+        elif not handle_copy_key(self, key):
             return super().handle_key(event)
         return True
+
+    def run_action(self, action_id):
+        """Run a "log" keymap action on the selected commit."""
+        commit_id = self.get_selected_commit_id()
+        new_ref = self.app.git_refs.new_ref_dialog.create_ref
+        if action_id == "log.new_branch":
+            new_ref(commit_id)
+        elif action_id == "log.new_tag":
+            new_ref(commit_id, "tag")
+        elif action_id == "log.cherry_pick":
+            self.cherry_pick()
+        elif action_id == "log.revert":
+            self.revert()
+        elif action_id == "log.reset":
+            self.confirm_reset()
+        elif action_id in ("log.diff_to_marked", "log.diff_from_marked"):
+            self.diff_with_mark(action_id == "log.diff_from_marked")
+        elif action_id == "log.mark":
+            self.mark_commit()
+        elif action_id == "log.return_to_mark":
+            self.jump_to_commit(self.marked_commit_id)
+
+    def diff_with_mark(self, from_mark=False):
+        """Diff the selected commit against the marked one: selected --> mark,
+        or mark --> selected with `from_mark`."""
+        commit_id = self._resolve_commit(None, "diff against the mark")
+        if not commit_id:
+            return
+        if not self.marked_commit_id:
+            self.app.screen.show_flash("No marked commit to diff against")
+            return
+        pair = [commit_id, self.marked_commit_id]
+        self.diff_commits(*(reversed(pair) if from_mark else pair))

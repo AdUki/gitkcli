@@ -17,11 +17,11 @@
 [0;32;49mwip/migrate-to-postgres[0m
 [0;32;49mwip/refactor-auth[0m
 [0;1;31;48;2;38;38;38mfork/contributor-patch                                                                                                  [0m
-[0;34;49m┌────────────────────────────┐[0m
-[0;34;49m│[0;37;49mCopy remote branch name[0;39;49m     [0;34;49m│[0m
-[0;34;49m├────────────────────────────┤[0m
-[0;34;49m│[0;37;49mRemove this remote branch[0;39;49m   [0;34;49m│[0m
-[0;34;49m└────────────────────────────┘[0m
+[0;34;49m┌─────────────────────────────────┐[0m
+[0;34;49m│[0;37;49m Copy remote branch name[0;39;49m       [0;34;49my │[0m
+[0;34;49m├─────────────────────────────────┤[0m
+[0;34;49m│[0;37;49m Remove this remote branch[0;39;49m   [0;34;49mDel │[0m
+[0;34;49m└─────────────────────────────────┘[0m
 [0;31;49morigin/behind/old-master[0m
 [0;31;49morigin/bugfix/leaking-fd[0m
 [0;31;49morigin/feature/admin-dashboard[0m

@@ -356,9 +356,11 @@ class SearchDialog(InputDialog):
 
 class Menu(ListView):
     """A popup menu of MenuItems (and SeparatorItems). Fill it, then
-    `open_at(x, y)`; while open it selects the row under the pointer."""
+    `open_at(x, y)`; while open it selects the row under the pointer, and an
+    item's `key` activates it. The menu packs around its items, at least
+    `width` columns wide."""
 
-    def __init__(self, app, id="menu", width=30):
+    def __init__(self, app, id="menu", width=0):
         super().__init__(app, id, MODE_WINDOW)
         self.is_popup = True
         self.menu_width = width
@@ -370,6 +372,14 @@ class Menu(ListView):
     def on_deactivated(self):
         super().on_deactivated()
         self.app.mouse.release(self)
+
+    def handle_key(self, event):
+        # A MenuItem's own key runs it (a disabled one swallows the key, so it
+        # does not fall through to whatever the key means outside the menu).
+        for item in self.items:
+            if getattr(item, "key", None) == event.key:
+                return item.activate()
+        return super().handle_key(event)
 
     def open_at(self, x: int, y: int):
         """Pack the menu around its items (at least `menu_width` wide) and show

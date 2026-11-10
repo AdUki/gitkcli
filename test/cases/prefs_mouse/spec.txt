@@ -7,11 +7,11 @@ config    default
 launch
 key       <F9>
 wait      stable
-mouse     click 77 14
+mouse     click 77 13
 wait      stable
 capture   toggled
-mouse     click 54 26
+mouse     click 54 27
 wait      2.5
-mouse     click 64 26
+mouse     click 64 27
 wait      stable
 capture   closed

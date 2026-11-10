@@ -15,8 +15,13 @@ from tuikit.dialogs import ConfirmDialog, ErrorDialog
 
 from gitk.app import App
 from gitk.config import load_config
-from gitk.dialogs import CommandDialogPopup, PreferencesDialogPopup
+from gitk.dialogs import (
+    CommandDialogPopup,
+    PreferencesDialogPopup,
+    ShortcutsDialogPopup,
+)
 from gitk.ids import ID_CONFIRM_DIALOG, ID_ERROR_DIALOG
+from gitk.keymap import Keymap
 from gitk.log import Log
 from gitk.screen import Screen
 from gitk.split_layout import SPLIT_SIDE, SPLIT_STACKED
@@ -35,6 +40,7 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
     app.split.attach(app.git_log, app.git_diff)
     app.context_menu = ContextMenu(app)
     app.preferences = PreferencesDialogPopup(app)
+    app.shortcuts = ShortcutsDialogPopup(app)
     app.command_dialog = CommandDialogPopup(app)
     app.confirm_dialog = ConfirmDialog(app, ID_CONFIRM_DIALOG)
     app.error_dialog = ErrorDialog(app, ID_ERROR_DIALOG)
@@ -51,6 +57,7 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
     app.git_diff.ignore_whitespace = _cfg["git_diff"]["ignore_whitespace"]
     app.log.view.autoscroll = _cfg["log"]["autoscroll"]
     app.split.default_view_mode = _cfg["view"]["default_mode"]
+    app.keymap = Keymap(_cfg["keys"])
 
     app.log.info("Application started")
 

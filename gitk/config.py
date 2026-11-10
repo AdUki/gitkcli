@@ -22,6 +22,9 @@ DEFAULT_CONFIG = {
     "git_diff": {"ignore_whitespace": False},
     "log": {"autoscroll": False},
     "view": {"default_mode": "fullscreen"},  # fullscreen | side | stacked
+    # Shortcut overrides, {action id: key spec} - see gitk/keymap.py. Only the
+    # actions rebound from their default are kept; "" unbinds one.
+    "keys": {},
 }
 
 
@@ -46,13 +49,27 @@ def load_config() -> dict:
         # has no .items(); ignore it and fall back to defaults rather than crash.
         if isinstance(data, dict):
             for section, values in data.items():
-                if section in cfg and isinstance(values, dict):
+                if section == "keys" and isinstance(values, dict):
+                    # Free-form: Keymap drops what it does not know.
+                    cfg[section].update(
+                        {k: v for k, v in values.items() if isinstance(v, str)}
+                    )
+                elif section in cfg and isinstance(values, dict):
                     cfg[section].update(
                         {k: v for k, v in values.items() if k in cfg[section]}
                     )
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return cfg
+
+
+def update_config(sections: dict, app) -> bool:
+    """Save `sections` over the config file's current contents, so that each
+    dialog persists only its own settings (Preferences its toggles, the
+    shortcut editor the keys) and never what the other left unsaved."""
+    cfg = load_config()
+    cfg.update(sections)
+    return save_config(cfg, app)
 
 
 def save_config(cfg: dict, app) -> bool:

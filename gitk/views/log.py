@@ -13,6 +13,7 @@ from tuikit.segments import (
 )
 
 from gitk.ids import ID_LOG, ID_LOG_SEARCH
+from gitk.keymap import handle_copy_key
 from gitk.screen import Screen
 
 
@@ -58,3 +59,6 @@ class LogView(ListView):
         if self.autoscroll:
             self._offset_y = max(0, len(self.items) - self.height)
         self.dirty = True
+
+    def handle_key(self, event):
+        return handle_copy_key(self, event.key) or super().handle_key(event)

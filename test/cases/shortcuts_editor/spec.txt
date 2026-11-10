@@ -1,0 +1,48 @@
+# Preferences > Keyboard shortcuts [Edit] opens the shortcut editor. Enter on a
+# row waits for a key: x rebinds Cherry-pick; x on Revert moves the key over
+# (Cherry-pick becomes unbound); j is refused (navigation); Ctrl+X goes back on
+# Cherry-pick. The context menu shows the new keys at once, and [Defaults]
+# restores the built-in ones.
+size      120x40
+config    default
+launch
+key       <F9>
+key       <Down>*6
+key       <Enter>
+wait      stable
+capture   editor
+key       <Down>*7
+key       <Enter>
+wait      stable
+capture   waiting
+key       x
+key       <Down>
+key       <Enter>
+key       x
+wait      stable
+capture   moved
+key       <Enter>
+key       j
+wait      stable
+capture   reserved
+key       <Up>
+key       <Enter>
+key       C-x
+key       <Esc>
+wait      stable
+key       <Esc>
+wait      stable
+mouse     rclick 20 6
+wait      stable
+capture   menu
+key       <Esc>
+wait      stable
+key       <F9>
+key       <Home>
+key       <Down>*6
+key       <Enter>
+key       <End>
+key       <Right>
+key       <Enter>
+wait      stable
+capture   defaults

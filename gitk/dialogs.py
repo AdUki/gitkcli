@@ -13,7 +13,14 @@ import shlex
 
 from tuikit import keys as K
 from tuikit.dialogs import Dialog, InputDialog, SearchDialog
-from tuikit.items import SeparatorItem, SpacerListItem, TextListItem, UserInputListItem
+from tuikit import colors
+from tuikit.items import (
+    Item,
+    SeparatorItem,
+    SpacerListItem,
+    TextListItem,
+    UserInputListItem,
+)
 from tuikit.segmented import LabeledRow, SegmentedListItem, button_row
 from tuikit.segments import (
     ButtonSegment,
@@ -25,7 +32,8 @@ from tuikit.segments import (
 )
 from tuikit.view import MODE_FULLSCREEN
 
-from gitk.config import save_config
+from gitk import keymap as KM
+from gitk.config import update_config
 from gitk.ids import (
     ID_GIT_COMMAND,
     ID_GIT_LOG_SEARCH,
@@ -33,6 +41,7 @@ from gitk.ids import (
     ID_GIT_RESET,
     ID_NEW_GIT_REF,
     ID_PREFERENCES,
+    ID_SHORTCUTS,
 )
 from gitk.items import ResetModeItem
 from gitk.jobs import Job
@@ -409,6 +418,13 @@ class PreferencesDialogPopup(Dialog):
         self.append(SeparatorItem())
         self.append(LabeledRow("Default view mode", self.c_view_mode))
         self.append(SeparatorItem())
+        self.append(
+            LabeledRow(
+                "Keyboard shortcuts",
+                ButtonSegment("[Edit]", lambda: self.app.shortcuts.show()),
+            )
+        )
+        self.append(SeparatorItem())
         self.append(TextListItem("  Git log default flags:", is_selectable=False))
         self.append(self.input_flags)
 
@@ -481,7 +497,7 @@ class PreferencesDialogPopup(Dialog):
         self._apply()
         new_flags = self.input_flags.txt.strip()
 
-        cfg = {
+        sections = {
             "git_log": {
                 "show_commit_id": self.t_show_id.toggled,
                 "show_commit_date": self.t_show_date.toggled,
@@ -494,7 +510,8 @@ class PreferencesDialogPopup(Dialog):
             "log": {"autoscroll": self.t_autoscroll.toggled},
             "view": {"default_mode": self.c_view_mode.value},
         }
-        if save_config(cfg, self.app):
+        # The shortcut editor saves its own section; leave "keys" as saved.
+        if update_config(sections, self.app):
             self.app.log.success("Preferences saved")
 
     def on_cancel(self):
@@ -519,6 +536,143 @@ class PreferencesDialogPopup(Dialog):
 
     def handle_mouse(self, event):
         return self._apply_after(super().handle_mouse(event))
+
+
+class ShortcutRow(Item):
+    """`  Cherry-pick this commit ........ c  ` in the shortcut editor; Enter
+    (or a double-click) asks for a new key."""
+
+    KEY_COLUMN = len("<press a key>")
+
+    def __init__(self, dialog, action):
+        super().__init__()
+        self.dialog = dialog
+        self.action = action
+
+    def get_text(self):
+        return "  " + self.action.label
+
+    def natural_width(self) -> int:
+        return len(self.get_text()) + 3 + self.KEY_COLUMN + 2
+
+    def activate(self) -> bool:
+        self.dialog.start_capture(self)
+        return True
+
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        def attr(color, dim=False):
+            return colors.attr(color, selected, dim=dim)
+
+        if self.dialog.capturing is self:
+            key, color, dim = "<press a key>", Screen.C_MATCH, False
+        else:
+            spec = self.get_app().keymap.spec(self.action.id)
+            key, color, dim = (spec, Screen.C_DATA, False) if spec else ("-", 0, True)
+            color = color or Screen.C_DIM
+        right = key + "  "
+        left = self.get_text()[: max(0, width - len(right))]
+        win.addstr(left, attr(Screen.C_NORMAL))
+        win.addstr(" " * max(0, width - len(left) - len(right)), attr(Screen.C_NORMAL))
+        win.addstr(right[: max(0, width - len(left))], attr(color, dim))
+
+
+class ShortcutsDialogPopup(Dialog):
+    """The shortcut editor (Preferences > Keyboard shortcuts): every keymap
+    action by scope with its key. Enter on a row waits for the new key (Esc
+    cancels); Backspace / Del unbind. A key another action already uses
+    where this one is live moves over to it. Changes apply at once; [Save]
+    persists them, [Defaults] restores the built-in keys."""
+
+    def __init__(self, app):
+        super().__init__(app, ID_SHORTCUTS, " Keyboard shortcuts")
+        self.capturing = None  # the ShortcutRow waiting for a key
+        for scope, title in KM.SCOPES:
+            self.append(TextListItem(f" {title}", Screen.C_DATA, is_selectable=False))
+            for action in KM.ACTIONS:
+                if action.scope == scope:
+                    self.append(ShortcutRow(self, action))
+        self.append(SeparatorItem())
+        self.append(
+            TextListItem(
+                "  Enter: change key   Backspace: unbind",
+                Screen.C_DIM,
+                is_selectable=False,
+            )
+        )
+        self.set_button_row(
+            button_row(
+                ButtonSegment("[Save]", self.on_save),
+                TextSegment("  "),
+                ButtonSegment("[Defaults]", self.on_defaults),
+                TextSegment("  "),
+                ButtonSegment("[Close]", self.hide),
+            )
+        )
+        self._selected = 1  # the first action row
+
+    def on_activated(self):
+        self.capturing = None
+        self._button_row.reset_focus()
+        self.dirty = True
+        super().on_activated()
+
+    def start_capture(self, row):
+        self.capturing = row
+        self.dirty = True
+
+    def bind(self, action, key):
+        """Put `action` on `key`, unless the key cannot be bound; a key in use
+        where `action` is live moves over (and the bar says from where)."""
+        keymap = self.app.keymap
+        spec = KM.format_key(key)
+        if spec is None:
+            self.app.screen.show_flash("That key cannot be bound")
+            return
+        if key in KM.RESERVED:
+            self.app.screen.show_flash(f"{spec} is reserved for navigation")
+            return
+        other = keymap.conflict(action.id, key)
+        if other:
+            keymap.bind(other, None)
+            label = KM.ACTIONS_BY_ID[other].label
+            self.app.screen.show_flash(f"{spec} moved here from '{label}'")
+        keymap.bind(action.id, key)
+
+    def on_save(self):
+        if update_config({"keys": self.app.keymap.overrides()}, self.app):
+            self.app.log.success("Shortcuts saved")
+        return True
+
+    def on_defaults(self):
+        self.app.keymap.reset()
+        self.dirty = True
+        return True
+
+    def handle_key(self, event):
+        key = event.key
+        if self.capturing is not None:
+            row, self.capturing = self.capturing, None
+            self.dirty = True
+            if key != curses.KEY_EXIT:
+                self.bind(row.action, key)
+            return True  # the key was for the binding, not for the list
+        item = self.get_selected()
+        if isinstance(item, ShortcutRow) and (
+            key in K.BACKSPACE_KEYS or key == curses.KEY_DC
+        ):
+            self.app.keymap.bind(item.action.id, None)
+            self.dirty = True
+            return True
+        if key == curses.KEY_EXIT:
+            self.hide()
+            return True
+        return super().handle_key(event)
+
+    def handle_mouse(self, event):
+        if self.capturing is not None and not event.is_move:
+            self.capturing = None  # a click elsewhere gives up waiting
+            self.dirty = True
+        return super().handle_mouse(event)
 
 
 class NewRefDialogPopup(InputDialog):

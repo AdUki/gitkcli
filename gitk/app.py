@@ -15,6 +15,7 @@ from tuikit import keys as K
 
 from gitk.jobs import Job
 from gitk.jump_list import JumpList
+from gitk.keymap import Keymap
 from gitk.split_layout import GitSplitLayout
 
 
@@ -31,6 +32,9 @@ class App(tuikit.App):
         self.command_dialog: "CommandDialogPopup" = None
         self.confirm_dialog: "ConfirmDialog" = None
         self.error_dialog: "ErrorDialog" = None
+        self.shortcuts: "ShortcutsDialogPopup" = None
+        # The shortcut bindings, `app.keymap` (overrides loaded from config).
+        self.keymap = Keymap()
 
         # Split-view state + tiling logic, reached as `app.split`; the panes
         # are attached once the views exist.
@@ -176,16 +180,19 @@ class App(tuikit.App):
 
     def handle_global_key(self, event) -> bool:
         key = event.key
-        if key in (K.KEY_CTRL_LEFT, K.ctrl("o")):
+        action = self.keymap.action_for("global", key)
+        # Ctrl+Left / Ctrl+Right always walk the jump list too.
+        if action == "global.jump_back" or key == K.KEY_CTRL_LEFT:
             self.jump_list.move(+1)
-        elif key in (K.KEY_CTRL_RIGHT, K.ctrl("i")):
+        elif action == "global.jump_forward" or key == K.KEY_CTRL_RIGHT:
             self.jump_list.move(-1)
-        elif key == ord("|"):
+        elif action == "global.split":
             self.split.cycle_split_view()
-        elif key == K.ctrl("w") and self.split.split_active():
+        elif action == "global.switch_pane":
             # toggle focus between the two split panes
-            (self.git_diff if self.git_log.is_active() else self.git_log).show()
-        elif key == K.KEY_SHIFT_F5:
+            if self.split.split_active():
+                (self.git_diff if self.git_log.is_active() else self.git_log).show()
+        elif action == "global.reload":
             self.reload_refs_commits()
         elif key == curses.KEY_F7:
             # From the keyboard, open at the selected row (no mouse cursor).

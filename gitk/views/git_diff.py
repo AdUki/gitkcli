@@ -28,6 +28,7 @@ from gitk.diff_target import (
 from gitk.ids import ID_GIT_DIFF, ID_GIT_DIFF_SEARCH
 from gitk.items import DiffListItem
 from gitk.jobs import GitDiffJob
+from gitk.keymap import handle_copy_key
 from gitk.screen import Screen
 
 
@@ -225,12 +226,14 @@ class GitDiffView(ListView):
             # rather than collapsing the split.
             self.app.git_log.show()
             return True
-        if key == ord("+"):
-            # +/- adjust the context size from the keyboard (README), like the
-            # [+]/[-] header buttons.
+        action = self.app.keymap.action_for("diff", key)
+        if action == "diff.more_context":
+            # like the [+]/[-] header buttons
             self.change_context(+1)
-        elif key == ord("-"):
+        elif action == "diff.less_context":
             self.change_context(-1)
+        elif action == "diff.ignore_whitespace":
+            self.change_ignore_whitespace()
         elif key == K.ctrl("n"):
             self.app.git_log.handle_key(K.KeyEvent(curses.KEY_DOWN))
         elif key == K.ctrl("p"):
@@ -238,6 +241,6 @@ class GitDiffView(ListView):
         elif key in (ord("g"), ord("G"), curses.KEY_HOME, curses.KEY_END):
             self.app.jump_list.record()
             return super().handle_key(event)
-        else:
+        elif not handle_copy_key(self, key):
             return super().handle_key(event)
         return True

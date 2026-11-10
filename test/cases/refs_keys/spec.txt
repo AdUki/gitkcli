@@ -1,0 +1,23 @@
+# Keymap actions in the refs view act on the selected ref: R renames the branch
+# under the cursor (row 2; row 1 is HEAD, which has no rename); on the
+# annotated tag v0.1.0, o (check out) does nothing and a shows its annotation.
+size      120x40
+config    default
+launch
+key       <F2>
+wait      stable
+key       j
+key       R
+wait      stable
+capture   rename_prompt
+key       <Esc>
+wait      stable
+key       /
+text      "v0.1.0"
+key       <Enter>
+wait      stable
+key       o
+wait      stable
+key       a
+wait      stable
+capture   tag_annotation

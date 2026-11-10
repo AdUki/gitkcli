@@ -1,0 +1,11 @@
+# A shortcut pressed while the context menu is open runs that menu entry on the
+# right-clicked row, not on the selection: m in the menu of row 6 marks row 6
+# while the cursor stays on HEAD.
+size      120x40
+config    default
+launch
+mouse     rclick 20 6
+wait      stable
+key       m
+wait      stable
+capture   marked_clicked_row

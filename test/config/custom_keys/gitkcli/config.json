@@ -1,0 +1,14 @@
+{
+  "git_log": {
+    "show_commit_id": true,
+    "show_commit_date": true,
+    "show_commit_author": true,
+    "flags": ""
+  },
+  "keys": {
+    "log.cherry_pick": "Ctrl+X",
+    "log.revert": "",
+    "copy.all": "j",
+    "no.such_action": "z"
+  }
+}

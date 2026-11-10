@@ -31,3 +31,13 @@ class GitRefsView(ListView):
     def reload_refs(self):
         self.clear()
         self.job.start_job()
+
+    def handle_key(self, event):
+        # A "refs" keymap action runs on the selected ref, when that kind of
+        # ref has it (no checkout for a tag, ...).
+        action = self.app.keymap.action_for("refs", event.key)
+        item = self.get_selected()
+        if action and item is not None and hasattr(item, "data"):
+            if self.app.context_menu.run_ref_action(item.data, action):
+                return True
+        return super().handle_key(event)

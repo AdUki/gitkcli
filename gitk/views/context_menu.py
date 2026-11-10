@@ -15,22 +15,35 @@ from gitk.segmented_items import UncommittedChangesListItem
 
 class ContextMenu(Menu):
     def __init__(self, app):
-        super().__init__(app, ID_CONTEXT_MENU, width=30)
+        super().__init__(app, ID_CONTEXT_MENU)
         # F7 cycle state: (targets, view, row_x, row_y) and the index shown, or
         # None when no segment cycle is active. See start_cycle / advance_cycle.
         self._cycle = None
         self._cycle_index = -1
 
+    def _append(self, label, action, args=(), enabled=True, shortcut="", key=None):
+        self.append(MenuItem(label, action, args, enabled, shortcut, key))
+
+    def _append_action(self, action_id, label, action, args=(), enabled=True):
+        """A menu entry for a keymap action: shows its key on the right, and
+        the key runs the entry while the menu is open."""
+        keymap = self.app.keymap
+        self._append(
+            label, action, args, enabled, keymap.spec(action_id), keymap.key(action_id)
+        )
+
     def _append_copy_items(self, view, item):
         """The line/range/all clipboard trio shared by the git-log, git-diff and
         log context menus."""
-        self.append(MenuItem("Copy line to clipboard", item.copy_text_to_clipboard))
-        self.append(
-            MenuItem(
-                "Copy range to clipboard", view.copy_text_range_to_clipboard, [item]
-            )
+        self._append_action(
+            "copy.line", "Copy line to clipboard", item.copy_text_to_clipboard
         )
-        self.append(MenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
+        self._append(
+            "Copy range to clipboard", view.copy_text_range_to_clipboard, [item]
+        )
+        self._append_action(
+            "copy.all", "Copy all to clipboard", view.copy_text_to_clipboard
+        )
 
     def start_cycle(self, targets, view, row_x, row_y):
         """Begin the F7 segment cycle for a row. `targets` is the ordered
@@ -99,20 +112,22 @@ class ContextMenu(Menu):
         win_y, win_x = view.win.getbegyx()
         x = win_x + view.x
         y = win_y + view.y
-        self.append(MenuItem("Show Git commit log <F1>", item.git_log.show))
-        self.append(MenuItem("Show Git references <F2>", item.git_refs.show))
-        self.append(MenuItem("Show Git commit diff <F3>", item.git_diff.show))
-        self.append(MenuItem("Show Logs <F4>", item.log.view.show))
+        self._append("Show Git commit log", item.git_log.show, shortcut="F1")
+        self._append("Show Git references", item.git_refs.show, shortcut="F2")
+        self._append("Show Git commit diff", item.git_diff.show, shortcut="F3")
+        self._append("Show Logs", item.log.view.show, shortcut="F4")
         self.append(SeparatorItem())
-        self.append(MenuItem("Search </>", view.handle_key, [KeyEvent(ord("/"))]))
-        self.append(MenuItem("Copy all to clipboard", view.copy_text_to_clipboard))
+        self._append("Search", view.handle_key, [KeyEvent(ord("/"))], shortcut="/")
+        self._append_action(
+            "copy.all", "Copy all to clipboard", view.copy_text_to_clipboard
+        )
         self.append(SeparatorItem())
-        self.append(MenuItem("Refresh <F5>", item.git_log.refresh_head))
-        self.append(MenuItem("Reload <Shift+F5>", item.reload_refs_commits))
+        self._append("Refresh", item.git_log.refresh_head, shortcut="F5")
+        self._append_action("global.reload", "Reload", item.reload_refs_commits)
         self.append(SeparatorItem())
-        self.append(MenuItem("Preferences", self.app.preferences.show))
+        self._append("Preferences", self.app.preferences.show, shortcut="F9")
         self.append(SeparatorItem())
-        self.append(MenuItem("Quit", item.exit_program))
+        self._append("Quit", item.exit_program, shortcut="F10")
         return x, y
 
     def _build_log_menu(self, view, item):
@@ -121,68 +136,52 @@ class ContextMenu(Menu):
         pick/revert/reset, diff-against-selection/mark, and mark/jump."""
         if isinstance(item, UncommittedChangesListItem):
             label = "Clear staged changes" if item._staged else "Clear unstaged changes"
-            self.append(MenuItem(label, view.clean_uncommitted_changes, [item._staged]))
+            self._append(label, view.clean_uncommitted_changes, [item._staged])
         else:
-            self.append(
-                MenuItem(
-                    "Create new branch",
-                    self.app.git_refs.new_ref_dialog.create_ref,
-                    [item.id],
-                )
+            new_ref = self.app.git_refs.new_ref_dialog.create_ref
+            selected = view.get_selected_commit_id()
+            marked = view.marked_commit_id
+            act = self._append_action
+            act("log.new_branch", "Create new branch", new_ref, [item.id])
+            act("log.new_tag", "Create new tag", new_ref, [item.id, "tag"])
+            act(
+                "log.cherry_pick",
+                "Cherry-pick this commit",
+                view.cherry_pick,
+                [item.id],
             )
-            self.append(
-                MenuItem(
-                    "Create new tag",
-                    self.app.git_refs.new_ref_dialog.create_ref,
-                    [item.id, "tag"],
-                )
-            )
-            self.append(
-                MenuItem("Cherry-pick this commit", view.cherry_pick, [item.id])
-            )
-            self.append(MenuItem("Revert this commit", view.revert, [item.id]))
+            act("log.revert", "Revert this commit", view.revert, [item.id])
             self.append(SeparatorItem())
-            self.append(MenuItem("Reset branch here", view.confirm_reset, [item.id]))
+            act("log.reset", "Reset branch here", view.confirm_reset, [item.id])
             self.append(SeparatorItem())
-            self.append(
-                MenuItem(
-                    "Diff this --> selected",
-                    view.diff_commits,
-                    [item.id, view.get_selected_commit_id()],
-                )
+            self._append(
+                "Diff this --> selected", view.diff_commits, [item.id, selected]
             )
-            self.append(
-                MenuItem(
-                    "Diff selected --> this",
-                    view.diff_commits,
-                    [view.get_selected_commit_id(), item.id],
-                )
+            self._append(
+                "Diff selected --> this", view.diff_commits, [selected, item.id]
             )
-            self.append(
-                MenuItem(
-                    "Diff this --> marked commit",
-                    view.diff_commits,
-                    [item.id, view.marked_commit_id],
-                    bool(view.marked_commit_id),
-                )
+            act(
+                "log.diff_to_marked",
+                "Diff this --> marked commit",
+                view.diff_commits,
+                [item.id, marked],
+                bool(marked),
             )
-            self.append(
-                MenuItem(
-                    "Diff marked commit --> this",
-                    view.diff_commits,
-                    [view.marked_commit_id, item.id],
-                    bool(view.marked_commit_id),
-                )
+            act(
+                "log.diff_from_marked",
+                "Diff marked commit --> this",
+                view.diff_commits,
+                [marked, item.id],
+                bool(marked),
             )
             self.append(SeparatorItem())
-            self.append(MenuItem("Mark this commit", view.mark_commit, [item.id]))
-            self.append(
-                MenuItem(
-                    "Return to mark",
-                    view.jump_to_commit,
-                    [view.marked_commit_id],
-                    bool(view.marked_commit_id),
-                )
+            act("log.mark", "Mark this commit", view.mark_commit, [item.id])
+            act(
+                "log.return_to_mark",
+                "Return to mark",
+                view.jump_to_commit,
+                [marked],
+                bool(marked),
             )
         self.append(SeparatorItem())
         self._append_copy_items(view, item)
@@ -190,107 +189,121 @@ class ContextMenu(Menu):
     def _build_diff_menu(self, view, item):
         """Menu for a row in the diff view: jump to the file (stat rows) or to
         the line's blame origin (diff rows), then the copy trio."""
-        self.append(
-            MenuItem(
-                "Jump to file",
-                StatListItem.jump_to_file,
-                [item],
-                isinstance(item, StatListItem),
-            )
+        # Enter is the rows' own action (activate), not a keymap binding.
+        self._append(
+            "Jump to file",
+            StatListItem.jump_to_file,
+            [item],
+            isinstance(item, StatListItem),
+            shortcut="Enter",
         )
-        self.append(
-            MenuItem(
-                "Show origin of this line",
-                DiffListItem.jump_to_origin,
-                [item],
-                isinstance(item, DiffListItem)
-                and item.old_file_path
-                and item.old_file_line is not None,
-            )
+        self._append(
+            "Show origin of this line",
+            DiffListItem.jump_to_origin,
+            [item],
+            isinstance(item, DiffListItem)
+            and item.old_file_path
+            and item.old_file_line is not None,
+            shortcut="Enter",
         )
         self.append(SeparatorItem())
         self._append_copy_items(view, item)
 
-    def _build_refs_menu(self, item):
-        """Menu for a row in the refs view, branching on ref type: branch
-        (checkout/rename/push/delete), tag (annotation/push/delete), remote
-        branch (delete), or any other ref (just copy the name)."""
-        if item.data["type"] == "heads":
-            self.append(
-                MenuItem(
-                    "Check out this branch", self.checkout_branch, [item.data["name"]]
-                )
-            )
-            self.append(
-                MenuItem(
+    def ref_actions(self, data):
+        """The actions on a ref, by its type: branch (checkout / rename / copy /
+        push / remove), tag (copy / annotation / push / remove), remote branch
+        (copy / remove), or any other ref (copy). A list of (action id, label,
+        callable, args, enabled), None marking a separator. The refs menu shows
+        them; the refs view runs them from their keys."""
+        name = data["name"]
+        copy = self.app.copy_to_clipboard
+        kind = data["type"]
+        if kind == "heads":
+            return [
+                (
+                    "refs.checkout",
+                    "Check out this branch",
+                    self.checkout_branch,
+                    [name],
+                    True,
+                ),
+                (
+                    "refs.rename",
                     "Rename this branch",
                     self.app.git_refs.new_ref_dialog.rename_branch,
-                    [item.data["name"]],
-                )
-            )
-            self.append(
-                MenuItem(
-                    "Copy branch name", self.app.copy_to_clipboard, [item.data["name"]]
-                )
-            )
-            self.append(SeparatorItem())
-            self.append(
-                MenuItem(
+                    [name],
+                    True,
+                ),
+                ("refs.copy_name", "Copy branch name", copy, [name], True),
+                None,
+                (
+                    "refs.push",
                     "Push branch to remote",
                     self.push_ref_to_remote,
-                    [item.data["name"]],
-                )
-            )
-            self.append(SeparatorItem())
-            self.append(
-                MenuItem("Remove this branch", self.remove_branch, [item.data["name"]])
-            )
-        elif item.data["type"] == "tags":
-            self.append(
-                MenuItem(
-                    "Copy tag name", self.app.copy_to_clipboard, [item.data["name"]]
-                )
-            )
-            self.append(
-                MenuItem(
+                    [name],
+                    True,
+                ),
+                None,
+                ("refs.remove", "Remove this branch", self.remove_branch, [name], True),
+            ]
+        if kind == "tags":
+            return [
+                ("refs.copy_name", "Copy tag name", copy, [name], True),
+                (
+                    "refs.tag_annotation",
                     "Show tag annotation",
                     self.app.git_diff.show_tag_annotation,
-                    [item.data.get("tag_id")],
-                    "tag_id" in item.data,
-                )
-            )
-            self.append(SeparatorItem())
-            self.append(
-                MenuItem(
-                    "Push tag to remote", self.push_ref_to_remote, [item.data["name"]]
-                )
-            )
-            self.append(SeparatorItem())
-            self.append(
-                MenuItem("Remove this tag", self.remove_tag, [item.data["name"]])
-            )
-        elif item.data["type"] == "remotes":
-            self.append(
-                MenuItem(
-                    "Copy remote branch name",
-                    self.app.copy_to_clipboard,
-                    [item.data["name"]],
-                )
-            )
-            self.append(SeparatorItem())
-            self.append(
-                MenuItem(
+                    [data.get("tag_id")],
+                    "tag_id" in data,
+                ),
+                None,
+                (
+                    "refs.push",
+                    "Push tag to remote",
+                    self.push_ref_to_remote,
+                    [name],
+                    True,
+                ),
+                None,
+                (
+                    "refs.remove",
+                    "Remove this tag",
+                    self.confirm_remove_tag,
+                    [name],
+                    True,
+                ),
+            ]
+        if kind == "remotes":
+            return [
+                ("refs.copy_name", "Copy remote branch name", copy, [name], True),
+                None,
+                (
+                    "refs.remove",
                     "Remove this remote branch",
-                    self.remove_remote_ref,
-                    [item.data["name"]],
-                )
-            )
-        else:
-            self.append(
-                MenuItem(
-                    "Copy ref name", self.app.copy_to_clipboard, [item.data["name"]]
-                )
-            )
+                    self.confirm_remove_remote_ref,
+                    [name],
+                    True,
+                ),
+            ]
+        return [("refs.copy_name", "Copy ref name", copy, [name], True)]
+
+    def run_ref_action(self, data, action_id) -> bool:
+        """Run `action_id` on the ref `data` (a refs-view key). False when the
+        ref has no such action."""
+        for entry in self.ref_actions(data):
+            if entry and entry[0] == action_id:
+                _, _, action, args, enabled = entry
+                if enabled:
+                    action(*args)
+                return True
+        return False
+
+    def _build_refs_menu(self, item):
+        for entry in self.ref_actions(item.data):
+            if entry is None:
+                self.append(SeparatorItem())
+            else:
+                self._append_action(*entry)
 
     def checkout_branch(self, branch_name, force=False):
         args = ["git", "checkout"] + (["-f"] if force else []) + [branch_name]
@@ -350,6 +363,30 @@ class ContextMenu(Menu):
             # The remote-side deletes (remove_remote_ref / remove_tag) hit the
             # network and keep their bar.
             quiet=True,
+        )
+
+    def confirm_remove_tag(self, tag_name):
+        """Deleting a tag also deletes it from every remote: ask first."""
+        self.app.confirm_dialog.confirm(
+            " Remove tag",
+            [
+                (f"Delete tag '{tag_name}'", Screen.C_GIT_ID),
+                ("locally and from every remote?", Screen.C_ERROR),
+            ],
+            lambda: self.remove_tag(tag_name),
+            confirm_label="[Delete]",
+        )
+
+    def confirm_remove_remote_ref(self, remote_ref):
+        """Deleting a remote branch pushes the deletion: ask first."""
+        self.app.confirm_dialog.confirm(
+            " Remove remote branch",
+            [
+                (f"Delete branch '{remote_ref}'", Screen.C_GIT_ID),
+                ("from its remote?", Screen.C_ERROR),
+            ],
+            lambda: self.remove_remote_ref(remote_ref),
+            confirm_label="[Delete]",
         )
 
     def remove_tag(self, tag_name):

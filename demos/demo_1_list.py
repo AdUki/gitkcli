@@ -55,7 +55,7 @@ class ListDemo(tuikit.App):
                 self.planets.append(PlanetItem(*row))
         self.planets.set_search_dialog(tuikit.SearchDialog(self, "planets-search"))
 
-        self.menu = tuikit.Menu(self, width=24)
+        self.menu = tuikit.Menu(self)
 
         self.screen.status_bar.set_entries(
             [
@@ -79,10 +79,20 @@ class ListDemo(tuikit.App):
         x, y = at or self.mouse.position
         self.menu.popup(
             [
-                tuikit.MenuItem(f"Visit {item.name}", item.activate),
-                tuikit.MenuItem("Copy name", self.copy_to_clipboard, [item.name]),
+                # shortcut = the hint drawn on the right, key = what runs it
+                # while the menu is open
+                tuikit.MenuItem(
+                    f"Visit {item.name}", item.activate, shortcut="v", key=ord("v")
+                ),
+                tuikit.MenuItem(
+                    "Copy name",
+                    self.copy_to_clipboard,
+                    [item.name],
+                    shortcut="y",
+                    key=ord("y"),
+                ),
                 tuikit.SeparatorItem(),
-                tuikit.MenuItem("Close menu", lambda: None),
+                tuikit.MenuItem("Close menu", lambda: None, shortcut="Esc"),
             ],
             x,
             y,

@@ -1,0 +1,9 @@
+# Shortcut overrides from the config's "keys" section: Cherry-pick on Ctrl+X,
+# Revert unbound; a reserved key (copy.all on j) and an unknown action are
+# ignored, so Copy all keeps Y.
+size      120x40
+config    custom_keys
+launch
+mouse     rclick 20 6
+wait      stable
+capture   menu

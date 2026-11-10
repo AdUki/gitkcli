@@ -136,12 +136,47 @@ class TextListItem(Item):
 class MenuItem(TextListItem):
     """A menu entry: closes its menu, then calls `action(*args)`. A disabled
     entry (`is_selectable=False`) is drawn dimmed and does nothing. Fires on a
-    click, or on releasing a right-drag over it (press-drag-release menus)."""
+    click, or on releasing a right-drag over it (press-drag-release menus).
 
-    def __init__(self, text, action, args=(), is_selectable=True):
+    `shortcut` is a key hint drawn right-aligned (e.g. "c", "Shift+F5");
+    `key` the key code that activates the entry while its menu is open (see
+    Menu.handle_key) - usually the same key that runs the action outside the
+    menu, so the hint teaches it."""
+
+    SHORTCUT_GAP = 3  # least columns between the text and its shortcut
+
+    def __init__(
+        self, text, action, args=(), is_selectable=True, shortcut="", key=None
+    ):
         super().__init__(text, is_selectable=is_selectable, dim=not is_selectable)
         self.action = action
         self.args = list(args) if args else []
+        self.shortcut = shortcut
+        self.key = key
+
+    def natural_width(self) -> int:
+        # " text   shortcut ": a space of air each side.
+        width = len(self.txt) + 2
+        if self.shortcut:
+            width += self.SHORTCUT_GAP + len(self.shortcut)
+        return width
+
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        def attr(color):
+            return colors.attr(color, selected, marked, matched, dim=self.dim)
+
+        right = f"{self.shortcut} " if self.shortcut else ""
+        if len(right) >= width:
+            right = ""
+        left = (" " + self.txt)[offset:][: width - len(right)]
+        win.addstr(left, attr(self.color))
+        pad = width - len(left) - len(right)
+        if selected or marked:
+            win.addstr(" " * pad, attr(self.color))
+        elif pad:
+            win.addstr(" " * pad)
+        if right:
+            win.addstr(right, attr(colors.ACCENT))
 
     def activate(self) -> bool:
         if self.is_selectable:

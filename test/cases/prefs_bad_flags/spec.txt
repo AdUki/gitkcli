@@ -9,7 +9,7 @@ config    default
 launch
 key       <F9>
 wait      stable
-key       <Down>*6
+key       <Down>*7
 text      "--author='Bob"
 key       <Down>
 key       <Enter>

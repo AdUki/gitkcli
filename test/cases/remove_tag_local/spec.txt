@@ -2,7 +2,8 @@
 # in the work repo, never pushed) is deleted: the local `git tag -d` succeeds and
 # the per-remote `git push --delete` calls all fail harmlessly (the tag isn't on
 # any remote), so the shared bare remotes are never mutated. Find the tag via refs
-# search, F7, End selects the last menu entry "Remove this tag".
+# search, F7, End selects the last menu entry "Remove this tag", which asks
+# for confirmation first (y deletes).
 size      120x40
 config    default
 run       git tag zzz-scratch-tag HEAD
@@ -17,5 +18,8 @@ key       <F7>
 wait      stable
 key       <End>
 key       <Enter>
+wait      stable
+capture   confirm
+key       y
 wait      2.5
 capture   removed

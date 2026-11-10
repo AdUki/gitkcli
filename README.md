@@ -78,14 +78,34 @@ gitkcli origin/main..HEAD
 - `CTRL-B` / `Page Up`: Page up
 - `CTRL-F` / `Page Down`: Page down
 
+Every action key below is a default: rebind or unbind it in the
+[shortcut editor](#keyboard-shortcuts). The context menus show each action's
+current key on the right, and pressing it while a menu is open runs that entry
+on the row the menu was opened for.
+
 ### Commit Operations (git-log view)
 - `ENTER`: Show commit diff
 - `b`: Create new branch from commit
+- `t`: Create new tag on commit
 - `c`: Cherry-pick commit
 - `v`: Revert commit
-- `r` / `R`: Reset current branch to commit (pick Soft / Mixed / Hard in the dialog)
+- `r`: Reset current branch to commit (pick Soft / Mixed / Hard in the dialog)
+- `d` / `D`: Diff commit --> marked commit / marked commit --> commit
 - `m`: Mark commit
 - `M`: Jump to marked commit
+
+### References view
+- `ENTER`: Jump to the ref's commit in the log
+- `o`: Check out branch
+- `R`: Rename branch
+- `p`: Push branch / tag to a remote
+- `a`: Show tag annotation
+- `y`: Copy ref name
+- `Del`: Remove branch / tag / remote branch (tags and remote branches ask first)
+
+### Clipboard (git log, git diff and Logs views)
+- `y`: Copy the selected line
+- `Y`: Copy the whole list
 
 ### Search
 - `/`: Open search dialog
@@ -105,9 +125,9 @@ gitkcli origin/main..HEAD
 - `F10`: Quit
 
 ### Diff View
-- `ENTER`: Show blame/origin of selected line
+- `ENTER`: Show blame/origin of selected line (on a stat row: jump to the file)
 - `+` / `-`: Increase/decrease context lines
-- `[Ignore whitespace]`: title-bar button to toggle whitespace-insensitive diffing
+- `w` / `[Ignore whitespace]`: toggle whitespace-insensitive diffing
 
 ### Navigation History
 - `CTRL+LEFT` / `CTRL-O` / `<---`: Navigate back in jump history
@@ -119,6 +139,10 @@ ref - while walking the cursor and switching panes do not. Each entry remembers
 its pane, so stepping back out of a diff you opened from the log returns to the
 log row you opened it from, and stepping forward returns to the diff at the line
 you left.
+
+### Split view
+- `|`: Cycle split view (off / side by side / stacked)
+- `CTRL-W`: Switch between the split panes
 
 ### General
 - `q`: Quit current view or application
@@ -164,6 +188,7 @@ Press **F9** to open Preferences and toggle:
 - Log view **autoscroll**
 - **Default view mode** (fullscreen, or a side / stacked split)
 - Extra `git log` **flags**
+- **Keyboard shortcuts** (`[Edit]` opens the shortcut editor, below)
 
 Preferences are saved to a JSON config file and reloaded on the next launch:
 
@@ -171,9 +196,27 @@ Preferences are saved to a JSON config file and reloaded on the next launch:
 - macOS: `~/Library/Application Support/gitkcli/config.json`
 - Windows: `%APPDATA%\gitkcli\config.json`
 
+### Keyboard shortcuts
+
+Preferences > Keyboard shortcuts `[Edit]` lists every rebindable action by
+where it works (everywhere, git log, git diff, git references, the copy keys).
+`ENTER` on a row waits for the new key (`Esc` cancels); `Backspace` unbinds it.
+A key another action already uses where this one works moves over to it (the
+bottom bar says from where). Navigation and search keys (`j k h l g G / n N q`,
+arrows, `Enter`, `Esc`, `F1`-`F10`, ...) cannot be bound. Changes apply at once;
+`[Save]` stores them, `[Defaults]` restores the built-in keys. The config file
+keeps only the changed ones, under `"keys"`:
+
+```json
+"keys": { "log.cherry_pick": "Ctrl+X", "log.revert": "" }
+```
+
+Keys are written as `c`, `D`, `Del`, `Ins`, `Space`, `F11`, `Shift+F5` or
+`Ctrl+W`; `""` unbinds the action.
+
 Other adjustments:
 
-- Diff **context size**: the `[+]` / `[-]` buttons in the diff view (default 3)
+- Diff **context size**: `+` / `-` or the `[+]` / `[-]` buttons in the diff view (default 3)
 - `rename_limit` (git rename-detection limit, default 1570) and the log
   verbosity level are currently set in code.
 

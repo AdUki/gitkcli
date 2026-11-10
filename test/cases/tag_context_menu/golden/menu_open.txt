@@ -1,25 +1,25 @@
 [0;38;2;138;138;138;49m─ repo [1/303] ────────────────────────────────────────────────────────────────────────────────── [Split] [<-] [->] [0;31;49m[X][0;38;2;138;138;138;49m─[0m
 [0;1;33;48;2;38;38;38mbca19d7[0;1;37;48;2;38;38;38m [0;1;34;48;2;38;38;38m2025-01-09 00:41[0;1;37;48;2;38;38;38m [0;1;32;48;2;38;38;38mAlice Anderson[0;1;37;48;2;38;38;38m Quick fix while stash sits around [0;1;34;48;2;38;38;38m(HEAD) ->[0;1;37;48;2;38;38;38m [0;1;32;48;2;38;38;38m[master][0;1;37;48;2;38;38;38m                            [0m
-[0;34;49m┌────────────────────────────┐[0;32;49mvans[0;37;49m Speed up hot path [0;31;49m{origin/master}[0;37;49m [0;33;49m<v1.0.0>[0m
-[0;34;49m│[0;37;49mCreate new branch[0;39;49m           [0;34;49m│[0;32;49m Davis[0;37;49m Clarify error path [0;33;49m<latest-stable>[0m
-[0;34;49m│[0;37;49mCreate new tag[0;39;49m              [0;34;49m│[0;32;49m Chen[0;37;49m Handle empty input case[0m
-[0;34;49m│[0;37;49mCherry-pick this commit[0;39;49m     [0;34;49m│[0;32;49mrown[0;37;49m Add timeout to HTTP client[0m
-[0;34;49m│[0;37;49mRevert this commit[0;39;49m          [0;34;49m│[0;32;49m Anderson[0;37;49m Rename variable for clarity[0m
-[0;34;49m├────────────────────────────┤[0;32;49mvans[0;37;49m Reorder imports[0m
-[0;34;49m│[0;37;49mReset branch here[0;39;49m           [0;34;49m│[0;32;49m Davis[0;37;49m Bump dependency versions[0m
-[0;34;49m├────────────────────────────┤[0;32;49m Chen[0;37;49m Rename variable for clarity[0m
-[0;34;49m│[0;37;49mDiff this --> selected[0;39;49m      [0;34;49m│[0;32;49mrown[0;37;49m Refactor request handler[0m
-[0;34;49m│[0;37;49mDiff selected --> this[0;39;49m      [0;34;49m│[0;32;49m Anderson[0;37;49m Guard against null inputs[0m
-[0;34;49m│[0;37;49mDiff this --> marked commit[0;39;49m [0;34;49m│[0;32;49mvans[0;37;49m Refactor request handler[0m
-[0;34;49m│[0;37;49mDiff marked commit --> this[0;39;49m [0;34;49m│[0;32;49m Davis[0;37;49m Drop unused helper[0m
-[0;34;49m├────────────────────────────┤[0;32;49m Chen[0;37;49m Reorder imports[0m
-[0;34;49m│[0;37;49mMark this commit[0;39;49m            [0;34;49m│[0;32;49mrown[0;37;49m Inline a one-shot function[0m
-[0;34;49m│[0;37;49mReturn to mark[0;39;49m              [0;34;49m│[0;32;49m Anderson[0;37;49m Switch to logging from prints[0m
-[0;34;49m├────────────────────────────┤[0;32;49mvans[0;37;49m Polish CLI output[0m
-[0;34;49m│[0;37;49mCopy line to clipboard[0;39;49m      [0;34;49m│[0;32;49m Davis[0;37;49m Bump dependency versions[0m
-[0;34;49m│[0;37;49mCopy range to clipboard[0;39;49m     [0;34;49m│[0;32;49m Chen[0;37;49m Cache repeated lookup[0m
-[0;34;49m│[0;37;49mCopy all to clipboard[0;39;49m       [0;34;49m│[0;32;49mrown[0;37;49m Clarify error path[0m
-[0;34;49m└────────────────────────────┘[0;32;49m Anderson[0;37;49m Clarify error path[0m
+[0;34;49m┌─────────────────────────────────┐[0;37;49mSpeed up hot path [0;31;49m{origin/master}[0;37;49m [0;33;49m<v1.0.0>[0m
+[0;34;49m│[0;37;49m Create new branch[0;39;49m             [0;34;49mb │[0;32;49ms[0;37;49m Clarify error path [0;33;49m<latest-stable>[0m
+[0;34;49m│[0;37;49m Create new tag[0;39;49m                [0;34;49mt │[0;37;49m Handle empty input case[0m
+[0;34;49m│[0;37;49m Cherry-pick this commit[0;39;49m       [0;34;49mc │[0;37;49mAdd timeout to HTTP client[0m
+[0;34;49m│[0;37;49m Revert this commit[0;39;49m            [0;34;49mv │[0;32;49mrson[0;37;49m Rename variable for clarity[0m
+[0;34;49m├─────────────────────────────────┤[0;37;49mReorder imports[0m
+[0;34;49m│[0;37;49m Reset branch here[0;39;49m             [0;34;49mr │[0;32;49ms[0;37;49m Bump dependency versions[0m
+[0;34;49m├─────────────────────────────────┤[0;37;49m Rename variable for clarity[0m
+[0;34;49m│[0;37;49m Diff this --> selected[0;39;49m          [0;34;49m│[0;37;49mRefactor request handler[0m
+[0;34;49m│[0;37;49m Diff selected --> this[0;39;49m          [0;34;49m│[0;32;49mrson[0;37;49m Guard against null inputs[0m
+[0;34;49m│[0;37;49m Diff this --> marked commit[0;39;49m   [0;34;49md │[0;37;49mRefactor request handler[0m
+[0;34;49m│[0;37;49m Diff marked commit --> this[0;39;49m   [0;34;49mD │[0;32;49ms[0;37;49m Drop unused helper[0m
+[0;34;49m├─────────────────────────────────┤[0;37;49m Reorder imports[0m
+[0;34;49m│[0;37;49m Mark this commit[0;39;49m              [0;34;49mm │[0;37;49mInline a one-shot function[0m
+[0;34;49m│[0;37;49m Return to mark[0;39;49m                [0;34;49mM │[0;32;49mrson[0;37;49m Switch to logging from prints[0m
+[0;34;49m├─────────────────────────────────┤[0;37;49mPolish CLI output[0m
+[0;34;49m│[0;37;49m Copy line to clipboard[0;39;49m        [0;34;49my │[0;32;49ms[0;37;49m Bump dependency versions[0m
+[0;34;49m│[0;37;49m Copy range to clipboard[0;39;49m         [0;34;49m│[0;37;49m Cache repeated lookup[0m
+[0;34;49m│[0;37;49m Copy all to clipboard[0;39;49m         [0;34;49mY │[0;37;49mClarify error path[0m
+[0;34;49m└─────────────────────────────────┘[0;32;49mrson[0;37;49m Clarify error path[0m
 [0;33;49m1affe70[0;37;49m [0;34;49m2024-12-14 01:12[0;37;49m [0;32;49mEve Evans[0;37;49m Polish CLI output[0m
 [0;33;49mb7bb12b[0;37;49m [0;34;49m2024-12-13 08:19[0;37;49m [0;32;49mDavid Davis[0;37;49m Drop unused helper[0m
 [0;33;49mc2e1061[0;37;49m [0;34;49m2024-12-13 01:01[0;37;49m [0;32;49mCarol Chen[0;37;49m Trim trailing whitespace[0m
