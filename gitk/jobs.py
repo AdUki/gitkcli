@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import curses
 import datetime
+import gc
 import os
 import queue
 import re
 import subprocess
 import threading
+import time
 import typing
 
 from gitk.ids import ID_GIT_DIFF, ID_GIT_REFRESH_HEAD, ID_GIT_REFS, ID_GIT_SEARCH
@@ -31,6 +33,12 @@ from gitk.segmented_items import CommitListItem
 # caret notation (e.g. ESC -> "^[") — so this is display hygiene (drop the
 # caret-notation clutter), not a terminal-injection guard.
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+# How long one main-loop pass may spend on a job's queued rows before it goes
+# back to the keyboard and screen: a big backlog (a fast `git log` on a large
+# repository) is worked off over several passes instead of holding a key back.
+DRAIN_BUDGET = 0.010
 
 
 def _git_env():
@@ -98,12 +106,15 @@ class Job:
                 self.on_finished()
                 self.on_finished = None
 
-    def _drain(self, q, handler) -> bool:
+    def _drain(self, q, handler, deadline=None) -> typing.Tuple[bool, bool]:
         """Drain a queue, dispatching each truthy item to handler (skipped while
-        stopped). Returns True if anything was processed."""
+        stopped), until it is empty or time.monotonic() passes `deadline`.
+        Returns (anything processed, stopped at the deadline)."""
         processed = False
         try:
             while True:
+                if deadline is not None and time.monotonic() > deadline:
+                    return processed, True
                 item = q.get_nowait()
                 q.task_done()
                 if not item:
@@ -113,11 +124,17 @@ class Job:
                     processed = True
         except queue.Empty:
             pass
-        return processed
+        return processed, False
 
     def process_items(self) -> bool:
-        drained_items = self._drain(self.items, self.process_item)
-        drained_msgs = self._drain(self.messages, self.process_message)
+        drained_items, more = self._drain(
+            self.items, self.process_item, time.monotonic() + DRAIN_BUDGET
+        )
+        if more:
+            # Messages wait for the rows: "finished" is queued after the last
+            # one, and must not be handled while rows are still pending.
+            return True
+        drained_msgs, _ = self._drain(self.messages, self.process_message)
         return drained_items or drained_msgs
 
     @staticmethod
@@ -240,9 +257,14 @@ def _parse_date(date_str: str) -> datetime.datetime:
         return datetime.datetime.fromisoformat(date_str[:19])
 
 
+# Commits loaded between two gc.freeze() calls (see GitLogJob._freeze_loaded).
+FREEZE_EVERY = 20000
+
+
 class GitLogJob(Job):
     def __init__(self, app, id: str, args=[]):
         super().__init__(app, id)
+        self._unfrozen = 0
         self.cmd = "git log --format=%H#%P#%ct#%aI#%an#%s"
         self.args = args
         # One-shot: clear the "loading commits" bar once the first row streams
@@ -293,7 +315,26 @@ class GitLogJob(Job):
         except ValueError:
             return str(line)
 
+    def _freeze_loaded(self):
+        """Keep the garbage collector off the loaded commits.
+
+        A full (oldest-generation) collection walks every tracked object, and
+        Python runs one each time that generation has grown by a quarter. A
+        large history is millions of commit dicts, parent lists and graph
+        entries, so those passes grew to 300+ ms stalls of the UI thread, with
+        keys left unanswered, a dozen times per load. The commits hold no
+        reference cycles (refcounting frees them on reload), so collecting
+        the young generations and then freezing the survivors - moving them
+        out of the collector's sight - loses nothing, and every collection
+        after that only walks what was allocated since."""
+        self._unfrozen += 1
+        if self._unfrozen >= FREEZE_EVERY:
+            self._unfrozen = 0
+            gc.collect(1)
+            gc.freeze()
+
     def process_item(self, item):
+        self._freeze_loaded()
         if self._first_item_pending:
             # Rows are flowing: the silent up-front phase (--graph implies
             # --topo-order, computed over the whole set before the first line)
