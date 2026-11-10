@@ -42,9 +42,9 @@ MINGAPLEN = 100  # a line is only cut when the gap is at least this long
 # The end of a line that was cut short, and the start of its continuation:
 # dashed, so it still joins the line it belongs to.
 CUT = "┆"
-# A commit, beside its cell in the graph: ⬤┤ (the large circle, so it meets
-# the line)
-DOT = "⬤"
+# A commit, beside its cell in the graph: *┤ (plain ASCII, so every font
+# and terminal draws it, centred on the line)
+DOT = "*"
 
 _U, _D, _L, _R = 1, 2, 4, 8
 _BOX = {
@@ -1241,7 +1241,7 @@ class CommitGraph:
             else:
                 out.append(_BOX[m])
         # One leading blank column, so every lane has a gap on both sides:
-        # the commit's dot goes in the gap beside its cell (⬤┤, ─⬤ ...), with
+        # the commit's dot goes in the gap beside its cell (*┤, ─* ...), with
         # the cell's arm to it in a light line. With no free gap, the cell
         # keeps the heavy stub (node_glyph) to mark the commit instead.
         out.insert(0, " ")

@@ -28,7 +28,7 @@ The hard part of any gitk clone is the commit graph layout. With `--graph`, Gitk
 - **Incremental.** New commits (F5 after a commit, cherry-pick, ...) are inserted into the loaded graph instead of reloading it, and the cursor stays on its commit. The "uncommitted changes" rows are nodes in the graph, right above HEAD.
 - **Lazy.** Only the rows on screen are laid out; jumping to the end of a million-commit log is instant.
 
-Commits are drawn as `⬤` beside box-drawing lanes - `⬤┤` a commit, `⬤┬─┐` a merge, `⬤┼─┘` a branch joining back. Fonts put round glyphs at different heights: set `"graph_dot"` in the `git_log` section of `~/.config/gitkcli/config.json` to another one (e.g. `"●"`) if `⬤` looks off.
+Commits are drawn as `*` beside box-drawing lanes - `*┤` a commit, `*┬─┐` a merge, `*┼─┘` a branch joining back. Set `"graph_dot"` in the `git_log` section of `~/.config/gitkcli/config.json` to use another glyph (e.g. `"●"`).
 
 ## Features
 

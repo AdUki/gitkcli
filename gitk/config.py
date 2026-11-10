@@ -15,9 +15,9 @@ DEFAULT_CONFIG = {
         "show_commit_date": True,
         "show_commit_author": True,
         "flags": "",
-        # The glyph marking a commit in --graph mode (⬤┤). Fonts place round
-        # glyphs at different heights; e.g. "●", "⏺", "◉", "•" also work.
-        "graph_dot": "⬤",
+        # The glyph marking a commit in --graph mode (*┤). Any single-cell
+        # glyph works, e.g. "●", "⬤", "◉", "•" if the font draws it well.
+        "graph_dot": "*",
     },
     "git_diff": {"ignore_whitespace": False},
     "log": {"autoscroll": False},
