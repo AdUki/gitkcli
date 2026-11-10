@@ -1,0 +1,40 @@
+[0;38;2;138;138;138;49m─ Uncommitted changes (working directory) [1/12] ────────── Context: 3 [+] [-] [Stage] [Discard] [Commit] [<-] [->] [0;31;49m[X][0;38;2;138;138;138;49m─[0m
+[0;1;36;48;2;38;38;38m README.md | 1 +                                                                                                        [0m
+[0;36;49m 1 file changed, 1 insertion(+)[0m
+
+[0;34;49mdiff --git a/README.md b/README.md[0m
+[0;34;49mindex 425c3b4..2f5796e 100644[0m
+[0;34;49m--- a/README.md[0m
+[0;34;49m+++ b/README.md[0m
+[0;36;49m@@ -52,3 +52,4 @@ interesting to navigate.[0m
+[0;37;49m - note 187: observation about feature 187[0m
+[0;37;49m - note 190: observation about feature 190[0m
+[0;37;49m - note 194: observation about feature 194[0m
+[0;32;49m+junk[0;39;49m                   [0;34;49m┌─[0;1;34;49m Commit [0;34;49m─────────────────────────────────────────────────────────────┐[0m
+                        [0;34;49m│Summary[0;37;49m                                            Flags: <Amend> [0;38;2;138;138;138;49m(F1)[0;34;49m│[0m
+                        [0;34;49m│[0;37;49mAdd x to main[0;34;49m                                                         │[0m
+                        [0;34;49m│Description[0;39;49m                                                           [0;34;49m│[0m
+                        [0;34;49m│[0;37;49mFirst body line[0;34;49m                                                       │[0m
+                        [0;34;49m│[0;37;49msecond body line[0;7;34;49m [0;37;49m                                                     [0;34;49m│[0m
+                        [0;34;49m│                                                                      │[0m
+                        [0;34;49m│                                                                      │[0m
+                        [0;34;49m│                                                                      │[0m
+                        [0;34;49m│                                                                      │[0m
+                        [0;34;49m│[0;39;49m                                                                      [0;34;49m│[0m
+                        [0;34;49m│[0;38;2;138;138;138;49mEnter in the summary commits · Tab: next field · Esc: close[0;39;49m           [0;34;49m│[0m
+                        [0;34;49m│[0;37;49m                        [0;32;49m[Commit][0;37;49m     [Cancel]                        [0;39;49m [0;34;49m│[0m
+                        [0;34;49m└──────────────────────────────────────────────────────────────────────┘[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0;37;49m 1[0;30;46mGit Log   [0;37;49m 2[0;30;46mGit Refs  [0;37;49m 3[0;30;46mGit Diff  [0;37;49m 4[0;30;46mLogs      [0;37;49m 5[0;30;46mRefresh   [0;37;49m 6[0;30;46mSearch    [0;37;49m 7[0;30;46mContext   [0;37;49m 8[0;30;46mCommand   [0;37;49m 9[0;30;46mConfig    [0;37;49m10[0;30;46mQuit     [0m

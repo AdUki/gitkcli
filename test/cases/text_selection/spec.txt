@@ -1,0 +1,21 @@
+# Character-wise text selection with a mouse drag in the diff pane (from a
+# column of one row to a column of a later row), drawn over the diff colours;
+# a plain click drops it. Shift+Up selects whole lines in the log.
+size      120x40
+config    default
+launch
+wait      stable
+key       <Enter>
+wait      stable
+mouse     drag 10 3 20 6
+wait      stable
+capture   dragged
+mouse     click 5 9
+wait      stable
+capture   click_clears
+key       q
+wait      stable
+key       <Down>*3
+key       <S-Up>*2
+wait      stable
+capture   log_lines

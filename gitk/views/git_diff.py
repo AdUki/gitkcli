@@ -19,6 +19,8 @@ from tuikit.segments import (
 )
 
 from gitk.diff_target import (
+    STAGED_TITLE,
+    WORKING_TITLE,
     CommitTarget,
     DiffOptions,
     RangeTarget,
@@ -30,6 +32,24 @@ from gitk.items import DiffListItem
 from gitk.jobs import GitDiffJob
 from gitk.keymap import handle_copy_key
 from gitk.screen import Screen
+from gitk.stage import (
+    DISCARD,
+    STAGE,
+    UNSTAGE,
+    Stager,
+    content_anchor,
+    find_anchor,
+)
+
+# keymap action -> (stage action, line only)
+STAGE_ACTIONS = {
+    "diff.stage": (STAGE, False),
+    "diff.stage_line": (STAGE, True),
+    "diff.unstage": (UNSTAGE, False),
+    "diff.unstage_line": (UNSTAGE, True),
+    "diff.discard": (DISCARD, False),
+    "diff.discard_line": (DISCARD, True),
+}
 
 
 class GitDiffView(ListView):
@@ -53,40 +73,74 @@ class GitDiffView(ListView):
         # or worktree diff restores where the user left it.
         self.position_map = {}
 
-        self.set_header_item(
-            WindowTopBarItem(
-                "Git commit diff",
-                [
-                    TextSegment("Context:", Screen.C_TITLE),
-                    DynamicTextSegment(
-                        lambda: self.app.git_diff.context_size, Screen.C_TITLE
-                    ),
-                    ButtonSegment(
-                        "[+]", lambda: self.change_context(+1), Screen.C_TITLE
-                    ),
-                    ButtonSegment(
-                        "[-]", lambda: self.change_context(-1), Screen.C_TITLE
-                    ),
-                    HighlightButtonSegment(
-                        "[Ignore whitespace]",
-                        lambda: self.app.git_diff.ignore_whitespace,
-                        lambda: self.app.git_diff.change_ignore_whitespace(),
-                        Screen.C_TITLE,
-                    ),
-                    ButtonSegment(
-                        "[<-]",
-                        lambda: self.app.jump_list.move(+1),
-                        Screen.C_TITLE,
-                    ),
-                    ButtonSegment(
-                        "[->]",
-                        lambda: self.app.jump_list.move(-1),
-                        Screen.C_TITLE,
-                    ),
-                ],
-                title_color=Screen.C_DATA,
-            )
+        self.text_selection = True
+        self.stager = Stager(self)
+
+        def context_segments():
+            return [
+                TextSegment("Context:", Screen.C_TITLE),
+                DynamicTextSegment(
+                    lambda: self.app.git_diff.context_size, Screen.C_TITLE
+                ),
+                ButtonSegment("[+]", lambda: self.change_context(+1), Screen.C_TITLE),
+                ButtonSegment("[-]", lambda: self.change_context(-1), Screen.C_TITLE),
+            ]
+
+        def jump_segments():
+            return [
+                ButtonSegment(
+                    "[<-]", lambda: self.app.jump_list.move(+1), Screen.C_TITLE
+                ),
+                ButtonSegment(
+                    "[->]", lambda: self.app.jump_list.move(-1), Screen.C_TITLE
+                ),
+            ]
+
+        self.diff_header = WindowTopBarItem(
+            "Git commit diff",
+            context_segments()
+            + [
+                HighlightButtonSegment(
+                    "[Ignore whitespace]",
+                    lambda: self.app.git_diff.ignore_whitespace,
+                    lambda: self.app.git_diff.change_ignore_whitespace(),
+                    Screen.C_TITLE,
+                ),
+            ]
+            + jump_segments(),
+            title_color=Screen.C_DATA,
         )
+
+        # The uncommitted-changes (git gui) mode: staging buttons instead of
+        # ignore-whitespace (a hunk shown without its whitespace changes would
+        # not apply). The working directory's changes are staged or
+        # discarded, the staged ones unstaged.
+        def button(label, action):
+            return ButtonSegment(label, action, Screen.C_TITLE)
+
+        commit = button("[Commit]", self.open_commit_dialog)
+        self.working_header = WindowTopBarItem(
+            WORKING_TITLE,
+            context_segments()
+            + [
+                button("[Stage]", lambda: self.stage_action(STAGE)),
+                button("[Discard]", lambda: self.stage_action(DISCARD)),
+                commit,
+            ]
+            + jump_segments(),
+            title_color=Screen.C_DATA,
+        )
+        self.staged_header = WindowTopBarItem(
+            STAGED_TITLE,
+            context_segments()
+            + [
+                button("[Unstage]", lambda: self.stage_action(UNSTAGE)),
+                button("[Commit]", self.open_commit_dialog),
+            ]
+            + jump_segments(),
+            title_color=Screen.C_DATA,
+        )
+        self.set_header_item(self.diff_header)
 
         self.set_search_dialog(SearchDialog(app, ID_GIT_DIFF_SEARCH))
 
@@ -145,13 +199,111 @@ class GitDiffView(ListView):
         self.clear()
         self.target = target
         self._last_target = target
+        if not isinstance(target, WorktreeTarget):
+            header = self.diff_header
+        elif target.staged:
+            header = self.staged_header
+        else:
+            header = self.working_header
+        if self.header_item is not header:
+            self.set_header_item(header)
         self.header_item.set_title(target.title())
         if on_finished is None and target.tracks_position:
             entry = self.position_map.get(target.view_key)
             if entry:
                 line, offset_y = entry
                 on_finished = partial(self.restore_view_position, line, offset_y)
-        self.job.start_job(target.git_args(self._diff_options()), on_finished)
+        self._start(target, on_finished)
+
+    def _start(self, target, on_finished=None):
+        if isinstance(target, WorktreeTarget):
+            steps = target.steps(self._diff_options())
+            self.job.start_steps(steps, self.app.git_toplevel() or None, on_finished)
+        else:
+            self.job.start_job(target.git_args(self._diff_options()), on_finished)
+
+    def shows_worktree(self) -> bool:
+        """Whether the pane is in its uncommitted-changes (git gui) mode."""
+        return isinstance(self.target, WorktreeTarget)
+
+    def reload_worktree(self):
+        """Re-read the uncommitted changes (after staging, a commit, F5) in
+        place; a no-op unless they are shown. The old rows stay on screen
+        while the new ones load, then are swapped for them in one go with the
+        cursor and scroll position kept - no flash of the top of the list."""
+        if not self.shows_worktree():
+            return
+        target = self.target
+        steps = target.steps(self._diff_options())
+
+        def swap():
+            rows, self.job.buffer = self.job.buffer, None
+            if rows is not None and self.target is target:
+                self._replace_items(rows)
+
+        self.job.start_steps(
+            steps, self.app.git_toplevel() or None, swap, buffered=True
+        )
+
+    def _replace_items(self, rows):
+        """Show `rows` instead of the current ones. The cursor stays on the
+        same place in the content - the same distance into the same file of
+        the same section (gitk.stage.content_anchor) - and on the same
+        screen line, so the section being worked on does not move when the
+        other one grows or shrinks above it. A cursor landing on an
+        unselectable row moves to the nearest selectable one."""
+        selected = self._selected
+        screen_line = self._selected - self._offset_y
+        anchored = find_anchor(rows, content_anchor(self.items, selected))
+        if anchored is not None:
+            selected = anchored
+        self.app.mouse.drop_grab_of(self)
+        self.clear_selection()
+        for row in rows:
+            row._view = self
+        self.items = rows
+        last = len(rows) - 1
+        selected = max(0, min(selected, last))
+        if rows and not rows[selected].is_selectable:
+            near = sorted(
+                (i for i, r in enumerate(rows) if r.is_selectable),
+                key=lambda i: (abs(i - selected), i < selected),
+            )
+            if near:
+                selected = near[0]
+        self._selected = selected
+        # Not clamped to len - height: the view may already show blank space
+        # below the end (a section title scrolled to the top), and pulling it
+        # back would move the rows under the user's eyes.
+        # A list that fits the pane is shown whole.
+        if len(rows) <= self.height:
+            self._offset_y = 0
+        else:
+            self._offset_y = max(0, selected - screen_line)
+        # keep the cursor on screen
+        if not self._offset_y <= selected < self._offset_y + self.height:
+            self._offset_y = max(0, selected - self.height // 2)
+        if self._tracks_position():
+            self.position_map[self.target.view_key] = (self._selected, self._offset_y)
+        self.dirty = True
+
+    def stage_action(self, action: str, line_only: bool = False):
+        if not self.shows_worktree():
+            self.app.screen.show_flash("Open the uncommitted changes to stage")
+            return
+        self.stager.run(action, line_only)
+        self.dirty = True
+
+    def stage_all(self):
+        """Stage everything (working directory) / unstage everything (staged)."""
+        if not self.shows_worktree():
+            self.app.screen.show_flash("Open the uncommitted changes to stage")
+            return
+        self.stager.run_all()
+        self.dirty = True
+
+    def open_commit_dialog(self):
+        self.app.commit_dialog.open()
 
     def clear(self):
         self.target = None
@@ -178,6 +330,10 @@ class GitDiffView(ListView):
         return ret
 
     def restore_view_position(self, line: int, offset_y: typing.Optional[int] = None):
+        # The content may have shrunk since (the staging view after a stage).
+        line = max(0, min(line, len(self.items) - 1))
+        if offset_y is not None:
+            offset_y = max(0, min(offset_y, len(self.items) - self.height))
         self.set_selected(line)
         if offset_y is not None:
             self._offset_y = offset_y
@@ -206,10 +362,15 @@ class GitDiffView(ListView):
         ignore-whitespace). The view forgets its identity in the process (no
         position tracking until the reload finishes and a fresh target is
         shown); a no-op if nothing has ever been shown."""
+        if self.shows_worktree():
+            # The staging view stays itself (its target, its buttons).
+            self.position_map.clear()
+            self._show_target(self.target)
+            return
         self.clear()
         self.position_map.clear()
         if self._last_target is not None:
-            self.job.start_job(self._last_target.git_args(self._diff_options()))
+            self._start(self._last_target)
 
     def change_context(self, size: int):
         self.context_size = max(0, self.context_size + size)
@@ -221,6 +382,8 @@ class GitDiffView(ListView):
 
     def handle_key(self, event) -> bool:
         key = event.key
+        if key == curses.KEY_EXIT and self.clear_selection():
+            return True
         if self.app.split.split_active() and key in (ord("q"), curses.KEY_EXIT):
             # Esc/q in split view steps back to the log pane and stays split,
             # rather than collapsing the split.
@@ -234,6 +397,12 @@ class GitDiffView(ListView):
             self.change_context(-1)
         elif action == "diff.ignore_whitespace":
             self.change_ignore_whitespace()
+        elif action in STAGE_ACTIONS:
+            self.stage_action(*STAGE_ACTIONS[action])
+        elif action == "diff.all":
+            self.stage_all()
+        elif action == "diff.commit":
+            self.open_commit_dialog()
         elif key == K.ctrl("n"):
             self.app.git_log.handle_key(K.KeyEvent(curses.KEY_DOWN))
         elif key == K.ctrl("p"):

@@ -20,6 +20,11 @@ LOCAL_WORKING_ID = "local-working"
 STAGED_TITLE = "Uncommitted changes (staged)"
 WORKING_TITLE = "Uncommitted changes (working directory)"
 
+# What the rows of a WorktreeTarget are (their `section`): what staging,
+# unstaging and discarding act on.
+SECTION_UNSTAGED = "unstaged"
+SECTION_STAGED = "staged"
+
 
 @dataclasses.dataclass(frozen=True)
 class DiffOptions:
@@ -98,8 +103,11 @@ class RangeTarget:
 
 @dataclasses.dataclass(frozen=True)
 class WorktreeTarget:
-    """Uncommitted changes (working tree or index) via 'git diff [--cached]
-    HEAD'. Position-tracked."""
+    """Uncommitted changes, shown the git gui way, one pseudo-row each: the
+    working directory ('git diff', index -> working tree, then every
+    untracked file as a new file), whose hunks and lines can be staged and
+    discarded, or the staged changes ('git diff --cached', HEAD -> index),
+    which can be unstaged. Position-tracked."""
 
     staged: bool
     tracks_position: typing.ClassVar[bool] = True
@@ -108,16 +116,33 @@ class WorktreeTarget:
     def view_key(self) -> str:
         return LOCAL_STAGED_ID if self.staged else LOCAL_WORKING_ID
 
+    @property
+    def section(self) -> str:
+        """The section this target opens at."""
+        return SECTION_STAGED if self.staged else SECTION_UNSTAGED
+
     def title(self) -> str:
         return STAGED_TITLE if self.staged else WORKING_TITLE
 
     def git_args(self, opts: DiffOptions) -> typing.List[str]:
-        args = ["diff"]
+        """The staging view runs steps(), not one command."""
+        return []
+
+    def steps(self, opts: DiffOptions):
+        """The GitDiffJob.start_steps sequence. Whitespace is never ignored
+        here: a hunk shown without its whitespace changes would not apply."""
+        flags = dataclasses.replace(opts, ignore_whitespace=False).diff_flags()
         if self.staged:
-            args.append("--cached")
-        args.append("HEAD")
-        args.extend(opts.diff_flags())
-        return args
+            return [
+                ("section", SECTION_STAGED),
+                ("git", ["git", "diff", "--cached", *flags]),
+            ]
+        patch_flags = [f for f in flags if not f.startswith("--stat")]
+        return [
+            ("section", SECTION_UNSTAGED),
+            ("git", ["git", "diff", *flags]),
+            ("untracked", patch_flags),
+        ]
 
     def blame_revision(self) -> typing.Optional[str]:
         return "HEAD"

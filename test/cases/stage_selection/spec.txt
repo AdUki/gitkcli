@@ -1,0 +1,21 @@
+# A Shift+Down line selection (drawn as a band) staged with s: only the changed
+# lines inside it are staged. Esc drops a selection before it closes anything.
+size      120x40
+config    default
+run       git checkout -q --detach master && printf 'one\ntwo\nthree\nfour\n' >> README.md
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+key       <Down>*12
+key       <S-Down>*2
+wait      stable
+capture   selected
+key       s
+wait      stable
+capture   staged
+key       <S-Down>
+key       <Esc>
+wait      stable
+capture   esc_clears

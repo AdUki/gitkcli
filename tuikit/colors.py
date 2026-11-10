@@ -36,7 +36,12 @@ TITLE = 8  # dialog title bars and header buttons (grey; blue when selected)
 BANNER = 9  # warning title bar: white on red
 
 APP_FIRST = 10  # first role number free for an application
-APP_LAST = 39  # last one (variant pairs are 50/100/150 + role)
+APP_LAST = 39  # last one (variant pairs are 50/100/150/200 + role)
+
+# The text-selection variant of every role (256-colour tier): pair 200 + role,
+# the role's foreground on a teal background.
+SELECTION_PAIR = 200
+SELECTION_BG = 24
 
 # Solid status-bar pairs (no variants).
 BAR_FLASH = 40  # success flash: black on green
@@ -97,6 +102,8 @@ def define(
         fg = shfg
     bg = shbg if shbg >= 0 else 21
     curses.init_pair(150 + role, fg, bg)
+    # Text selection: the normal foreground on the selection background.
+    curses.init_pair(SELECTION_PAIR + role, nfg, SELECTION_BG)
 
 
 def init(force_mono: bool = False) -> None:
@@ -150,6 +157,27 @@ def init(force_mono: bool = False) -> None:
             # the highlighted-row blue (the 256-tier highlight bg in define())
             20 if depth >= 256 else curses.COLOR_BLUE,
         )
+
+
+def role_of_pair(pair: int) -> int:
+    """The role a colour pair number draws (any variant), NORMAL for 0."""
+    role = pair % 50
+    return role if role else NORMAL
+
+
+def selection_attr(role: int) -> int:
+    """Attribute for selected text (a mouse / Shift+arrow text selection)
+    drawn over a cell of `role`: a teal background with 256 colours, reverse
+    video below that."""
+    if depth >= 256:
+        color = curses.color_pair(SELECTION_PAIR + role)
+    elif depth >= 8:
+        color = curses.color_pair(role) | curses.A_REVERSE
+    else:
+        color = curses.A_REVERSE
+    if dimmed:
+        color |= curses.A_DIM
+    return color
 
 
 def bar_attr(pair: int) -> int:

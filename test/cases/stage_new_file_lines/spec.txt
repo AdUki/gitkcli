@@ -1,0 +1,30 @@
+# Line staging on new files. Stage one line of the untracked notes.txt: the
+# index gets a notes.txt holding just that line, and the working directory shows
+# the rest as a modification. s on the file's stat row stages the whole file.
+# In the staged view, unstaging the middle line of the staged new file keeps the
+# other two (the patch turns from a creation into a modification).
+size      120x40
+config    default
+run       git checkout -q --detach master && printf 'a\nb\nc\n' > notes.txt
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+key       <Down>*10
+key       S
+wait      stable
+capture   one_line_staged
+key       g
+key       s
+wait      stable
+capture   file_staged
+key       q
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+key       <Down>*10
+key       U
+wait      stable
+capture   middle_unstaged

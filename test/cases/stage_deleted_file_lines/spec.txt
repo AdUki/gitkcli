@@ -1,0 +1,21 @@
+# Line staging on a deleted file: staging one removed line of the deleted
+# docs/contributing.md stages a modification (the file stays in the index with
+# the other lines), the rest of the deletion stays in the working directory.
+size      120x40
+config    default
+run       git checkout -q --detach master && rm docs/contributing.md
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+key       <Down>*10
+key       S
+wait      stable
+capture   line_staged
+key       q
+wait      stable
+key       <Down>
+key       <Enter>
+wait      stable
+capture   staged_view

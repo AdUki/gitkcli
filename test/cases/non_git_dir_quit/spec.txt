@@ -1,0 +1,9 @@
+# Outside a git repository the init dialog's [Quit] (here: q) leaves the app
+# without creating anything.
+size      120x40
+config    default
+run       rm -rf .git
+launch
+wait      stable
+key       q
+expect-exit

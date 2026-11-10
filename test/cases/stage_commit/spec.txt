@@ -1,0 +1,34 @@
+# The commit dialog: c opens it on the summary; Tab moves to the description,
+# where Enter starts a new line. [Commit] commits the staged change with the
+# summary, a blank line and the description; the log shows the new commit on
+# top and the staged section is empty again. With nothing staged, c then Enter
+# only flashes a hint.
+size      120x40
+config    default
+run       git checkout -q --detach master && printf 'x\n' >> src/main.py && git add src/main.py && printf 'junk\n' >> README.md
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+key       c
+wait      stable
+text      "Add x to main"
+key       <Tab>
+text      "First body line"
+key       <Enter>
+text      "second body line"
+wait      stable
+capture   dialog
+key       <Tab>
+key       <Enter>
+wait      stable
+capture   committed
+key       q
+wait      stable
+capture   log
+key       <Enter>
+key       c
+key       <Enter>
+wait      0.3
+capture   nothing_staged

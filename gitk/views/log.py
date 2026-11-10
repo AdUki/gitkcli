@@ -23,6 +23,7 @@ class LogView(ListView):
 
     def __init__(self, app):
         super().__init__(app, ID_LOG, "fullscreen")
+        self.text_selection = True
 
         self.set_header_item(
             WindowTopBarItem(

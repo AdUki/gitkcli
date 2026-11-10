@@ -1,0 +1,35 @@
+# Staging by hunk and by line. On README.md's second hunk ("+junk"), s stages
+# the whole hunk; then on the first hunk's "+changed line three" S stages just
+# that line: its "-" partner stays in the index as context (it is neither
+# staged nor lost). In the staged changes' view, u on "+junk" unstages its
+# hunk again; u in the working directory's view only flashes a hint.
+size      120x40
+config    default
+run       git checkout -q --detach master && printf 'junk\n' >> README.md && sed -i '3s/.*/changed line three/' README.md
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+key       <Down>*19
+key       s
+wait      stable
+capture   hunk_staged
+key       g
+key       <Down>*11
+key       S
+wait      stable
+capture   line_staged
+key       u
+wait      0.3
+capture   unstage_refused
+key       q
+wait      stable
+key       <Down>
+key       <Enter>
+wait      stable
+capture   staged_view
+key       G
+key       u
+wait      stable
+capture   hunk_unstaged

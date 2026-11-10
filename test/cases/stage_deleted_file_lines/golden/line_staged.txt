@@ -1,0 +1,40 @@
+[0;34;49m─ Uncommitted changes (working directory) [11/11] ───────── [0;37;49mContext:[0;34;49m [0;37;49m3[0;34;49m [0;37;49m[+][0;34;49m [0;37;49m[-][0;34;49m [0;37;49m[Stage][0;34;49m [0;37;49m[Discard][0;34;49m [0;37;49m[Commit][0;34;49m [0;37;49m[<-][0;34;49m [0;37;49m[->][0;34;49m [0;31;49m[X][0;34;49m─[0m
+[0;36;49m docs/contributing.md | 2 --[0m
+[0;36;49m 1 file changed, 2 deletions(-)[0m
+
+[0;34;49mdiff --git a/docs/contributing.md b/docs/contributing.md[0m
+[0;37;49mdeleted file mode 100644[0m
+[0;34;49mindex 9d04d8d..0000000[0m
+[0;34;49m--- a/docs/contributing.md[0m
+[0;34;49m+++ /dev/null[0m
+[0;36;49m@@ -1,2 +0,0 @@[0m
+[0;31;49m-# docs/contributing.md[0m
+[0;1;31;48;2;38;38;38m-- note 140: observation about feature 140                                                                              [0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0;37;49m 1[0;30;46mGit Log   [0;37;49m 2[0;30;46mGit Refs  [0;37;49m 3[0;30;46mGit Diff  [0;37;49m 4[0;30;46mLogs      [0;37;49m 5[0;30;46mRefresh   [0;37;49m 6[0;30;46mSearch    [0;37;49m 7[0;30;46mContext   [0;37;49m 8[0;30;46mCommand   [0;37;49m 9[0;30;46mConfig    [0;37;49m10[0;30;46mQuit     [0m

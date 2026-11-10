@@ -127,10 +127,12 @@ class Runner:
         import tempfile
 
         work = tempfile.mkdtemp(prefix=f"gkc_{name}_")
-        repo = os.path.join(work, "repo")
         xdg = os.path.join(work, "xdg")
         home = os.path.join(work, "home")
         os.mkdir(home)
+        # Inside the fake HOME, so a path the app shows as "~/repo" is the
+        # same on every run.
+        repo = os.path.join(home, "repo")
         # Full copy of the fixture: clean tree + private .git the test may mutate.
         subprocess.run(["cp", "-a", PRISTINE_REPO, repo], check=True)
         template = os.path.join(CONFIG_DIR, config_name)
@@ -358,11 +360,11 @@ def main():
               run <shell> | key <tokens> |
               text "literal" | mouse VERB COL ROW | wait stable|<secs> |
               resize WxH | capture NAME | expect-exit
-            keys: bare chars, <Up>/<Down>/<Enter>/<Esc>/<F1>..<F12>/<S-F5>, C-w/C-Left;
+            keys: bare chars, <Up>/<Down>/<Enter>/<Esc>/<F1>..<F12>/<S-F5>/<S-Up>, C-w/C-Left;
                   repeat a token with *N (e.g. <Down>*5)
             mouse: VERB is click|dblclick|rclick or wheelup|wheeldown|wheelleft|
-                   wheelright (one notch); COL ROW are 1-based screen coords
-                   (no drag -- the pty only reports presses/releases, not motion)
+                   wheelright (one notch); COL ROW are 1-based screen coords;
+                   `mouse drag COL ROW COL2 ROW2` presses, moves once, releases
 
             first run needs the fixture:  bash test/create_test_repo.sh
             """),

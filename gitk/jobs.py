@@ -41,6 +41,33 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 DRAIN_BUDGET = 0.010
 
 
+def display_line(bytearr: bytes) -> str:
+    """A line of git output as shown: decoded, tabs expanded (curses would
+    expand them anyway), the line break cut off.
+
+    C0/C1 control characters are stripped for a clean display: a commit
+    subject, ref name, or diff line may contain ESC/other control bytes, which
+    curses would render as caret notation ("^[…") rather than pass through
+    raw. Printable Unicode (CJK, emoji, box-drawing - all > U+009F) is
+    preserved."""
+    tabsize = curses.get_tabsize() if hasattr(curses, "get_tabsize") else 8
+    line = (
+        bytearr.decode("utf-8", errors="replace")
+        .replace("\t", " " * tabsize)
+        .rstrip("\r\n")
+    )
+    return _CONTROL_CHARS.sub("", line)
+
+
+def raw_line(bytearr: bytes) -> str:
+    """A line of git output exactly as git wrote it, minus the final newline
+    (a CR stays): what a patch built from the shown diff must contain.
+    Undecodable bytes survive as surrogates (encode with surrogateescape)."""
+    if bytearr.endswith(b"\n"):
+        bytearr = bytearr[:-1]
+    return bytearr.decode("utf-8", errors="surrogateescape")
+
+
 def _git_env():
     """Pin LC_ALL=C so git speaks English: callers parse stdout/stderr to
     detect conditions like "already exists" / "non-fast-forward"."""
@@ -57,9 +84,19 @@ class Job:
         cls.jobs[id] = job
 
     @classmethod
-    def run_job(cls, app, args):
+    def run_job(cls, app, args, input=None):
+        """Run a command to completion (blocking). `input` (str) is fed to
+        its stdin."""
         app.log.info("Run job: " + " ".join(args))
-        return subprocess.run(args, capture_output=True, text=True, env=_git_env())
+        return subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            env=_git_env(),
+            input=input,
+            encoding="utf-8",
+            errors="surrogateescape",
+        )
 
     @classmethod
     def process_all_jobs(cls) -> bool:
@@ -205,6 +242,20 @@ class Job:
         """The arguments appended after the per-run ones (default: self.args)."""
         return self.args
 
+    def _stdout_line(self, bytearr: bytes):
+        """Parse one line of the command's output into a queued row."""
+        try:
+            item = self.process_line(display_line(bytearr))
+            if item:
+                self.items.put(item)
+        except Exception as e:
+            self.messages.put(
+                {
+                    "type": "error",
+                    "message": f"Error processing line: {bytearr}\n{str(e)}",
+                }
+            )
+
     def get_exit_code(self):
         return self.job.poll() if self.job else None
 
@@ -214,35 +265,10 @@ class Job:
         for bytearr in iter(stream.readline, b""):
             if self.stop:
                 break
-            try:
-                # curses automatically converts tab to spaces, so we will replace it here and cut off newline
-                tabsize = curses.get_tabsize() if hasattr(curses, "get_tabsize") else 8
-                line = (
-                    bytearr.decode("utf-8", errors="replace")
-                    .replace("\t", " " * tabsize)
-                    .rstrip("\r\n")
-                )
-                # Strip C0/C1 control chars from streamed git text for a clean
-                # display: a commit subject, ref name, or diff line may contain
-                # ESC/other control bytes, which curses would render as caret
-                # notation ("^[…") rather than pass through raw. Tab is expanded
-                # and CR/LF stripped above; printable Unicode (CJK, emoji,
-                # box-drawing — all > U+009F) is preserved.
-                line = _CONTROL_CHARS.sub("", line)
-                if is_stderr:
-                    self.messages.put({"type": "error", "message": line})
-                else:
-                    item = self.process_line(line)
-                    if item:
-                        self.items.put(item)
-
-            except Exception as e:
-                self.messages.put(
-                    {
-                        "type": "error",
-                        "message": f"Error processing line: {bytearr}\n{str(e)}",
-                    }
-                )
+            if is_stderr:
+                self.messages.put({"type": "error", "message": display_line(bytearr)})
+            else:
+                self._stdout_line(bytearr)
         stream.close()
         if not is_stderr and not self.stop:
             self.messages.put({"type": "finished"})
@@ -390,6 +416,10 @@ class GitDiffJob(Job):
     def __init__(self, app):
         super().__init__(app, ID_GIT_DIFF)
         self.cmd = "git"
+        # While not None, rows are collected here instead of being appended
+        # to the view: a reload in place swaps them in once complete (see
+        # start_steps(buffered=True)).
+        self.buffer = None
 
         # Lines outside a hunk: file headers, the hunk header itself, and (with
         # nothing matched) the commit message / diffstat. Lines INSIDE a hunk
@@ -404,13 +434,20 @@ class GitDiffJob(Job):
         self._reset_parser()
 
     def _reset_parser(self):
-        """Per-run hunk-tracking state, written only by process_line (reader
-        thread)."""
+        """Per-run parser state, written only by the reader thread."""
+        self.line_count = -1
+        # The section (WorktreeTarget.section) the rows belong to while a
+        # sequence of steps runs (start_steps); "" for a plain run.
+        self.section = ""
+        self._section_rows = 0
+        self._reset_hunk_state()
+
+    def _reset_hunk_state(self):
+        """Hunk-tracking state, reset per run and per step of a sequence."""
         self.old_file_path: typing.Optional[str] = None
         self.old_file_line: int = -1
         self.new_file_path: typing.Optional[str] = None
         self.new_file_line: int = -1
-        self.line_count = -1
         # Lines still owed by the current hunk, per its "@@ -o,N +n,M @@"
         # header. While either is non-zero a line is hunk content whatever it
         # looks like, so a patch file's own "+++ b/x" / "--- a/x" / "-- " lines
@@ -423,7 +460,142 @@ class GitDiffJob(Job):
 
     def start_job(self, args=[], on_finished=None):
         self._reset_parser()
+        self.buffer = None
         super().start_job(args, on_finished)
+
+    def _stdout_line(self, bytearr: bytes):
+        # Rows keep the line exactly as git wrote it (`raw`: tabs, CR, any
+        # bytes) - a patch built from the shown diff must match the file - and
+        # the section of a sequence they belong to.
+        try:
+            item = self.process_line(display_line(bytearr))
+            if item:
+                item.raw = raw_line(bytearr)
+                item.section = self.section
+                self._section_rows += 1
+                self.items.put(item)
+        except Exception as e:
+            self.messages.put(
+                {
+                    "type": "error",
+                    "message": f"Error processing line: {bytearr}\n{str(e)}",
+                }
+            )
+
+    # -- a sequence of steps (the uncommitted-changes view) --------------------
+
+    def start_steps(self, steps, cwd=None, on_finished=None, buffered=False):
+        """Run `steps` one after another in one background thread, streaming
+        every output line into the view as one list. A step is
+        ("section", id) - the rows that follow belong to section `id` -
+        ("git", argv) - a command, its output parsed like a single run - or
+        ("untracked", diff_flags) - every untracked file as a new-file diff. Commands run in `cwd`. `buffered` collects
+        the rows in `self.buffer` for `on_finished` to swap in, instead of
+        streaming them into the view."""
+        self.stop_job()
+        for thread in self._reader_threads:
+            thread.join(timeout=1)
+        self._empty_queue(self.items)
+        self._empty_queue(self.messages)
+        self._reset_parser()
+        self.buffer = [] if buffered else None
+        self.stop = False
+        self.on_finished = on_finished
+        self.app.log.info(
+            f"Job started {self.id}: "
+            + "; ".join(" ".join(step[1]) for step in steps if step[0] == "git")
+        )
+        thread = threading.Thread(target=self._steps_thread, args=(steps, cwd))
+        self._reader_threads = [thread]
+        thread.start()
+
+    def _steps_thread(self, steps, cwd):
+        self.messages.put({"type": "started"})
+        for step in steps:
+            if self.stop:
+                return
+            kind = step[0]
+            if kind == "section":
+                self._end_section()
+                self.section = step[1]
+                self._section_rows = 0
+            elif kind == "git":
+                self._run_step(step[1], cwd)
+            elif kind == "untracked":
+                listing = subprocess.run(
+                    ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+                    capture_output=True,
+                    env=_git_env(),
+                    cwd=cwd,
+                )
+                paths = [os.fsdecode(p) for p in listing.stdout.split(b"\0") if p]
+                self._untracked_list(paths)
+                for path in paths:
+                    if self.stop:
+                        return
+                    args = ["git", "diff", "--no-index", *step[1], "--"]
+                    args += ["/dev/null", path]
+                    # --no-index exits 1 when the files differ
+                    self._run_step(args, cwd, ok=(0, 1))
+        self._end_section()
+        if not self.stop:
+            self.messages.put({"type": "finished"})
+
+    def _put_row(self, row, count=True):
+        """Queue a row of our own (not parsed from git output)."""
+        self.line_count += 1
+        row.section = self.section
+        row.raw = ""
+        self.items.put(row)
+        if count:
+            self._section_rows += 1
+
+    def _untracked_list(self, paths):
+        """The untracked files, listed like a diffstat (each row jumps to /
+        stages its file) under a summary row, before their diffs."""
+        if not paths:
+            return
+        if self._section_rows:
+            self._put_row(TextListItem(""))
+        for path in paths:
+            self._put_row(
+                StatListItem(f" {path} (untracked)", Screen.C_DIFF_RANGE, path)
+            )
+        n = len(paths)
+        self._put_row(TextListItem(f" {n} untracked file{'s' if n > 1 else ''}"))
+        self._put_row(TextListItem(""))
+
+    def _end_section(self):
+        """An empty section says so."""
+        if self.section and not self._section_rows:
+            row = TextListItem("  No changes", Screen.C_DIM, is_selectable=False)
+            self._put_row(row)
+
+    def _run_step(self, args, cwd, ok=(0,)):
+        self._reset_hunk_state()
+        try:
+            proc = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=_git_env(),
+                cwd=cwd,
+            )
+        except OSError as e:
+            self.messages.put({"type": "error", "message": str(e)})
+            return
+        self.job = proc
+        for bytearr in iter(proc.stdout.readline, b""):
+            if self.stop:
+                break
+            self._stdout_line(bytearr)
+        proc.stdout.close()
+        err = proc.stderr.read()
+        proc.stderr.close()
+        if proc.wait() not in ok and not self.stop:
+            for line in err.splitlines():
+                if line.strip():
+                    self.messages.put({"type": "error", "message": display_line(line)})
 
     @staticmethod
     def _stat_file_path(stat_line):
@@ -578,7 +750,10 @@ class GitDiffJob(Job):
         return TextListItem(line, color)
 
     def process_item(self, item):
-        self.app.git_diff.append(item)
+        if self.buffer is not None:
+            self.buffer.append(item)
+        else:
+            self.app.git_diff.append(item)
 
 
 class GitSearchJob(Job):

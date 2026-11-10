@@ -14,9 +14,12 @@ pieces. Modules are layered bottom-up (the import graph is a DAG):
     items                        -> segments, screen (refs, diff/stat rows)
     segmented_items              -> items, segments (commit rows)
     jobs                         -> ids, items, segmented_items
+    stage                        -> jobs, items, diff_target (patches for
+                                    staging hunks / lines, git gui style)
     dialogs                      -> jobs, items, split_layout, ...
+                                    (incl. the commit and init-repo dialogs)
     views/ (git_log, git_diff, git_refs, log, context_menu)
-                                 -> dialogs, jobs, items, segments, ...
+                                 -> dialogs, jobs, items, segments, stage, ...
     log                          -> views (LogView)
     split_layout, jump_list      the log/diff pane pairing and jump history
     app                          -> jobs, split_layout, jump_list (the App)

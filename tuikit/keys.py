@@ -23,6 +23,10 @@ KEY_CTRL_BACKSPACE = -103
 KEY_CTRL_DEL = -104
 KEY_SHIFT_LEFT = -105
 KEY_SHIFT_RIGHT = -106
+# Shift+Up / Shift+Down: what curses reports for terminfo's kri / kind (the
+# "scroll" keys xterm sends for them), also decoded from the raw sequences.
+KEY_SHIFT_UP = curses.KEY_SR
+KEY_SHIFT_DOWN = curses.KEY_SF
 
 KEY_TAB = 9
 KEY_ENTER = 10
@@ -51,11 +55,23 @@ _SEQUENCES = {
     (27, 91, 49, 59, 53, 67): KEY_CTRL_RIGHT,
     (27, 91, 49, 59, 50, 68): KEY_SHIFT_LEFT,
     (27, 91, 49, 59, 50, 67): KEY_SHIFT_RIGHT,
+    (27, 91, 49, 59, 50, 65): KEY_SHIFT_UP,
+    (27, 91, 49, 59, 50, 66): KEY_SHIFT_DOWN,
     (27, 91, 51, 59, 53, 126): KEY_CTRL_DEL,
     # Shift+Tab: ncurses only reports KEY_BTAB when terminfo has kcbt, so decode
     # the raw sequence too.
     (27, 91, 90): curses.KEY_BTAB,
 }
+
+
+def _complete(sequence) -> bool:
+    """Whether an escape sequence is complete: a CSI (`ESC [` parameters,
+    then a final byte @..~) or an SS3 (`ESC O` and one byte)."""
+    if len(sequence) < 3:
+        return False
+    if sequence[1] == 91:
+        return 64 <= sequence[-1] <= 126
+    return sequence[1] == 79 and len(sequence) == 3
 
 
 @dataclasses.dataclass(frozen=True)
@@ -114,6 +130,10 @@ class KeyReader:
                     return self._read_mouse(stdscr, sgr=True)
                 if sequence == [27, 91, 77]:  # ESC [ M
                     return self._read_mouse(stdscr, sgr=False)
+                if _complete(sequence):
+                    # Stop here: what follows (another sequence of a key
+                    # repeated fast, a following Esc) is the next key.
+                    break
             self._debug("Escape sequence: " + str(sequence))
             if len(sequence) == 1:
                 key = curses.KEY_EXIT

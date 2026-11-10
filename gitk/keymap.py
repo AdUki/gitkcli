@@ -68,11 +68,19 @@ ACTIONS = [
     Action("log.diff_from_marked", "log", "Diff marked commit --> this", "D"),
     Action("log.mark", "log", "Mark this commit", "m"),
     Action("log.return_to_mark", "log", "Return to mark", "M"),
-    Action("copy.line", "copy", "Copy line to clipboard", "y"),
+    Action("copy.line", "copy", "Copy line / selection to clipboard", "y"),
     Action("copy.all", "copy", "Copy all to clipboard", "Y"),
     Action("diff.more_context", "diff", "More context lines", "+"),
     Action("diff.less_context", "diff", "Fewer context lines", "-"),
     Action("diff.ignore_whitespace", "diff", "Toggle ignore whitespace", "w"),
+    Action("diff.stage", "diff", "Stage hunk / selection", "s"),
+    Action("diff.stage_line", "diff", "Stage line", "S"),
+    Action("diff.unstage", "diff", "Unstage hunk / selection", "u"),
+    Action("diff.unstage_line", "diff", "Unstage line", "U"),
+    Action("diff.discard", "diff", "Discard hunk / selection", "d"),
+    Action("diff.discard_line", "diff", "Discard line", "D"),
+    Action("diff.all", "diff", "Stage / unstage all changes", "A"),
+    Action("diff.commit", "diff", "Commit staged changes", "c"),
     Action("refs.checkout", "refs", "Check out this branch", "o"),
     Action("refs.rename", "refs", "Rename this branch", "R"),
     Action("refs.copy_name", "refs", "Copy ref name", "y"),
@@ -231,9 +239,11 @@ def handle_copy_key(view, key: int) -> bool:
     `key`; False when the key is not one."""
     action = view.app.keymap.action_for("copy", key)
     if action == "copy.line":
-        item = view.get_selected()
-        if item is not None:
-            item.copy_text_to_clipboard()
+        # The selected text, if any; else the cursor's line.
+        if not view.copy_selection_to_clipboard():
+            item = view.get_selected()
+            if item is not None:
+                item.copy_text_to_clipboard()
     elif action == "copy.all":
         view.copy_text_to_clipboard()
     else:

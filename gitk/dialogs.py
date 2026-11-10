@@ -1,5 +1,5 @@
-"""gitk's dialogs: reset, ref-push, git command, preferences, new-ref, and
-the commit search. (Generic popups - message boxes, the input and search
+"""gitk's dialogs: reset, ref-push, git command, preferences, new-ref, the
+commit search, and the commit message. (Generic popups - message boxes, the input and search
 prompts - come from tuikit.dialogs.)
 
 They reach the views and services through the App struct (`self.app`).
@@ -8,6 +8,7 @@ They reach the views and services through the App struct (`self.app`).
 from __future__ import annotations
 
 import curses
+import os
 import re
 import shlex
 
@@ -35,10 +36,12 @@ from tuikit.view import MODE_FULLSCREEN
 from gitk import keymap as KM
 from gitk.config import update_config
 from gitk.ids import (
+    ID_COMMIT,
     ID_GIT_COMMAND,
     ID_GIT_LOG_SEARCH,
     ID_GIT_REF_PUSH,
     ID_GIT_RESET,
+    ID_INIT_REPO,
     ID_NEW_GIT_REF,
     ID_PREFERENCES,
     ID_SHORTCUTS,
@@ -921,3 +924,324 @@ class GitSearchDialogPopup(SearchDialog):
             self.app.screen.show_flash(
                 f"{found} match{plural} for '{self.input.txt}', none in this log"
             )
+
+
+class MessageLineItem(UserInputListItem):
+    """A line of the commit message: a text field whose cursor shows only
+    while it is the selected line."""
+
+    def draw_line(self, win, offset, width, selected, matched, marked):
+        if selected:
+            super().draw_line(win, offset, width, False, matched, marked)
+            return
+        txt = self.txt[self.offset :][:width]
+        win.addstr(txt, colors.attr(self.color))
+        win.addstr(" " * (width - len(txt)))
+
+
+class CommitDialogPopup(Dialog):
+    """Commit the staged changes: a one-line summary, a free multi-line
+    description, and <Amend> (F1) to redo the last commit instead (its
+    message is loaded when the fields are empty).
+
+    Enter in the summary commits; in the description it starts a new line
+    (Backspace at a line's start / Del at its end join lines). Up/Down move
+    between lines, Tab between the summary, the description and the buttons.
+    Esc closes the dialog keeping the draft for the next time."""
+
+    BODY_LINES = 6  # the description's lines shown even when empty
+    min_width = 72
+
+    def __init__(self, app):
+        super().__init__(app, ID_COMMIT, " Commit")
+        self.amend = ToggleSegment("<Amend>", callback=self._amend_toggled)
+        self._loaded_message = ""  # the amended commit's message, as loaded
+        self.summary = MessageLineItem()
+        self.body = [MessageLineItem() for _ in range(self.BODY_LINES)]
+        self.buttons = button_row(
+            ButtonSegment("[Commit]", self.commit, Screen.C_STATUS),
+            TextSegment("   "),
+            ButtonSegment("[Cancel]", self.hide),
+        )
+        self._rebuild()
+
+    # rows ---------------------------------------------------------------------
+
+    def _label(self, text):
+        return TextListItem(text, Screen.C_DATA, is_selectable=False)
+
+    def _rebuild(self):
+        """Lay the rows out again (the description grew or shrank)."""
+        selected = self.get_selected()
+        offset_y = self._offset_y
+        self.items = []
+        self.append(
+            SegmentedListItem(
+                [
+                    TextSegment("Summary", Screen.C_DATA),
+                    FillerSegment(),
+                    TextSegment("Flags:"),
+                    self.amend,
+                    TextSegment("(F1)", Screen.C_DIM),
+                ]
+            )
+        )
+        self.items[-1].is_selectable = False
+        self.append(self.summary)
+        self.append(self._label("Description"))
+        for line in self.body:
+            self.append(line)
+        self.append(SpacerListItem())
+        self.append(
+            TextListItem(
+                "Enter in the summary commits · Tab: next field · Esc: close",
+                Screen.C_DIM,
+                is_selectable=False,
+            )
+        )
+        self.set_button_row(self.buttons)
+        self._selected = self.items.index(selected) if selected in self.items else 1
+        self._offset_y = offset_y
+        if self.is_active():
+            self.pack(min_width=self.min_width, padx=self.padx)
+        self.dirty = True
+
+    # message ------------------------------------------------------------------
+
+    def message(self) -> str:
+        """The message as git gets it: the summary, a blank line, the
+        description (trailing blank lines dropped)."""
+        body = [line.txt for line in self.body]
+        while body and not body[-1].strip():
+            body.pop()
+        summary = self.summary.txt.strip()
+        if not body:
+            return summary
+        return summary + "\n\n" + "\n".join(body)
+
+    def set_message(self, text: str):
+        lines = text.rstrip("\n").split("\n") if text.strip() else [""]
+        self.summary.set_text(lines[0])
+        rest = lines[1:]
+        if rest and not rest[0].strip():
+            rest = rest[1:]
+        self.body = [MessageLineItem() for _ in range(max(self.BODY_LINES, len(rest)))]
+        for item, txt in zip(self.body, rest):
+            item.set_text(txt)
+        self._rebuild()
+
+    def _amend_toggled(self, segment):
+        if segment.toggled:
+            if not self.message():
+                result = Job.run_job(self.app, ["git", "log", "-1", "--format=%B"])
+                if result.returncode == 0:
+                    self._loaded_message = result.stdout.strip()
+                    self.set_message(self._loaded_message)
+        elif self._loaded_message and self.message() == self._loaded_message:
+            self.set_message("")  # the loaded message, untouched: drop it
+            self._loaded_message = ""
+        self.dirty = True
+
+    # opening / committing -----------------------------------------------------
+
+    def open(self):
+        self.buttons.reset_focus()
+        self.summary.cursor_pos = len(self.summary.txt)
+        self._selected = self.items.index(self.summary)
+        self.show()
+
+    def commit(self):
+        message = self.message()
+        amend = self.amend.toggled
+        staged = Job.run_job(self.app, ["git", "diff", "--cached", "--quiet"])
+        if not amend and staged.returncode == 0:
+            self.app.screen.show_flash("Nothing staged to commit: stage changes first")
+            return True
+        if not self.summary.txt.strip():
+            self.app.screen.show_flash("Write a summary line first")
+            self._selected = self.items.index(self.summary)
+            self.dirty = True
+            return True
+        self.hide()
+        log = self.app.git_log
+        had_head = bool(log.head_id) and log.head_id in log.commits
+        args = ["git", "commit", "--cleanup=strip", "-F", "-"]
+        if amend:
+            args.append("--amend")
+        summary = self.summary.txt.strip()
+        result = self.app.run_git(
+            args,
+            ok=f"{'Amended' if amend else 'Committed'}: {summary}",
+            err="Commit failed",
+            refresh_head=had_head and not amend,
+            reload_refs=True,
+            check_uncommitted=True,
+            input=message + "\n",
+        )
+        if result.returncode == 0:
+            self.amend.toggled = False
+            self._loaded_message = ""
+            self.set_message("")
+            if amend or not had_head:
+                # An amended commit replaces HEAD; a first commit has no log
+                # to add to: load the log afresh.
+                self.app.reload_refs_commits()
+            self.app.git_diff.reload_worktree()
+        return True
+
+    # editing ------------------------------------------------------------------
+
+    def _fields(self):
+        return [self.summary] + self.body + [self.buttons]
+
+    def _move_line(self, step: int):
+        """Up/Down: to the neighbouring line, keeping the cursor column."""
+        fields = self._fields()
+        item = self.get_selected()
+        if item not in fields:
+            return
+        i = fields.index(item) + step
+        if not 0 <= i < len(fields):
+            return
+        target = fields[i]
+        if isinstance(item, UserInputListItem) and isinstance(
+            target, UserInputListItem
+        ):
+            target.cursor_pos = min(item.cursor_pos, len(target.txt))
+        self.set_selected(self.items.index(target))
+
+    def _next_field(self, step: int = 1):
+        """Tab / Shift+Tab: summary -> description -> buttons."""
+        item = self.get_selected()
+        if item is self.summary:
+            group = 0
+        elif item in self.body:
+            group = 1
+        else:
+            group = 2
+        group = (group + step) % 3
+        target = (self.summary, self.body[0], self.buttons)[group]
+        if group == 2:
+            self.buttons.reset_focus()
+        self.set_selected(self.items.index(target))
+
+    def _split_line(self, item):
+        i = self.body.index(item)
+        rest = item.txt[item.cursor_pos :]
+        item.txt = item.txt[: item.cursor_pos]
+        new = MessageLineItem()
+        new.set_text(rest)
+        new.cursor_pos = 0
+        self.body.insert(i + 1, new)
+        # Grow only while the last line holds text: a typed line pushes the
+        # empty spare lines down instead of adding rows.
+        if len(self.body) > self.BODY_LINES and not self.body[-1].txt:
+            self.body.pop()
+        self._rebuild()
+        self.set_selected(self.items.index(new))
+
+    def _join_lines(self, upper, lower):
+        """Append `lower` to `upper`; the cursor at the joint."""
+        pos = len(upper.txt)
+        upper.txt += lower.txt
+        upper.cursor_pos = pos
+        self.body.remove(lower)
+        while len(self.body) < self.BODY_LINES:
+            self.body.append(MessageLineItem())
+        self._rebuild()
+        self.set_selected(self.items.index(upper))
+
+    def handle_key(self, event):
+        key = event.key
+        item = self.get_selected()
+        if key == curses.KEY_EXIT:
+            self.hide()
+        elif key == curses.KEY_F1:
+            self.amend.activate()
+        elif key == K.KEY_TAB:
+            self._next_field(1)
+        elif key == curses.KEY_BTAB:
+            self._next_field(-1)
+        elif key in (curses.KEY_UP, K.ctrl("p")):
+            self._move_line(-1)
+        elif key in (curses.KEY_DOWN, K.ctrl("n")):
+            self._move_line(1)
+        elif key in K.ENTER_KEYS and item is self.summary:
+            self.commit()
+        elif key in K.ENTER_KEYS and item in self.body:
+            self._split_line(item)
+        elif (
+            key in K.BACKSPACE_KEYS
+            and item in self.body
+            and item.cursor_pos == 0
+            and self.body.index(item) > 0
+        ):
+            self._join_lines(self.body[self.body.index(item) - 1], item)
+        elif (
+            key == curses.KEY_DC
+            and item in self.body
+            and item.cursor_pos == len(item.txt)
+            and self.body.index(item) + 1 < len(self.body)
+        ):
+            self._join_lines(item, self.body[self.body.index(item) + 1])
+        else:
+            super().handle_key(event)
+        # Modal: the keys are text here, never shortcuts.
+        return True
+
+
+def _home_relative(path: str) -> str:
+    """`path` with the home directory written as ~."""
+    home = os.path.expanduser("~")
+    if home not in ("", "/") and (path == home or path.startswith(home + os.sep)):
+        return "~" + path[len(home) :]
+    return path
+
+
+class InitRepoDialogPopup(Dialog):
+    """Started outside a git repository: offer to create one here (git init)
+    instead of failing every git command. [Init repository] (i / y / Enter)
+    runs it and then `on_init`; [Quit] (q / n / Esc) leaves the app."""
+
+    def __init__(self, app):
+        super().__init__(app, ID_INIT_REPO, " No git repository")
+        self._on_init = lambda: None
+
+    def ask(self, on_init):
+        self._on_init = on_init
+        self.show_message(
+            [
+                "This directory is not inside a git repository:",
+                (_home_relative(os.getcwd()), Screen.C_GIT_ID),
+                "",
+                "Create an empty repository here (git init)?",
+            ],
+            button_row(
+                ButtonSegment("[Init repository]", self.init_repo, Screen.C_STATUS),
+                TextSegment("   "),
+                ButtonSegment("[Quit]", self.app.exit_program),
+            ),
+        )
+
+    def init_repo(self):
+        self.hide()
+        result = self.app.run_git(
+            ["git", "init"], ok="Initialized an empty git repository", quiet=True
+        )
+        if result.returncode == 0:
+            self.app._toplevel = None
+            # The log is titled after the repository, which now exists.
+            name = os.path.basename(self.app.git_toplevel())
+            self.app.git_log.header_item.set_title(name)
+            self._on_init()
+        return True
+
+    def handle_key(self, event):
+        key = event.key
+        if key in (ord("i"), ord("y"), ord("Y")):
+            self.init_repo()
+        elif key in (curses.KEY_EXIT, ord("q"), ord("n"), ord("N")):
+            self.app.exit_program()
+        else:
+            super().handle_key(event)
+        return True  # modal: nothing else makes sense without a repository

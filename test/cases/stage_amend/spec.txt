@@ -1,0 +1,19 @@
+# <Amend> (F1) in the empty commit dialog loads HEAD's message; Enter amends
+# HEAD with it (the log is reloaded: the amended commit replaces the old one).
+size      120x40
+config    default
+run       git checkout -q --detach master && printf 'x\n' >> src/main.py && git add src/main.py
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+key       c
+key       <F1>
+wait      stable
+capture   amend_loaded
+key       <Enter>
+wait      stable
+key       q
+wait      stable
+capture   amended

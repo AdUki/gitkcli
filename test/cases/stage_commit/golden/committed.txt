@@ -1,0 +1,40 @@
+[0;34;49m─ Uncommitted changes (working directory) [1/12] ────────── [0;37;49mContext:[0;34;49m [0;37;49m3[0;34;49m [0;37;49m[+][0;34;49m [0;37;49m[-][0;34;49m [0;37;49m[Stage][0;34;49m [0;37;49m[Discard][0;34;49m [0;37;49m[Commit][0;34;49m [0;37;49m[<-][0;34;49m [0;37;49m[->][0;34;49m [0;31;49m[X][0;34;49m─[0m
+[0;1;36;48;2;38;38;38m README.md | 1 +                                                                                                        [0m
+[0;36;49m 1 file changed, 1 insertion(+)[0m
+
+[0;34;49mdiff --git a/README.md b/README.md[0m
+[0;34;49mindex 425c3b4..2f5796e 100644[0m
+[0;34;49m--- a/README.md[0m
+[0;34;49m+++ b/README.md[0m
+[0;36;49m@@ -52,3 +52,4 @@ interesting to navigate.[0m
+[0;37;49m - note 187: observation about feature 187[0m
+[0;37;49m - note 190: observation about feature 190[0m
+[0;37;49m - note 194: observation about feature 194[0m
+[0;32;49m+junk[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0;30;42mCommitted: Add x to main                                                                                               [0m

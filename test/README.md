@@ -27,15 +27,17 @@ golden to see colour, e.g. the selected row's background highlight).
     key <tokens>          send keys; *N repeats; bare chars literal
     text "literal"        type a string (e.g. into search)
     mouse VERB COL ROW    click | dblclick | rclick at 1-based screen coords
+    mouse drag C R C2 R2  left-drag: press, one motion report, release
     wait stable | <secs>  settle, or fixed pause (wait 2.5 clears the 2s flash)
     resize WxH            resize mid-test
     capture <name>        snapshot the screen
     expect-exit           assert the app exited
 
 Keys: bare chars or <Up> <Down> <Enter> <Esc> <Tab> <PgUp> <PgDn> <F1>..<F12>
-<S-F5>, ctrl as C-w / C-Left; repeat with *N.
+<S-F5> <S-Up> <S-Down>, ctrl as C-w / C-Left; repeat with *N.
 
 ## Notes
 
 Each case runs on a fresh fixture copy + isolated config → deterministic; diff/refs goldens track the git version (`ENVIRONMENT`), regenerate with `-u`.
-Mouse is press/release only (no pty motion): clicks/dbl/right-clicks work, no drag or wheel.
+Mouse reports are X10: clicks, double/right-clicks, wheel notches, and a
+one-step left drag (`mouse drag`, a press, one motion report, the release).

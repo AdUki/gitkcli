@@ -13,7 +13,8 @@ key       g
 wait      stable
 key       <F7>
 wait      stable
-key       <Down>
+# Open, Commit, (separator), Clear
+key       <Down>*3
 key       <Enter>
 wait      2
 capture   after_clear_unstaged

@@ -38,10 +38,19 @@ Commits are drawn as `*` beside box-drawing lanes - `*┤` a commit, `*┬─┐
 - **Git references** - browse and manage branches, tags, and remote branches
 - **Blame integration** - trace line origins across commits with `ENTER` on diff lines
 - **Commit operations** - cherry-pick, revert, reset (soft/hard), create branches/tags
-- **Uncommitted changes** display with quick access to staged/unstaged modifications
+- **Stage and commit, git gui style** - open the uncommitted changes to stage, unstage or discard whole files, hunks, single lines or a selection, and commit (or amend) from a message dialog
+- **Text selection** - drag with the mouse or use `Shift+Up/Down` to select text, `y` copies it
+- **Starts anywhere** - outside a repository it offers to `git init` one instead of failing
 - **Jump history** - step back and forth through your exploration with `<---` / `--->`, across both panes
 - **Context-sensitive menus** - right-click for operations on commits, branches, tags, and more
 - **Mouse support** - click to navigate, drag floating windows, scroll with wheel
+
+## Outside a repository
+
+Started in a directory that is not inside a git repository, GitkCLI asks
+whether to create one there (`git init`, `i` / `ENTER`) or to quit (`q`). The
+new repository's files then show up as untracked changes, ready to stage and
+commit.
 
 ## Installation
 
@@ -103,8 +112,11 @@ on the row the menu was opened for.
 - `y`: Copy ref name
 - `Del`: Remove branch / tag / remote branch (tags and remote branches ask first)
 
-### Clipboard (git log, git diff and Logs views)
-- `y`: Copy the selected line
+### Clipboard and text selection (git log, git diff and Logs views)
+- Mouse drag: Select text (character-wise; past the top/bottom edge it scrolls)
+- `Shift+Up` / `Shift+Down`: Select whole lines from the cursor
+- `Esc` / a click / plain cursor movement: Drop the selection
+- `y`: Copy the selection, or else the selected line
 - `Y`: Copy the whole list
 
 ### Search
@@ -128,6 +140,34 @@ on the row the menu was opened for.
 - `ENTER`: Show blame/origin of selected line (on a stat row: jump to the file)
 - `+` / `-`: Increase/decrease context lines
 - `w` / `[Ignore whitespace]`: toggle whitespace-insensitive diffing
+
+### Staging and committing (the uncommitted changes)
+`ENTER` on an "Uncommitted changes" row of the log opens its changes in the
+diff pane's git gui mode: the **working directory** row shows what is not
+staged yet (the working tree vs. the index, untracked files listed and shown
+as new files), the **staged** row what is staged (the index vs. HEAD). What a
+key acts on depends on where it is aimed: the selected lines when there is a
+text selection, else the hunk under the cursor - or the whole file on its
+`diff` header or file-list row, or all changes on the summary line.
+
+Working directory:
+- `s` / `[Stage]`: Stage the selection / hunk / file
+- `S`: Stage just the line under the cursor
+- `d` / `[Discard]`, `D`: Throw changes away (asks first; an untracked file is
+  deleted)
+
+Staged:
+- `u` / `[Unstage]`, `U`: The same, back out of the index
+
+Both:
+- `A`: Stage (working directory) / unstage (staged) all changes
+- `c` / `[Commit]`: Open the commit dialog - a summary line (`ENTER` there
+  commits), a multi-line description (`ENTER` starts a new line, `TAB` moves
+  between the fields), `F1` toggles `<Amend>` (loads the last commit's message)
+- `F5`: Re-read the changes
+
+Staging part of a hunk works like git gui: a removed line left out stays as
+context, an added line left out is dropped, so exactly the chosen lines move.
 
 ### Navigation History
 - `CTRL+LEFT` / `CTRL-O` / `<---`: Navigate back in jump history
@@ -172,6 +212,7 @@ Right-click on items for context-sensitive operations:
 - **Tags**: Push, remove, show annotation
 - **Remote branches**: Remove
 - **Diff lines**: Show origin of line, copy to clipboard
+- **Uncommitted changes** (rows and the staging view): Stage / unstage / discard the hunk, line or selection, commit, clear
 
 ## Requirements
 

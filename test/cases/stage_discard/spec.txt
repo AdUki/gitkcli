@@ -1,0 +1,25 @@
+# d discards the hunk under the cursor after a confirmation (default button
+# [Cancel]); y confirms. d on the untracked file's row of the file list asks to
+# delete the file (git clean); after that nothing is left.
+size      120x40
+config    default
+run       git checkout -q --detach master && printf 'junk\n' >> README.md && printf 'new\n' > notes.txt
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+key       <Down>*8
+key       d
+wait      stable
+capture   confirm
+key       y
+wait      stable
+capture   discarded
+key       g
+key       d
+wait      stable
+capture   confirm_file
+key       y
+wait      stable
+capture   file_deleted

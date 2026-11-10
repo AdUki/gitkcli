@@ -7,10 +7,12 @@ from tuikit.items import MenuItem, SeparatorItem
 from tuikit.keys import KeyEvent
 
 from gitk.ids import ID_CONTEXT_MENU, ID_GIT_DIFF, ID_GIT_LOG, ID_GIT_REFS, ID_LOG
+from gitk.diff_target import SECTION_UNSTAGED
 from gitk.items import DiffListItem, StatListItem
 from gitk.jobs import Job
 from gitk.screen import Screen
 from gitk.segmented_items import UncommittedChangesListItem
+from gitk.stage import DISCARD, STAGE, UNSTAGE, file_block
 
 
 class ContextMenu(Menu):
@@ -34,9 +36,19 @@ class ContextMenu(Menu):
 
     def _append_copy_items(self, view, item):
         """The line/range/all clipboard trio shared by the git-log, git-diff and
-        log context menus."""
-        self._append_action(
-            "copy.line", "Copy line to clipboard", item.copy_text_to_clipboard
+        log context menus (and the selection, when there is one)."""
+        if view.has_selection():
+            self._append_action(
+                "copy.line",
+                "Copy selection to clipboard",
+                view.copy_selection_to_clipboard,
+            )
+        copy_line = "copy.line" if not view.has_selection() else ""
+        self._append(
+            "Copy line to clipboard",
+            item.copy_text_to_clipboard,
+            shortcut=self.app.keymap.spec(copy_line) if copy_line else "",
+            key=self.app.keymap.key(copy_line) if copy_line else None,
         )
         self._append(
             "Copy range to clipboard", view.copy_text_range_to_clipboard, [item]
@@ -135,6 +147,9 @@ class ContextMenu(Menu):
         just its clear action; a real commit gets branch/tag creation, cherry-
         pick/revert/reset, diff-against-selection/mark, and mark/jump."""
         if isinstance(item, UncommittedChangesListItem):
+            self._append("Open to stage and commit", item.activate, shortcut="Enter")
+            self._append("Commit staged changes...", self.app.commit_dialog.open)
+            self.append(SeparatorItem())
             label = "Clear staged changes" if item._staged else "Clear unstaged changes"
             self._append(label, view.clean_uncommitted_changes, [item._staged])
         else:
@@ -186,9 +201,61 @@ class ContextMenu(Menu):
         self.append(SeparatorItem())
         self._append_copy_items(view, item)
 
+    def _build_stage_items(self, view, item):
+        """The uncommitted-changes view's staging entries for `item`'s
+        section: stage / discard in the unstaged one, unstage in the staged
+        one - of the selection, else the hunk (file, section) and the line."""
+        section = view.target.section
+        if view.has_selection():
+            what, line = "selected lines", "selected lines"
+        elif isinstance(item, StatListItem):
+            what, line = "file", "line"
+        else:
+            block = file_block(view.items, view.items.index(item))
+            if block is None:
+                what = "all"
+            elif block.hunk_of(view.items.index(item)) is None:
+                what = "file"
+            else:
+                what = "hunk"
+            line = "line"
+        act = self._append_action
+        if section == SECTION_UNSTAGED:
+            act("diff.stage", f"Stage {what}", view.stage_action, [STAGE])
+            if not view.has_selection():
+                act(
+                    "diff.stage_line", f"Stage {line}", view.stage_action, [STAGE, True]
+                )
+            act("diff.discard", f"Discard {what}...", view.stage_action, [DISCARD])
+            if not view.has_selection():
+                act(
+                    "diff.discard_line",
+                    f"Discard {line}...",
+                    view.stage_action,
+                    [DISCARD, True],
+                )
+        else:
+            act("diff.unstage", f"Unstage {what}", view.stage_action, [UNSTAGE])
+            if not view.has_selection():
+                act(
+                    "diff.unstage_line",
+                    f"Unstage {line}",
+                    view.stage_action,
+                    [UNSTAGE, True],
+                )
+        if what != "all":
+            label = "Unstage all" if view.target.staged else "Stage all"
+            act("diff.all", label, view.stage_all)
+        self.append(SeparatorItem())
+        act("diff.commit", "Commit staged changes...", view.open_commit_dialog)
+        self.append(SeparatorItem())
+
     def _build_diff_menu(self, view, item):
-        """Menu for a row in the diff view: jump to the file (stat rows) or to
-        the line's blame origin (diff rows), then the copy trio."""
+        """Menu for a row in the diff view: staging (uncommitted changes),
+        jump to the file (stat rows) or to the line's blame origin (diff
+        rows), then the copy trio."""
+        if view.shows_worktree():
+            self._build_stage_items(view, item)
         # Enter is the rows' own action (activate), not a keymap binding.
         self._append(
             "Jump to file",

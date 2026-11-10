@@ -46,11 +46,22 @@ class StatListItem(TextListItem):
     def jump_to_file(self):
         app = self.get_app()
         app.jump_list.record()
+        target = self.file_row()
+        if target is not None:
+            app.git_diff.set_selected(target, "top")
+
+    def file_row(self) -> typing.Optional[int]:
+        """Row of this file's "diff" header: the first one after this stat
+        row."""
         # Escape the path: filenames can legally contain regex metacharacters
         # ('[', '(', '+', '.', ...); without re.escape a name like "test[1].txt"
         # makes re.compile raise (crash) and benign metachars mis-match the line.
-        app.git_diff.set_selected(
-            re.compile(f"diff.*{re.escape(self.stat_file_path)}"), "top"
+        pattern = re.compile(f"diff.*{re.escape(self.stat_file_path)}")
+        items = self._view.items
+        start = items.index(self) if self in items else 0
+        return next(
+            (i for i in range(start, len(items)) if pattern.match(items[i].get_text())),
+            None,
         )
 
     def activate(self) -> bool:

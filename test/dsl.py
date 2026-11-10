@@ -10,6 +10,7 @@ A spec is a sequence of directives, one per line:
     key       <Down>*3 j    # *N repeats a token; bare chars are literal
     text      "fix"         # type a literal string (e.g. into search)
     mouse     click 20 9    # click|dblclick|rclick|wheel<dir> at COL ROW (1-based)
+    mouse     drag 5 9 30 12  # left-drag from COL ROW to COL2 ROW2
     wait      stable        # settle, or `wait 2.5` for a fixed pause
     resize    100x30        # change pty size mid-test
     capture   refs_view     # snapshot -> golden/refs_view.txt
@@ -68,6 +69,8 @@ NAMED = {
     "s-f5": b"\x1b[15;2~",
     "s-left": b"\x1b[1;2D",
     "s-right": b"\x1b[1;2C",
+    "s-up": b"\x1b[1;2A",
+    "s-down": b"\x1b[1;2B",
     "c-left": b"\x1b[1;5D",
     "c-right": b"\x1b[1;5C",
     "c-del": b"\x1b[3;5~",
@@ -150,6 +153,32 @@ def _parse_size(arg: str, lineno: int):
 _WHEEL_BUTTONS = {"wheelup": 64, "wheeldown": 65, "wheelleft": 66, "wheelright": 67}
 
 
+def _mouse_cell(sx: str, sy: str, lineno: int):
+    try:
+        x, y = int(sx), int(sy)
+    except ValueError:
+        raise SpecError(f"line {lineno}: mouse COL ROW must be integers")
+    if not (1 <= x <= 223 and 1 <= y <= 223):
+        raise SpecError(f"line {lineno}: mouse COL ROW out of X10 range (1..223)")
+    return x, y
+
+
+def _x10(button: int, x: int, y: int) -> "KeyEvent":
+    return KeyEvent(b"\x1b[M" + bytes([32 + button, 32 + x, 32 + y]), False, MOUSE_GAP)
+
+
+def _parse_drag(parts, lineno: int) -> "Directive":
+    """`mouse drag COL ROW COL2 ROW2`: a left press at the first cell, a
+    motion report (button held) at the second, and the release there."""
+    if len(parts) != 5:
+        raise SpecError(f"line {lineno}: mouse drag needs 'COL ROW COL2 ROW2'")
+    x1, y1 = _mouse_cell(parts[1], parts[2], lineno)
+    x2, y2 = _mouse_cell(parts[3], parts[4], lineno)
+    # X10 motion: the motion flag (32) on the held button's code (left = 0).
+    seq = [_x10(0, x1, y1), _x10(32, x2, y2), _x10(3, x2, y2)]
+    return Directive("key", lineno, keys=seq)
+
+
 def _parse_mouse(rest: str, lineno: int) -> "Directive":
     """`mouse <click|dblclick|rclick|wheelup|wheeldown|wheelleft|wheelright>
     COL ROW` -> X10 mouse byte events.
@@ -161,20 +190,15 @@ def _parse_mouse(rest: str, lineno: int) -> "Directive":
     bytes. rclick is press-only so the context menu stays open for a capture.
     """
     parts = rest.split()
+    if parts and parts[0].lower() == "drag":
+        return _parse_drag(parts, lineno)
     if len(parts) != 3:
         raise SpecError(f"line {lineno}: mouse needs '<verb> COL ROW'")
     verb, sx, sy = parts
-    try:
-        x, y = int(sx), int(sy)
-    except ValueError:
-        raise SpecError(f"line {lineno}: mouse COL ROW must be integers")
-    if not (1 <= x <= 223 and 1 <= y <= 223):
-        raise SpecError(f"line {lineno}: mouse COL ROW out of X10 range (1..223)")
+    x, y = _mouse_cell(sx, sy, lineno)
 
     def ev(button):  # X10: left press=0, right press=2, release=3, wheel=64+
-        return KeyEvent(
-            b"\x1b[M" + bytes([32 + button, 32 + x, 32 + y]), False, MOUSE_GAP
-        )
+        return _x10(button, x, y)
 
     verb = verb.lower()
     if verb == "click":

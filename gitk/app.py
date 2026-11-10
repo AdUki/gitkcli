@@ -41,6 +41,16 @@ class App(tuikit.App):
         self.split = GitSplitLayout(self)
         # Back/forward history shared by the log and diff panes, `app.jump_list`.
         self.jump_list = JumpList(self)
+        self.commit_dialog: "CommitDialogPopup" = None
+        self._toplevel = None
+
+    def git_toplevel(self) -> str:
+        """The work tree's top directory ("" outside one). Patches and paths
+        from a diff are relative to it, wherever the app was started."""
+        if not self._toplevel:
+            result = Job.run_job(self, ["git", "rev-parse", "--show-toplevel"])
+            self._toplevel = result.stdout.strip() if result.returncode == 0 else ""
+        return self._toplevel
 
     def run_git(
         self,
@@ -57,6 +67,7 @@ class App(tuikit.App):
         lines=(),
         label="[Yes]",
         quiet=False,
+        input=None,
     ):
         """Run a git command and react to the result. On success: run the
         requested refreshes and log `ok`. On a forceable rejection (`retry` set,
@@ -69,7 +80,9 @@ class App(tuikit.App):
         renaming a local ref repaints the refs list immediately, so the bar
         would only flicker and the flash would sit on the bottom bar for two
         seconds saying what the screen already shows. The log line still lands
-        in the log view, and failures still raise the error dialog."""
+        in the log view, and failures still raise the error dialog.
+
+        `input` (str) is fed to the command's stdin (a patch, a message)."""
         # Paint the in-progress bar before the call: run_job blocks the event
         # loop, so nothing can repaint until the command returns. The refreshes
         # run inside the same bar - they block too (e.g. the uncommitted-changes
@@ -80,7 +93,7 @@ class App(tuikit.App):
         if not quiet:
             self.screen.show_working(message)
         try:
-            result = Job.run_job(self, args)
+            result = Job.run_job(self, args, input=input)
             if result.returncode == 0:
                 if refresh_head:
                     self.git_log.refresh_head()
@@ -110,9 +123,11 @@ class App(tuikit.App):
         return result
 
     def refresh_all(self):
-        """Refresh new commits on HEAD and reload refs (the F5 action)."""
+        """Refresh new commits on HEAD and reload refs (the F5 action), and
+        the uncommitted changes when they are shown."""
         self.git_log.refresh_head()
         self.git_refs.reload_refs()
+        self.git_diff.reload_worktree()
 
     def open_search(self):
         """Open the active view's search dialog (the F6 / '/' action)."""

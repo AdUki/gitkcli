@@ -1,12 +1,31 @@
-# Launched outside a git repository (the fixture repo with its .git removed).
-# Every git job fails with the same "not a git repository" line, and the error
-# dialog coalesces them, so the line must appear exactly once. The uncommitted
-# probes (`git diff --quiet`) fail here with exit 128/129 rather than the 1 that
-# means "differs", so neither "Uncommitted changes" pseudo-row may be placed.
+# Launched outside a git repository (the fixture repo with its .git removed):
+# instead of every git job failing, a dialog offers `git init` (the path shown
+# home-relative). Init runs it and loads the now empty repository: its files are
+# all untracked, so the "working directory" pseudo-row appears. Opening it lists
+# them (and their content as new files); A stages them all, c opens the commit
+# dialog, and Enter in the summary makes the first commit,
+# which the log then shows with its branch.
 size      120x40
 config    default
 run       rm -rf .git
 launch
 wait      stable
-wait      1
-capture   error_once
+capture   init_dialog
+key       <Enter>
+wait      stable
+capture   initialized
+key       <Enter>
+wait      stable
+capture   untracked
+key       A
+wait      stable
+capture   all_staged
+key       c
+wait      stable
+text      "First commit"
+capture   commit_dialog
+key       <Enter>
+wait      stable
+key       q
+wait      stable
+capture   first_commit

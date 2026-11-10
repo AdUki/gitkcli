@@ -91,6 +91,7 @@ class GraphRows:
 class GitLogView(ListView):
     def __init__(self, app, git_args: typing.List, cmd_args: typing.List):
         super().__init__(app, ID_GIT_LOG, MODE_FULLSCREEN)
+        self.text_selection = True
         self.commits = {}  # map: git_id --> { parents, date, author, title }
 
         self.marked_commit_id = ""
@@ -367,8 +368,27 @@ class GitLogView(ListView):
     def check_uncommitted_changes(self):
         """Probe the working tree / index and (re)place the pseudo-rows."""
         self._has_staged = self._diff_reports_changes(["--cached"])
-        self._has_working = self._diff_reports_changes([])
+        self._has_working = (
+            self._diff_reports_changes([]) or self._has_untracked_files()
+        )
         self._place_uncommitted_rows()
+
+    def _has_untracked_files(self) -> bool:
+        """Untracked (not ignored) files count as working-tree changes: the
+        staging view lists them, ready to be added. --directory stops at an
+        untracked directory instead of listing what is inside."""
+        result = Job.run_job(
+            self.app,
+            [
+                "git",
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "--directory",
+                "--no-empty-directory",
+            ],
+        )
+        return result.returncode == 0 and bool(result.stdout.strip())
 
     def _diff_reports_changes(self, args):
         """Whether `git diff --quiet` found differences. Exit 1 means "differs"
@@ -700,6 +720,8 @@ class GitLogView(ListView):
         # Rows may have moved under the cursor since the last frame.
         self._sync_target()
         key = event.key
+        if key == curses.KEY_EXIT and self.clear_selection():
+            return True
         if key == ord("q"):
             self.app.exit_program()
         elif key == curses.KEY_EXIT:

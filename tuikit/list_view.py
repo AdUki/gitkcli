@@ -5,6 +5,10 @@ and Shift+Left/Right (H/L) to scroll sideways, `/` to search, n/N for the
 next/previous match. The selected item sees every key first. Mouse: click to
 select, wheel to scroll; the row under the cursor gets the event in its own
 coordinates (x = text column, y = row index).
+
+Text selection (views that set `text_selection`): a left drag selects text
+character-wise, Shift+Up/Down select whole lines from the cursor; Esc or
+plain cursor movement drops it. `selected_text()` / `selected_rows()` read it.
 """
 
 from __future__ import annotations
@@ -30,6 +34,20 @@ from tuikit.view import (
 HSCROLL_BIG_STEP = 10
 WHEEL_STEP = 5
 
+# Keys that move the cursor without extending the selection: they drop it.
+_PLAIN_MOVES = (
+    curses.KEY_UP,
+    curses.KEY_DOWN,
+    ord("k"),
+    ord("j"),
+    curses.KEY_PPAGE,
+    curses.KEY_NPAGE,
+    curses.KEY_HOME,
+    curses.KEY_END,
+    ord("g"),
+    ord("G"),
+)
+
 
 class ListView(View):
     def __init__(
@@ -49,6 +67,15 @@ class ListView(View):
         self._offset_x: int = 0
         self.autoscroll: bool = False  # follow the tail as items are appended
         self._search_dialog = None
+        # Text selection, when `text_selection` is on: the fixed end (anchor)
+        # and the moving end (head), each (row, text column); `_sel_lines`
+        # selects whole lines (keyboard), `_sel_drag` is a mouse drag in
+        # progress.
+        self.text_selection = False
+        self._sel_anchor = None
+        self._sel_head = None
+        self._sel_lines = False
+        self._sel_drag = False
 
     def set_search_dialog(self, search_dialog):
         """Attach a SearchDialog: `/` opens it, n/N repeat it, and rows it
@@ -96,6 +123,7 @@ class ListView(View):
         # The rows cease to exist: drop a mouse grab on one of them, so a
         # queued move/release cannot reach a stale item.
         self.app.mouse.drop_grab_of(self)
+        self.clear_selection()
         self.items = []
         self.set_selected(0)
         self._offset_y = 0
@@ -246,12 +274,145 @@ class ListView(View):
             0, min(self._offset_y + delta, max(0, len(self.items) - self.height))
         )
 
+    # -- text selection -------------------------------------------------------
+
+    def has_selection(self) -> bool:
+        return (
+            self._sel_anchor is not None
+            and self._sel_head is not None
+            and (self._sel_lines or self._sel_anchor != self._sel_head)
+        )
+
+    def clear_selection(self) -> bool:
+        """Drop the selection; True if there was one."""
+        had = self.has_selection()
+        self._sel_anchor = self._sel_head = None
+        self._sel_lines = self._sel_drag = False
+        if had:
+            self.dirty = True
+        return had
+
+    def select_rows(self, first: int, last: int):
+        """Select rows `first`..`last` (inclusive) as whole lines; the cursor
+        goes to `last`."""
+        self._sel_anchor = (first, 0)
+        self._sel_head = (last, 0)
+        self._sel_lines = True
+        self.dirty = True
+
+    def selection_bounds(self):
+        """((row, col), (row, col)) of the selection, start inclusive, end
+        exclusive (a col of None = to the end of the row); None when there is
+        no selection."""
+        if not self.has_selection():
+            return None
+        (r1, c1), (r2, c2) = sorted((self._sel_anchor, self._sel_head))
+        if self._sel_lines:
+            return (r1, 0), (r2, None)
+        # The cell under the pointer is part of it, at whichever end.
+        return (r1, c1), (r2, c2 + 1)
+
+    def selected_rows(self) -> typing.Optional[typing.Tuple[int, int]]:
+        """(first, last) row indexes the selection touches, or None."""
+        bounds = self.selection_bounds()
+        if bounds is None:
+            return None
+        (r1, _), (r2, _) = bounds
+        last = len(self.items) - 1
+        return min(r1, last), min(r2, last)
+
+    def selected_text(self) -> str:
+        bounds = self.selection_bounds()
+        if bounds is None:
+            return ""
+        (r1, c1), (r2, c2) = bounds
+        lines = []
+        for row in range(r1, min(r2, len(self.items) - 1) + 1):
+            text = self.items[row].get_text()
+            start = c1 if row == r1 else 0
+            end = c2 if row == r2 else None
+            lines.append(text[start:end])
+        return "\n".join(lines)
+
+    def _extend_line_selection(self, step: int):
+        """Shift+Up/Down: grow or shrink a whole-line selection by moving the
+        cursor one row."""
+        if not (self.has_selection() and self._sel_lines):
+            self._sel_anchor = (self._selected, 0)
+            self._sel_lines = True
+        self.set_selected(
+            self._selected + step, visible_mode="top" if step < 0 else "bottom"
+        )
+        self._sel_head = (self._selected, 0)
+        self.dirty = True
+
+    def _drag_selection(self, event) -> bool:
+        """A left press starts a selection, moves while held extend it (to
+        any row: past the top or bottom edge the list scrolls), the release
+        ends the drag."""
+        view_x = event.x - self.x
+        view_y = event.y - self.y
+        if event.is_left_press:
+            index = self._offset_y + view_y
+            if 0 <= view_y < self.height and 0 <= index < len(self.items):
+                self.clear_selection()
+                self._sel_anchor = (index, max(0, view_x + self._offset_x))
+                self._sel_drag = True
+            return False  # the click itself goes on as usual
+        if not self._sel_drag or not self.items:
+            return False
+        if event.is_release:
+            self._sel_drag = False
+            return self.has_selection()
+        if not event.is_move:
+            return False
+        if view_y < 0:
+            self._scroll_y(-1)
+            view_y = 0
+        elif view_y >= self.height:
+            self._scroll_y(1)
+            view_y = self.height - 1
+        index = max(0, min(self._offset_y + view_y, len(self.items) - 1))
+        self._sel_head = (index, max(0, view_x + self._offset_x))
+        self.dirty = True
+        return True
+
+    def _draw_selection(self, i: int, idx: int, width: int, bounds):
+        """Repaint the selected cells of screen row `i` (item `idx`) in the
+        selection colour, keeping each cell's character and foreground."""
+        (r1, c1), (r2, c2) = bounds
+        if not (r1 <= idx <= r2):
+            return
+        text_len = len(self.items[idx].get_text())
+        start = c1 if idx == r1 else 0
+        if self._sel_lines:
+            end = self._offset_x + width  # a whole-line band
+        elif idx == r2:
+            end = c2
+        else:
+            end = max(text_len, start + 1)  # past the text: the line break
+        x0 = max(0, start - self._offset_x)
+        x1 = min(width, end - self._offset_x)
+        y = self.y + i
+        for x in range(x0, x1):
+            cell = self.win.inch(y, self.x + x)
+            role = colors.role_of_pair(curses.pair_number(cell & curses.A_COLOR))
+            self.win.chgat(y, self.x + x, 1, colors.selection_attr(role))
+
     # -- clipboard ------------------------------------------------------------
 
     def copy_text_to_clipboard(self):
         text = "\n".join(item.get_text() for item in self.items)
         if text:
             self.app.copy_to_clipboard(text)
+
+    def copy_selection_to_clipboard(self) -> bool:
+        """Copy the selected text; False when nothing is selected."""
+        text = self.selected_text()
+        if not text:
+            return False
+        self.app.copy_to_clipboard(text)
+        return True
 
     def copy_text_range_to_clipboard(self, to_item):
         """Copy the rows between the selection and `to_item`, inclusive."""
@@ -306,6 +467,10 @@ class ListView(View):
             self._scroll_x(HSCROLL_BIG_STEP)
             return True
 
+        if self.text_selection and not self.resize_mode:
+            if self._drag_selection(event):
+                return True
+
         if not self.resize_mode:
             view_x = event.x - self.x
             view_y = event.y - self.y
@@ -340,6 +505,15 @@ class ListView(View):
         key = event.key
         if not self.items:
             return super().handle_key(event)
+
+        if self.text_selection:
+            if key == K.KEY_ESC and self.clear_selection():
+                return True
+            if key in (K.KEY_SHIFT_UP, K.KEY_SHIFT_DOWN):
+                self._extend_line_selection(-1 if key == K.KEY_SHIFT_UP else 1)
+                return True
+            if key in _PLAIN_MOVES:
+                self.clear_selection()
 
         selected_item = self.get_selected()
         if selected_item and selected_item.handle_key(event):
@@ -391,6 +565,7 @@ class ListView(View):
     def draw(self):
         separator_rows = []
         win_height, win_width = self.win.getmaxyx()
+        bounds = self.selection_bounds() if self.text_selection else None
         for i in range(0, min(self.height, len(self.items) - self._offset_y)):
             idx = i + self._offset_y
             item = self.items[idx]
@@ -412,6 +587,8 @@ class ListView(View):
                 item.draw_line(
                     self.win, self._offset_x, width, selected, matched, False
                 )
+                if bounds is not None:
+                    self._draw_selection(i, idx, width, bounds)
 
         self.win.clrtobot()
         super().draw()

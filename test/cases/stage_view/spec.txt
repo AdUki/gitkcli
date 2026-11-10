@@ -1,0 +1,20 @@
+# The uncommitted changes, git gui style, one view per pseudo-row. Detached
+# HEAD so the pseudo-rows sit on top; README.md has two unstaged hunks,
+# notes.txt is untracked (listed like a diffstat, then shown as a new file),
+# src/main.py is staged. Enter on the working-directory row shows only the
+# unstaged changes ([Stage] [Discard]); Enter on the staged row only the staged
+# ones ([Unstage]).
+size      120x40
+config    default
+run       git checkout -q --detach master && printf 'junk\n' >> README.md && sed -i '3s/.*/changed line three/' README.md && printf 'a\nb\nc\n' > notes.txt && printf 'x\n' >> src/main.py && git add src/main.py
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+capture   unstaged
+key       q
+key       <Down>
+key       <Enter>
+wait      stable
+capture   staged

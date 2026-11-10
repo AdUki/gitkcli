@@ -17,9 +17,12 @@ from gitk.app import App
 from gitk.config import load_config
 from gitk.dialogs import (
     CommandDialogPopup,
+    CommitDialogPopup,
+    InitRepoDialogPopup,
     PreferencesDialogPopup,
     ShortcutsDialogPopup,
 )
+from gitk.jobs import Job
 from gitk.ids import ID_CONFIRM_DIALOG, ID_ERROR_DIALOG
 from gitk.keymap import Keymap
 from gitk.log import Log
@@ -44,6 +47,7 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
     app.command_dialog = CommandDialogPopup(app)
     app.confirm_dialog = ConfirmDialog(app, ID_CONFIRM_DIALOG)
     app.error_dialog = ErrorDialog(app, ID_ERROR_DIALOG)
+    app.commit_dialog = CommitDialogPopup(app)
 
     _cfg = load_config()
     app.git_log.show_commit_id = _cfg["git_log"]["show_commit_id"]
@@ -61,21 +65,38 @@ def launch_curses(stdscr, git_args: typing.List, cmd_args: typing.List):
 
     app.log.info("Application started")
 
-    app.git_refs.job.start_job()
-    # Initial load via reload_commits so it shows the same Working bar as a
-    # refresh (and probes the uncommitted pseudo-rows).
-    app.git_log.reload_commits()
+    def start_loading():
+        app.git_refs.job.start_job()
+        # Initial load via reload_commits so it shows the same Working bar as
+        # a refresh (and probes the uncommitted pseudo-rows).
+        app.git_log.reload_commits()
+
+    no_repo = not_a_repository(app)
+    if not no_repo:
+        start_loading()
 
     if app.split.default_view_mode in (SPLIT_SIDE, SPLIT_STACKED):
         app.split.set_split_mode(app.split.default_view_mode)
     else:
         app.git_log.show()
 
+    if no_repo:
+        # Offer `git init` rather than failing every git command.
+        InitRepoDialogPopup(app).ask(start_loading)
+
     app.main_loop()
 
     app.exit_program()
 
     app.log.info("Application ended")
+
+
+def not_a_repository(app) -> bool:
+    """Whether the app was started outside any git work tree. Only git's own
+    "not a git repository" counts: another failure (git missing, an unsafe
+    directory) is reported by the jobs as usual."""
+    result = Job.run_job(app, ["git", "rev-parse", "--git-dir"])
+    return result.returncode != 0 and "not a git repository" in result.stderr
 
 
 def main():

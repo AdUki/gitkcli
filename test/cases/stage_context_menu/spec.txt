@@ -1,0 +1,26 @@
+# Right-click in the working directory's view: the stage / discard entries for
+# a hunk line (with their keys), then for a selection dragged with the mouse
+# (from a context line into "+one"), whose entries act on its changed lines.
+size      120x40
+config    default
+run       git checkout -q --detach master && printf 'one\ntwo\n' >> README.md
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+mouse     rclick 3 13
+wait      stable
+capture   line_menu
+key       <Esc>
+wait      stable
+mouse     drag 2 12 4 13
+wait      stable
+capture   dragged
+mouse     rclick 3 12
+wait      stable
+capture   selection_menu
+key       <Down>
+key       <Enter>
+wait      stable
+capture   selection_staged
