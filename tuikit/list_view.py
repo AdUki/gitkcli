@@ -299,6 +299,12 @@ class ListView(View):
         if event.type == M.WHEEL_DOWN:
             self._scroll_y(WHEEL_STEP)
             return True
+        if event.type == M.WHEEL_LEFT:
+            self._scroll_x(-HSCROLL_BIG_STEP)
+            return True
+        if event.type == M.WHEEL_RIGHT:
+            self._scroll_x(HSCROLL_BIG_STEP)
+            return True
 
         if not self.resize_mode:
             view_x = event.x - self.x

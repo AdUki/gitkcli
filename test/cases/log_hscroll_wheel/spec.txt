@@ -1,0 +1,13 @@
+# The horizontal mouse wheel (tilt / thumb wheel: buttons 6 and 7) scrolls the
+# Git Log sideways by 10 columns per notch, like Shift+Right/Shift+Left. Same
+# NARROW pty as log_hscroll_shift so scrolling actually engages: one notch
+# right lands where log_hscroll_shift's single <S-Right> does, one notch left
+# undoes it. ncurses' getmouse() reports buttons 6/7 without a direction, so
+# this guards tuikit decoding the mouse reports itself (tuikit/mouse.py).
+size      40x40
+config    default
+launch
+mouse     wheelright 10 5
+capture   after_wheel_right
+mouse     wheelleft 10 5
+capture   after_wheel_left

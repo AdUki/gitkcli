@@ -171,7 +171,9 @@ class App:
 
     def dispatch_key(self, event):
         if event.key == curses.KEY_MOUSE:
-            for mouse_event in self.mouse.read():
+            if event.mouse is None:
+                return
+            for mouse_event in self.mouse.decode(event.mouse):
                 self.screen.dispatch_mouse(mouse_event)
         elif event.key == curses.KEY_RESIZE:
             self.screen.resize()

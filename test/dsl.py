@@ -9,7 +9,7 @@ A spec is a sequence of directives, one per line:
     key       <F2>          # send key tokens
     key       <Down>*3 j    # *N repeats a token; bare chars are literal
     text      "fix"         # type a literal string (e.g. into search)
-    mouse     click 20 9    # click|dblclick|rclick at COL ROW (1-based)
+    mouse     click 20 9    # click|dblclick|rclick|wheel<dir> at COL ROW (1-based)
     wait      stable        # settle, or `wait 2.5` for a fixed pause
     resize    100x30        # change pty size mid-test
     capture   refs_view     # snapshot -> golden/refs_view.txt
@@ -147,13 +147,17 @@ def _parse_size(arg: str, lineno: int):
     return int(m.group("h")), int(m.group("w"))  # rows, cols
 
 
+_WHEEL_BUTTONS = {"wheelup": 64, "wheeldown": 65, "wheelleft": 66, "wheelright": 67}
+
+
 def _parse_mouse(rest: str, lineno: int) -> "Directive":
-    """`mouse <click|dblclick|rclick> COL ROW` -> X10 mouse byte events.
+    """`mouse <click|dblclick|rclick|wheelup|wheeldown|wheelleft|wheelright>
+    COL ROW` -> X10 mouse byte events.
 
     COL/ROW are 1-based screen coordinates (ROW == golden line number). Encoded
     as classic X10 mouse reports (`ESC [ M  Cb Cx Cy`, each value + 32), which is
-    the only protocol ncurses decodes in a pty here (mode 1000; no motion/wheel,
-    so no drag). Emitted as a normal key directive so the runner just writes the
+    accepted alongside the SGR reports the app asks for (no motion, so no
+    drag). A wheel verb is one notch (a press of buttons 4-7). Emitted as a normal key directive so the runner just writes the
     bytes. rclick is press-only so the context menu stays open for a capture.
     """
     parts = rest.split()
@@ -167,7 +171,7 @@ def _parse_mouse(rest: str, lineno: int) -> "Directive":
     if not (1 <= x <= 223 and 1 <= y <= 223):
         raise SpecError(f"line {lineno}: mouse COL ROW out of X10 range (1..223)")
 
-    def ev(button):  # X10: left press=0, right press=2, release=3
+    def ev(button):  # X10: left press=0, right press=2, release=3, wheel=64+
         return KeyEvent(
             b"\x1b[M" + bytes([32 + button, 32 + x, 32 + y]), False, MOUSE_GAP
         )
@@ -179,6 +183,8 @@ def _parse_mouse(rest: str, lineno: int) -> "Directive":
         seq = [ev(2)]
     elif verb == "dblclick":
         seq = [ev(0), ev(3), ev(0), ev(3)]  # two presses < 0.3s -> double-click
+    elif verb in _WHEEL_BUTTONS:
+        seq = [ev(_WHEEL_BUTTONS[verb])]
     else:
         raise SpecError(f"line {lineno}: unknown mouse verb {verb!r}")
     return Directive("key", lineno, keys=seq)

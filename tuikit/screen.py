@@ -16,6 +16,7 @@ Subclass to add an application palette (`define_colors`).
 
 from __future__ import annotations
 
+import atexit
 import curses
 import curses.panel
 import subprocess
@@ -34,8 +35,6 @@ from tuikit.view import MODE_FULLSCREEN, MODE_WINDOW
 # stays visible, a few columns right.
 CASCADE_ORIGIN = (4, 2)  # x, y
 CASCADE_STEP = (3, 1)
-
-MOUSE_MASK = curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION
 
 
 class Screen:
@@ -57,8 +56,10 @@ class Screen:
         stdscr.timeout(5)
         if hasattr(curses, "set_escdelay"):
             curses.set_escdelay(20)
-        curses.mousemask(MOUSE_MASK)
-        curses.mouseinterval(0)
+        # Mouse reporting is ours, not curses' (see tuikit.mouse): switch it on
+        # now and off again when the program ends.
+        app.mouse.enable()
+        atexit.register(app.mouse.disable)
 
         self.showed_views = []  # the deck, bottom -> top
         self.views = {}  # every view by id
@@ -328,6 +329,7 @@ class Screen:
         with `label` (default: the app's name). Returns the exit code, or None
         if it could not be spawned (logged as an error)."""
         curses.def_prog_mode()  # save curses' terminal modes for the resume
+        self.app.mouse.disable()
         curses.endwin()
 
         printable = " ".join(args)
@@ -359,8 +361,7 @@ class Screen:
             curses.curs_set(0)
         except curses.error:
             pass
-        curses.mousemask(MOUSE_MASK)
-        curses.mouseinterval(0)
+        self.app.mouse.enable()
         curses.flushinp()
         self._full_redraw = True
         try:

@@ -356,12 +356,13 @@ def main():
             spec.txt directives (cases/<name>/spec.txt):
               size WxH | config NAME | launch [args] | demo NAME [args] |
               run <shell> | key <tokens> |
-              text "literal" | mouse click|dblclick|rclick COL ROW | wait stable|<secs> |
+              text "literal" | mouse VERB COL ROW | wait stable|<secs> |
               resize WxH | capture NAME | expect-exit
             keys: bare chars, <Up>/<Down>/<Enter>/<Esc>/<F1>..<F12>/<S-F5>, C-w/C-Left;
                   repeat a token with *N (e.g. <Down>*5)
-            mouse: COL ROW are 1-based screen coords (no drag/wheel -- the pty only
-                   reports button press/release, not motion)
+            mouse: VERB is click|dblclick|rclick or wheelup|wheeldown|wheelleft|
+                   wheelright (one notch); COL ROW are 1-based screen coords
+                   (no drag -- the pty only reports presses/releases, not motion)
 
             first run needs the fixture:  bash test/create_test_repo.sh
             """),
