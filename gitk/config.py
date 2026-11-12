@@ -15,7 +15,7 @@ DEFAULT_CONFIG = {
         "show_commit_date": True,
         "show_commit_author": True,
         "flags": "",
-        # The glyph marking a commit in --graph mode (*┤). Any single-cell
+        # The glyph marking a commit in --graph mode (├*). Any single-cell
         # glyph works, e.g. "●", "⬤", "◉", "•" if the font draws it well.
         "graph_dot": "*",
     },

@@ -42,7 +42,7 @@ MINGAPLEN = 100  # a line is only cut when the gap is at least this long
 # The end of a line that was cut short, and the start of its continuation:
 # dashed, so it still joins the line it belongs to.
 CUT = "┆"
-# A commit, beside its cell in the graph: *┤ (plain ASCII, so every font
+# A commit, beside its cell in the graph: ├* (plain ASCII, so every font
 # and terminal draws it, centred on the line)
 DOT = "*"
 
@@ -94,18 +94,18 @@ _WEIGHTED = _weighted_boxes()
 
 
 def _marker(arms: int) -> int:
-    """The heavy arm(s) marking a commit: left, or right when a line joins
-    from the left, or both horizontal arms when both are taken."""
-    if not arms & _L:
-        return _L
+    """The heavy arm(s) marking a commit: right, or left when a line leaves
+    to the right, or both horizontal arms when both are taken."""
     if not arms & _R:
         return _R
+    if not arms & _L:
+        return _L
     return _L | _R
 
 
 def node_glyph(arms: int) -> str:
     """A commit whose dot has no room beside it: its connections in light
-    lines plus a heavy stub marking it (┥ ┽ ┑ ┙ ┭ ┾ ┿)."""
+    lines plus a heavy stub marking it (┝ ┾ ┍ ┕ ┮ ┽ ┿)."""
     heavy = _marker(arms)
     return _WEIGHTED[(arms & ~heavy, heavy)]
 
@@ -1241,7 +1241,7 @@ class CommitGraph:
             else:
                 out.append(_BOX[m])
         # One leading blank column, so every lane has a gap on both sides:
-        # the commit's dot goes in the gap beside its cell (*┤, ─* ...), with
+        # the commit's dot goes in the gap beside its cell (├*, *─ ...), with
         # the cell's arm to it in a light line. With no free gap, the cell
         # keeps the heavy stub (node_glyph) to mark the commit instead.
         out.insert(0, " ")
