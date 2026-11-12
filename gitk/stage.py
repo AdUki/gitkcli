@@ -23,6 +23,7 @@ the view's rows and runs git.
 
 from __future__ import annotations
 
+import os
 import re
 import typing
 
@@ -423,6 +424,10 @@ class Stager:
             return
         row = view._selected
         if isinstance(item, StatListItem):
+            path = item.stat_file_path
+            if item.untracked and path.endswith("/"):
+                self._untracked_dir(action, path)
+                return
             row = item.file_row()
             block = file_block(items, row) if row is not None else None
             if block is not None:
@@ -498,8 +503,38 @@ class Stager:
             self._confirm_discard(
                 action,
                 f"{'the untracked file' if untracked else 'the changes to'} {path}",
-                lambda: self._git(args, ok=ok),
+                lambda: self._git_then_prune(args, ok, path),
             )
+
+    def _untracked_dir(self, action: str, path: str):
+        """An untracked directory listed whole ("sub/"): git lists one only
+        when it is an embedded repository, which has no diff to act on.
+        Discarding it takes -ff (git clean leaves nested repositories alone
+        otherwise) and -d."""
+        ok = f"{_done(action)} {path}"
+        if action == STAGE:
+            self._git(["add", "-A", "--", path], ok=ok)
+        elif action == DISCARD:
+            self._confirm_discard(
+                action,
+                f"the untracked repository {path}",
+                lambda: self._git_then_prune(["clean", "-ffdq", "--", path], ok, path),
+            )
+
+    def _git_then_prune(self, args, ok: str, path: str):
+        """Run git, then remove the directories `path`'s removal left empty
+        (git clean, given a path, removes only that file) - the way git gui
+        deletes an untracked file."""
+        if not self._git(args, ok=ok):
+            return
+        top = self.app.git_toplevel() or os.getcwd()
+        parent = os.path.dirname(path.rstrip("/"))
+        while parent:
+            try:
+                os.rmdir(os.path.join(top, parent))
+            except OSError:
+                break  # not empty (or already gone)
+            parent = os.path.dirname(parent)
 
     def _section(self, action: str):
         if action == STAGE:

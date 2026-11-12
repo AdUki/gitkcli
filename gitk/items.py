@@ -39,8 +39,13 @@ class RefListItem(TextListItem):
 
 
 class StatListItem(TextListItem):
-    def __init__(self, txt: str, color: int, stat_file_path: str):
+    def __init__(
+        self, txt: str, color: int, stat_file_path: str, untracked: bool = False
+    ):
         self.stat_file_path = stat_file_path
+        # An untracked path (git ls-files --others): a file, or a directory
+        # ("sub/", an embedded repository) that has no diff of its own.
+        self.untracked = untracked
         super().__init__(txt, color)
 
     def jump_to_file(self):

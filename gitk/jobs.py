@@ -559,7 +559,9 @@ class GitDiffJob(Job):
             self._put_row(TextListItem(""))
         for path in paths:
             self._put_row(
-                StatListItem(f" {path} (untracked)", Screen.C_DIFF_RANGE, path)
+                StatListItem(
+                    f" {path} (untracked)", Screen.C_DIFF_RANGE, path, untracked=True
+                )
             )
         n = len(paths)
         self._put_row(TextListItem(f" {n} untracked file{'s' if n > 1 else ''}"))
