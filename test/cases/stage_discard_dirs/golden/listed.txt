@@ -1,0 +1,40 @@
+[0;34;49m─ Uncommitted changes (working directory) [1/11] ────────── [0;37;49mContext:[0;34;49m [0;37;49m3[0;34;49m [0;37;49m[+][0;34;49m [0;37;49m[-][0;34;49m [0;37;49m[Stage][0;34;49m [0;37;49m[Discard][0;34;49m [0;37;49m[Commit][0;34;49m [0;37;49m[<-][0;34;49m [0;37;49m[->][0;34;49m [0;31;49m[X][0;34;49m─[0m
+[0;1;36;48;2;38;38;38m new/deep/file.txt (untracked)                                                                                          [0m
+[0;36;49m vendor/ (untracked)[0m
+[0;37;49m 2 untracked files[0m
+
+[0;34;49mdiff --git a/new/deep/file.txt b/new/deep/file.txt[0m
+[0;37;49mnew file mode 100644[0m
+[0;34;49mindex 0000000..3e75765[0m
+[0;34;49m--- /dev/null[0m
+[0;34;49m+++ b/new/deep/file.txt[0m
+[0;36;49m@@ -0,0 +1 @@[0m
+[0;32;49m+new[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0;37;49m 1[0;30;46mGit Log   [0;37;49m 2[0;30;46mGit Refs  [0;37;49m 3[0;30;46mGit Diff  [0;37;49m 4[0;30;46mLogs      [0;37;49m 5[0;30;46mRefresh   [0;37;49m 6[0;30;46mSearch    [0;37;49m 7[0;30;46mContext   [0;37;49m 8[0;30;46mCommand   [0;37;49m 9[0;30;46mConfig    [0;37;49m10[0;30;46mQuit     [0m

@@ -1,0 +1,25 @@
+# Discarding an untracked file also removes the directories it leaves empty,
+# and an untracked embedded repository (listed whole, as "vendor/", with no
+# diff of its own) can be discarded from its row too (git clean -ffd).
+size      120x40
+config    default
+run       git checkout -q --detach master && mkdir -p new/deep vendor && printf 'new\n' > new/deep/file.txt && git -C vendor init -q && printf 'v\n' > vendor/lib.txt
+launch
+wait      stable
+key       g
+key       <Enter>
+wait      stable
+capture   listed
+key       d
+wait      stable
+capture   confirm_file
+key       y
+wait      stable
+key       g
+key       d
+wait      stable
+capture   confirm_repo
+key       y
+wait      stable
+capture   discarded
+run       test ! -e new && test ! -e vendor
